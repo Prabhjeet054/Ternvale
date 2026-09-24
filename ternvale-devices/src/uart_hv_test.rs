@@ -5,8 +5,8 @@ use std::os::fd::FromRawFd;
 
 use ternvale_hv::Vm;
 use ternvale_vmm::{
-    decode_esr, load_payload, ExitEvent, ExitReason, GuestMemory, MmioBus, Vcpu, HOST_PAGE_SIZE,
-    PAYLOAD_GPA,
+    decode_esr, load_payload, ExitEvent, ExitReason, GuestMemory, MmioBus, Vcpu, GIC_DIST_BASE,
+    GIC_REDIST_BASE, HOST_PAGE_SIZE, PAYLOAD_GPA,
 };
 
 use super::{Pl011, PL011_BASE, PL011_SIZE};
@@ -77,6 +77,7 @@ fn runs_hello_payload_on_the_pl011() {
 
     let capture = StdoutPipe::start();
     let vm = Vm::create().expect("vm");
+    vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE).expect("gic");
     let mut memory = GuestMemory::new().expect("memory");
     memory.map(&vm, PAYLOAD_GPA, HOST_PAGE_SIZE).expect("map");
     let vcpu = Vcpu::create(&vm).expect("vcpu");

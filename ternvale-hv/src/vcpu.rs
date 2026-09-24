@@ -108,6 +108,7 @@ impl SysReg {
 /// Create a vCPU on the current thread. The exit pointer is owned by the kernel.
 #[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all)]
 pub fn vcpu_create() -> Result<(u64, *mut VcpuExit), HvError> {
+    crate::gic::note_vcpu_create()?;
     let mut id = 0u64;
     let mut exit = std::ptr::null_mut();
     // SAFETY: `id` and `exit` are writable locals. `config` is NULL, which the

@@ -1,7 +1,7 @@
 //! Runs one `hvc #0` and checks the raw exception syndrome in the log.
 
 use super::{ExitReason, Vcpu, VcpuError};
-use crate::{GuestMemory, HOST_PAGE_SIZE};
+use crate::{GuestMemory, GIC_DIST_BASE, GIC_REDIST_BASE, HOST_PAGE_SIZE};
 
 /// AArch64 `hvc #0`.
 const HVC0: u32 = 0xd400_0002;
@@ -23,6 +23,7 @@ fn runs_hvc0_and_rejects_run_from_another_thread() {
     let guard = ternvale_log::init(config).expect("log");
 
     let vm = ternvale_hv::Vm::create().expect("vm");
+    vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE).expect("gic");
     let mut memory = GuestMemory::new().expect("memory");
     memory.map(&vm, GUEST_PC, HOST_PAGE_SIZE).expect("map");
     memory.write_u32(GUEST_PC, HVC0).expect("store hvc");

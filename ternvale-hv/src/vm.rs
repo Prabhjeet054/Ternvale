@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::error::{HvError, HV_SUCCESS};
 use crate::ffi::{hv_vm_create, hv_vm_destroy};
+use crate::gic::{self, Gic};
 
 /// Set while a [`Vm`] is alive. Cleared after a successful `hv_vm_destroy`.
 static VM_EXISTS: AtomicBool = AtomicBool::new(false);
@@ -56,9 +57,33 @@ impl Vm {
             return Err(error);
         }
         tracing::info!(target: "ternvale::hv", "VM created");
+        crate::gic::note_vm_created();
         Ok(Self {
             _thread_affine: PhantomData,
         })
+    }
+
+    /// Install the in-kernel GICv3. Call this after [`Vm::create`] and before any vCPU.
+    ///
+    /// `distributor` and `redistributor` are the guest physical bases. Pass
+    /// `GIC_DIST_BASE` and `GIC_REDIST_BASE` from `platform.rs` so they match the DTB.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::hv",
+        skip_all,
+        fields(
+            distributor = format!("{:#x}", distributor),
+            redistributor = format!("{:#x}", redistributor)
+        )
+    )]
+    pub fn create_gic(&self, distributor: u64, redistributor: u64) -> Result<Gic, HvError> {
+        tracing::info!(
+            target: "ternvale::gic",
+            distributor = format!("{:#x}", distributor),
+            redistributor = format!("{:#x}", redistributor),
+            "Vm builder installing GIC before vCPUs"
+        );
+        gic::create_gic(distributor, redistributor)
     }
 }
 
@@ -70,6 +95,7 @@ impl Drop for Vm {
         let code = ternvale_log::log_hv_call!("hv_vm_destroy", "none", raw);
         if code == HV_SUCCESS {
             VM_EXISTS.store(false, Ordering::Release);
+            crate::gic::note_vm_destroyed();
             tracing::info!(target: "ternvale::hv", "VM destroyed");
         } else {
             // Leave VM_EXISTS set so a later create cannot stack a second VM

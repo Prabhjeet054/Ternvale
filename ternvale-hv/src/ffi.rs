@@ -29,6 +29,22 @@ unsafe extern "C" {
     pub(crate) fn hv_vcpus_exit(vcpus: *const u64, vcpu_count: u32) -> i32;
 }
 
+// GICv3 symbols are resolved with `dlsym` so a host without them returns
+// `HvError::GicUnavailable` instead of failing at load. `hv_gic.h` marks each
+// call `API_AVAILABLE(macos(15.0))`.
+#[link(name = "System", kind = "dylib")]
+unsafe extern "C" {
+    pub(crate) fn dlsym(handle: *mut c_void, symbol: *const i8) -> *mut c_void;
+    pub(crate) fn os_release(object: *mut c_void);
+    pub(crate) fn sysctlbyname(
+        name: *const i8,
+        oldp: *mut c_void,
+        oldlenp: *mut usize,
+        newp: *mut c_void,
+        newlen: usize,
+    ) -> i32;
+}
+
 /// `hv_vcpu_exit_t` from `hv_vcpu_types.h`. `reason` is at 0; `exception` is at 8.
 #[repr(C)]
 pub struct VcpuExit {

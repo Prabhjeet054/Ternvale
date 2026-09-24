@@ -3,6 +3,7 @@
 use crate::boot::{load, PAYLOAD_GPA};
 use crate::esr::{decode, ExitEvent};
 use crate::memory::{GuestMemory, HOST_PAGE_SIZE};
+use crate::platform::{GIC_DIST_BASE, GIC_REDIST_BASE};
 use crate::vcpu::{ExitReason, Vcpu};
 
 const UART: u64 = 0x0900_0000;
@@ -32,6 +33,7 @@ fn runs_hello_payload_and_collects_strb_bytes() {
     });
 
     let vm = ternvale_hv::Vm::create().expect("vm");
+    vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE).expect("gic");
     let mut memory = GuestMemory::new().expect("memory");
     memory.map(&vm, PAYLOAD_GPA, HOST_PAGE_SIZE).expect("map");
     let vcpu = Vcpu::create(&vm).expect("vcpu");

@@ -50,6 +50,8 @@ fn rejects_a_gpr_index_past_x30() {
 #[ignore = "needs-hv"]
 fn creates_vcpu_and_rejects_another_thread() {
     let vm = ternvale_hv::Vm::create().expect("vm");
+    vm.create_gic(crate::GIC_DIST_BASE, crate::GIC_REDIST_BASE)
+        .expect("gic");
     let vcpu = Vcpu::create(&vm).expect("vcpu");
     vcpu.set_pc(0x4000_0000).expect("set pc");
     assert_eq!(vcpu.get_pc().expect("get pc"), 0x4000_0000);

@@ -101,6 +101,48 @@ pub enum HvError {
         /// The rejected `Xn` index.
         index: u8,
     },
+    /// In-kernel GICv3 needs macOS 15.0 (`API_AVAILABLE(macos(15.0))` in `hv_gic.h`).
+    #[error("in-kernel GICv3 requires macOS 15.0 or newer; host is {major}.{minor}")]
+    GicOsUnsupported {
+        /// Host `kern.osproductversion` major.
+        major: u32,
+        /// Host `kern.osproductversion` minor.
+        minor: u32,
+    },
+    /// The GICv3 symbols are missing from Hypervisor.framework.
+    #[error("in-kernel GICv3 is not available in this Hypervisor.framework")]
+    GicUnavailable,
+    /// `hv_gic_create` ran before `hv_vm_create`.
+    #[error("GIC must be created after hv_vm_create")]
+    GicBeforeVm,
+    /// A vCPU already exists, so the GIC window has closed.
+    #[error("GIC must be created before any vCPU")]
+    GicAfterVcpu,
+    /// This VM already has a GIC.
+    #[error("a GIC already exists for this VM")]
+    GicExists,
+    /// `hv_vcpu_create` ran before `hv_gic_create`.
+    #[error("vCPU requires an in-kernel GIC; create the GIC first")]
+    VcpuBeforeGic,
+    /// Distributor or redistributor GPA is not aligned to the framework requirement.
+    #[error("GIC {region} base {base:#x} is not aligned to {alignment:#x}")]
+    GicMisaligned {
+        /// `distributor` or `redistributor`.
+        region: &'static str,
+        /// Guest physical address that was rejected.
+        base: u64,
+        /// Alignment in bytes reported by the framework.
+        alignment: usize,
+    },
+    /// `hv_gic_config_create` or `hv_gic_state_create` returned NULL.
+    #[error("Hypervisor.framework returned a null {what}")]
+    GicNull {
+        /// Which object was null.
+        what: &'static str,
+    },
+    /// `sysctlbyname(kern.osproductversion)` failed or the string was not a version.
+    #[error("could not read the macOS version")]
+    OsVersion,
 }
 
 impl HvError {
