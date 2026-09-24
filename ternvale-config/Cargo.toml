@@ -4,3 +4,13 @@ description = "VM configuration and shared errors for Ternvale."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+# TOML VM config. `derive` is the serde data model for `VmConfig`.
+serde = { version = "1", features = ["derive"] }
+# Typed `ConfigError` and the shared `TernvaleError`.
+thiserror = "2"
+# Parse and emit the VM config document.
+toml = "0.8"
+# Validation decisions (DEBUG) and failures (ERROR).
+tracing = "0.1"
