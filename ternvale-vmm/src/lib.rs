@@ -2,9 +2,11 @@
 //!
 //! [`GuestMemory`] allocates host RAM and maps it into the guest.
 
+mod esr;
 mod memory;
 mod vcpu;
 
+pub use esr::{decode as decode_esr, ExitEvent};
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStop};
 
