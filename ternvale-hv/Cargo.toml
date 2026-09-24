@@ -4,3 +4,11 @@ description = "Safe wrappers around Hypervisor.framework."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+# Typed HvError for hv_return_t.
+thiserror = "2"
+# log_hv_call! for every Hypervisor.framework call.
+ternvale-log = { path = "../ternvale-log" }
+# Spans on the safe Vm API and the single-VM guard.
+tracing = "0.1"

@@ -426,6 +426,11 @@ version = "0.1.0"
 [[package]]
 name = "ternvale-hv"
 version = "0.1.0"
+dependencies = [
+ "ternvale-log",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "ternvale-log"
