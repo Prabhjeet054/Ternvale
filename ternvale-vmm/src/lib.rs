@@ -5,11 +5,13 @@
 mod boot;
 mod esr;
 mod memory;
+mod mmio;
 mod vcpu;
 
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
 pub use esr::{decode as decode_esr, ExitEvent};
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
+pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStop};
 
 #[cfg(test)]
