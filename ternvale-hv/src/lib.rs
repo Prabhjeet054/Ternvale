@@ -5,11 +5,15 @@
 
 mod error;
 mod ffi;
+mod map;
 mod vm;
 
 pub use error::{
     HvError, HV_BAD_ARGUMENT, HV_BUSY, HV_DENIED, HV_ERROR, HV_EXISTS, HV_ILLEGAL_GUEST_STATE,
     HV_NO_DEVICE, HV_NO_RESOURCES, HV_SUCCESS, HV_UNSUPPORTED,
+};
+pub use map::{
+    map_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX, HV_MEMORY_WRITE,
 };
 pub use vm::Vm;
 

@@ -4,3 +4,17 @@ description = "Virtual machine lifecycle, vCPU, and memory orchestration."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+# mmap, munmap, and sysconf(_SC_PAGESIZE) for guest RAM. Hypervisor FFI stays in ternvale-hv.
+libc = "0.2"
+# Typed MemoryError.
+thiserror = "2"
+# hv_vm_map / hv_vm_unmap wrappers and HvError.
+ternvale-hv = { path = "../ternvale-hv" }
+# Map, unmap, and rejected GPA access logs.
+tracing = "0.1"
+
+[dev-dependencies]
+# Log file checks in unit tests.
+ternvale-log = { path = "../ternvale-log" }

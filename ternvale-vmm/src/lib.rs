@@ -1,9 +1,10 @@
 //! Virtual machine lifecycle, vCPU, and memory orchestration.
 //!
-//! Stub only. This crate will sit between the CLI and `ternvale-hv` / `ternvale-devices`.
-//! Public functions added here must carry
-//! `#[tracing::instrument(level = "debug", skip_all, fields(...))]`
-//! and log on a `ternvale::…` target (`mem`, `vcpu`, `boot`, and others as they appear).
+//! [`GuestMemory`] allocates host RAM and maps it into the guest.
+
+mod memory;
+
+pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 
 #[cfg(test)]
 mod tests {

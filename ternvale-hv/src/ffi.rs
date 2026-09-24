@@ -10,4 +10,7 @@ use std::ffi::c_void;
 unsafe extern "C" {
     pub(crate) fn hv_vm_create(config: *mut c_void) -> i32;
     pub(crate) fn hv_vm_destroy() -> i32;
+    /// `hv_vm.h`: page-aligned `addr` and `ipa`, `size` a multiple of the page size.
+    pub(crate) fn hv_vm_map(addr: *mut c_void, ipa: u64, size: usize, flags: u64) -> i32;
+    pub(crate) fn hv_vm_unmap(ipa: u64, size: usize) -> i32;
 }

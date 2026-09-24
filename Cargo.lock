@@ -446,6 +446,13 @@ dependencies = [
 [[package]]
 name = "ternvale-vmm"
 version = "0.1.0"
+dependencies = [
+ "libc",
+ "ternvale-hv",
+ "ternvale-log",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "thiserror"
