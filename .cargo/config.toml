@@ -1,0 +1,4 @@
+# Sign each `cargo test` / `cargo run` binary with the hypervisor entitlement
+# before executing it. Paths are relative to the workspace root.
+[target.aarch64-apple-darwin]
+runner = "scripts/sign-and-run.sh"
