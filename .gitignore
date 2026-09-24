@@ -7,3 +7,4 @@ guest-tests/*.bin
 .DS_Store
 .cursor/
 docs/
+test-assets/
