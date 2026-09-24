@@ -27,6 +27,10 @@ pub use platform::{
 pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStop};
 
 #[cfg(test)]
+#[path = "gic_hv_test.rs"]
+mod gic_hv_test;
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn crate_name_is_stable() {

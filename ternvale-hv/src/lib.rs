@@ -28,6 +28,10 @@ pub use vcpu::{
 pub use vm::Vm;
 
 #[cfg(test)]
+#[path = "gic_hv_test.rs"]
+mod gic_hv_test;
+
+#[cfg(test)]
 mod tests {
     use super::{
         HvError, Vm, HV_BAD_ARGUMENT, HV_BUSY, HV_DENIED, HV_ERROR, HV_EXISTS,
