@@ -55,6 +55,34 @@ impl IccReg {
     }
 }
 
+/// EL1 virtual timer PPI. `HV_GIC_INT_EL1_VIRTUAL_TIMER` in `hv_gic_types.h`.
+pub const VTIMER_PPI: u32 = 27;
+/// `HV_GIC_REDISTRIBUTOR_REG_GICR_ISPENDR0`. Write-1 sets a pending SGI or PPI.
+const GICR_ISPENDR0: u32 = 0x1_0200;
+
+/// Mark PPI `intid` pending on `vcpu` by writing `GICR_ISPENDR0`.
+#[tracing::instrument(level = "debug", target = "ternvale::gic", skip_all, fields(vcpu_id = vcpu, intid))]
+pub fn raise_ppi(vcpu: u64, intid: u32) -> Result<(), HvError> {
+    if intid >= 32 {
+        tracing::warn!(target: "ternvale::gic", intid, "rejected PPI outside 0..32");
+        return Err(HvError::BadArgument {
+            code: crate::HV_BAD_ARGUMENT,
+        });
+    }
+    let func =
+        gic_fn::<unsafe extern "C" fn(u64, u32, u64) -> i32>(c"hv_gic_set_redistributor_reg")?;
+    let bit = 1u64 << intid;
+    // SAFETY: `vcpu` is a live id. The header requires the owning thread.
+    // ISPENDR0 is write-1-to-set; other bits stay unchanged.
+    let raw = unsafe { func(vcpu, GICR_ISPENDR0, bit) };
+    let code = ternvale_log::log_hv_call!(
+        "hv_gic_set_redistributor_reg",
+        format!("vcpu={vcpu:#x} reg={GICR_ISPENDR0:#x} value={bit:#x}"),
+        raw
+    );
+    check(code, "hv_gic_set_redistributor_reg")
+}
+
 /// The process-wide in-kernel GICv3. Drop does not destroy it; the VM does.
 #[derive(Debug)]
 pub struct Gic {

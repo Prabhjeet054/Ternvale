@@ -5,12 +5,12 @@
 //! uses to call `hv_vcpus_exit`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::ThreadId;
 
 use ternvale_hv::{
-    Reg, SysReg, VcpuExit, HV_EXIT_REASON_CANCELED, HV_EXIT_REASON_EXCEPTION,
-    HV_EXIT_REASON_UNKNOWN, HV_EXIT_REASON_VTIMER_ACTIVATED,
+    Reg, SysReg, HV_EXIT_REASON_CANCELED, HV_EXIT_REASON_EXCEPTION, HV_EXIT_REASON_UNKNOWN,
+    HV_EXIT_REASON_VTIMER_ACTIVATED,
 };
 use thiserror::Error;
 
@@ -26,8 +26,14 @@ pub enum ExitReason {
         /// Guest physical address from the exit record.
         physical_address: u64,
     },
-    /// The virtual timer became pending.
+    /// The virtual timer became pending. The PPI is already injected.
     VtimerActivated,
+    /// PSCI `CPU_OFF`. x0 is 0 and PC is past the call.
+    CpuOff,
+    /// PSCI `SYSTEM_OFF`. The guest does not resume.
+    SystemOff,
+    /// PSCI `SYSTEM_RESET`. The guest does not resume.
+    SystemReset,
     /// `hv_vcpus_exit` canceled the run.
     Canceled,
     /// A reason code that is not in `hv_vcpu_types.h`.
@@ -60,6 +66,8 @@ pub enum VcpuError {
 pub struct VcpuStop {
     id: u64,
     stop: Arc<AtomicBool>,
+    pending: Arc<AtomicBool>,
+    wake: Arc<Condvar>,
 }
 
 impl VcpuStop {
@@ -67,6 +75,8 @@ impl VcpuStop {
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
     pub fn request(&self) -> Result<(), VcpuError> {
         self.stop.store(true, Ordering::Release);
+        self.pending.store(true, Ordering::Release);
+        self.wake.notify_one();
         tracing::info!(target: "ternvale::vcpu", vcpu_id = self.id, "stop requested");
         ternvale_hv::vcpus_exit(&[self.id])?;
         Ok(())
@@ -81,13 +91,20 @@ impl VcpuStop {
 
 /// A vCPU created and run on one thread.
 pub struct Vcpu {
-    id: u64,
+    pub(super) id: u64,
     /// Kernel `hv_vcpu_exit_t` pointer. Stored as `usize` so `Vcpu` is `Send`.
     /// The thread check rejects use from any thread but the owner.
-    exit: usize,
+    pub(super) exit: usize,
     owner: ThreadId,
-    stop: Arc<AtomicBool>,
+    pub(super) stop: Arc<AtomicBool>,
+    pub(super) pending: Arc<AtomicBool>,
+    pub(super) wake: Arc<Condvar>,
+    pub(super) park: Arc<Mutex<()>>,
+    /// Set after a VTIMER exit until `CNTV_CTL_EL0.ISTATUS` clears.
+    pub(super) timer_masked: AtomicBool,
 }
+
+mod exit;
 
 impl std::fmt::Debug for Vcpu {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -118,7 +135,17 @@ impl Vcpu {
             exit,
             owner,
             stop: Arc::new(AtomicBool::new(false)),
+            pending: Arc::new(AtomicBool::new(false)),
+            wake: Arc::new(Condvar::new()),
+            park: Arc::new(Mutex::new(())),
+            timer_masked: AtomicBool::new(false),
         })
+    }
+
+    /// Kernel vCPU id.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
     /// Handle another thread can use to cancel this vCPU.
@@ -127,6 +154,8 @@ impl Vcpu {
         VcpuStop {
             id: self.id,
             stop: Arc::clone(&self.stop),
+            pending: Arc::clone(&self.pending),
+            wake: Arc::clone(&self.wake),
         }
     }
 
@@ -205,39 +234,27 @@ impl Vcpu {
         Ok(())
     }
 
-    /// Run until the next exit.
+    /// Run until the next exit the caller must handle.
+    ///
+    /// A virtual-timer exit is masked and injected as PPI 27, then the guest
+    /// resumes. WFI parks on [`VcpuStop`] until a wake or a short timeout, then
+    /// resumes. A recognized PSCI HVC or SMC is completed here. `SYSTEM_OFF`
+    /// and `SYSTEM_RESET` return without resuming the guest.
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
     pub fn run(&self) -> Result<ExitReason, VcpuError> {
         self.on_owner_thread()?;
         if self.stop.load(Ordering::Acquire) {
             tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "run with stop flag set");
         }
-        ternvale_hv::vcpu_run(self.id)?;
-        // SAFETY: `exit` was written by `hv_vcpu_create` and updated by `hv_vcpu_run`.
-        // It stays allocated until `hv_vcpu_destroy`. The fields match `hv_vcpu_exit_t`.
-        let exit = unsafe { &*(self.exit as *const VcpuExit) };
-        let reason = exit_reason(
-            exit.reason,
-            exit.syndrome,
-            exit.virtual_address,
-            exit.physical_address,
-        );
-        if let ExitReason::Exception {
-            syndrome,
-            physical_address,
-            ..
-        } = reason
-        {
-            tracing::trace!(
-                target: "ternvale::vcpu",
-                vcpu_id = self.id,
-                syndrome = format!("{:#x}", syndrome),
-                "vcpu exception exit"
-            );
-            crate::esr::decode(syndrome, physical_address);
+        self.maybe_unmask_vtimer()?;
+        loop {
+            ternvale_hv::vcpu_run(self.id)?;
+            let reason = self.read_exit();
+            match self.dispatch(reason)? {
+                exit::Loop::Again => {}
+                exit::Loop::Done(reason) => return Ok(reason),
+            }
         }
-        tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, ?reason, "vcpu exit");
-        Ok(reason)
     }
 
     fn on_owner_thread(&self) -> Result<(), VcpuError> {

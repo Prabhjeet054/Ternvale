@@ -2,6 +2,9 @@
 
 use std::io::{Read, Write};
 use std::os::fd::FromRawFd;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use ternvale_hv::Vm;
 use ternvale_vmm::{
@@ -136,6 +139,121 @@ fn runs_hello_payload_on_the_pl011() {
     let text = std::fs::read_to_string(&path).expect("host log");
     assert!(text.contains("uart tx"), "{text}");
     assert!(text.contains("line=Hello from Ternvale"), "{text}");
+    std::fs::remove_dir_all(&dir).expect("remove dir");
+    // SAFETY: same as the set above; this test restores the variable it changed.
+    unsafe {
+        match previous {
+            Some(value) => std::env::set_var("TERNVALE_LOG", value),
+            None => std::env::remove_var("TERNVALE_LOG"),
+        }
+    }
+}
+
+const PSCI_VERSION_TEXT: &[u8] = b"00010001\n";
+
+#[test]
+#[ignore = "needs-hv"]
+fn runs_psci_version_over_uart_then_system_off() {
+    let dir = std::env::temp_dir().join(format!("ternvale-uart-{}-psci", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let serial_log = dir.join("guest-serial.log");
+    let previous = std::env::var("TERNVALE_LOG").ok();
+    // SAFETY: this ignored test sets TERNVALE_LOG and restores it before returning.
+    unsafe { std::env::set_var("TERNVALE_LOG", "debug") };
+    let mut config = ternvale_log::LogConfig::new("psci", dir.clone());
+    config.level = "debug".to_string();
+    let guard = ternvale_log::init(config).expect("log");
+
+    let bin_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../guest-tests/psci.bin");
+    let payload = std::fs::read(&bin_path).unwrap_or_else(|error| {
+        panic!(
+            "read {} (run `make guest-tests` first): {error}",
+            bin_path.display()
+        )
+    });
+
+    let capture = StdoutPipe::start();
+    let vm = Vm::create().expect("vm");
+    vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE).expect("gic");
+    let mut memory = GuestMemory::new().expect("memory");
+    memory.map(&vm, PAYLOAD_GPA, HOST_PAGE_SIZE).expect("map");
+    let vcpu = Vcpu::create(&vm).expect("vcpu");
+    vcpu.set_cpsr(CPSR_EL1H).expect("cpsr");
+    load_payload(&mut memory, &vcpu, &payload).expect("load");
+
+    let mut bus = MmioBus::new();
+    bus.register(
+        PL011_BASE,
+        PL011_SIZE,
+        Box::new(Pl011::open(&serial_log).expect("uart")),
+    )
+    .expect("register");
+
+    let done = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&done);
+    let stopper = vcpu.stopper();
+    let watchdog = std::thread::spawn(move || {
+        for _ in 0..40 {
+            if flag.load(Ordering::Acquire) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        if !flag.load(Ordering::Acquire) {
+            stopper.request().expect("cancel a spinning guest");
+        }
+    });
+
+    let mut exit = None;
+    for _ in 0..64 {
+        let reason = vcpu.run().expect("run");
+        match reason {
+            ExitReason::Exception {
+                syndrome,
+                physical_address,
+                ..
+            } => {
+                let event = decode_esr(syndrome, physical_address);
+                match event {
+                    ExitEvent::Mmio { .. } => {
+                        bus.dispatch(&vcpu, event).expect("dispatch");
+                        let pc = vcpu.get_pc().expect("pc");
+                        vcpu.set_pc(pc + 4).expect("skip strb");
+                    }
+                    other => panic!("unexpected exit {other:?}"),
+                }
+            }
+            ExitReason::SystemOff => {
+                exit = Some(reason);
+                break;
+            }
+            other => panic!("expected SYSTEM_OFF, got {other:?}"),
+        }
+    }
+    done.store(true, Ordering::Release);
+    watchdog.join().expect("watchdog");
+    assert_eq!(exit, Some(ExitReason::SystemOff));
+
+    drop(bus);
+    drop(vcpu);
+    drop(memory);
+    drop(vm);
+
+    let stdout = capture.finish();
+    let serial = std::fs::read(&serial_log).expect("serial log");
+    assert_eq!(stdout, PSCI_VERSION_TEXT);
+    assert_eq!(serial, PSCI_VERSION_TEXT);
+    std::io::stdout().write_all(&stdout).expect("replay stdout");
+    std::io::stdout().flush().expect("flush stdout");
+
+    let path = guard.log_path().to_path_buf();
+    drop(guard);
+    let text = std::fs::read_to_string(&path).expect("host log");
+    assert!(
+        text.contains("function=\"0x84000000\"") && text.contains("ret=\"0x10001\""),
+        "{text}"
+    );
+    assert!(text.contains("system off"), "{text}");
     std::fs::remove_dir_all(&dir).expect("remove dir");
     // SAFETY: same as the set above; this test restores the variable it changed.
     unsafe {

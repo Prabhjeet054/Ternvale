@@ -9,6 +9,7 @@ mod linux;
 mod memory;
 mod mmio;
 mod platform;
+mod psci;
 mod vcpu;
 
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
@@ -24,6 +25,7 @@ pub use platform::{
     Layout, PlatformError, Region, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_MMIO_BASE,
     RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE,
 };
+pub use psci::{call as psci_call, PsciAction, TRAP_PC_ADVANCE};
 pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStop};
 
 #[cfg(test)]

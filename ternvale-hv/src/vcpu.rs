@@ -219,6 +219,22 @@ pub fn vcpu_run(id: u64) -> Result<(), HvError> {
     finish(code, ())
 }
 
+/// Mask or unmask the virtual timer exit.
+///
+/// `hv_vcpu.h` says `HV_EXIT_REASON_VTIMER_ACTIVATED` sets the mask. Clear it
+/// after the guest has finished the virtual-timer PPI (intid 27).
+#[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all, fields(vcpu_id = id, masked))]
+pub fn set_vtimer_mask(id: u64, masked: bool) -> Result<(), HvError> {
+    // SAFETY: `id` is a live vCPU. The mask is a bool the kernel copies.
+    let raw = unsafe { crate::ffi::hv_vcpu_set_vtimer_mask(id, masked) };
+    let code = ternvale_log::log_hv_call!(
+        "hv_vcpu_set_vtimer_mask",
+        format!("id={id:#x} masked={masked}"),
+        raw
+    );
+    finish(code, ())
+}
+
 /// Ask the kernel to cancel `ids`. Safe to call from a thread that does not own them.
 #[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all, fields(count = ids.len()))]
 pub fn vcpus_exit(ids: &[u64]) -> Result<(), HvError> {

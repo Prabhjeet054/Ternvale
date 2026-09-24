@@ -7,7 +7,7 @@ OBJCOPY ?= $(LLVM_BIN)/llvm-objcopy
 
 .PHONY: all clean
 
-all: hello.bin
+all: hello.bin psci.bin
 
 hello.o: hello.S
 	$(CLANG) --target=aarch64-none-elf -c -o $@ hello.S
@@ -15,5 +15,11 @@ hello.o: hello.S
 hello.bin: hello.o
 	$(OBJCOPY) -O binary hello.o $@
 
+psci.o: psci.S
+	$(CLANG) --target=aarch64-none-elf -c -o $@ psci.S
+
+psci.bin: psci.o
+	$(OBJCOPY) -O binary psci.o $@
+
 clean:
-	rm -f hello.o hello.bin
+	rm -f hello.o hello.bin psci.o psci.bin

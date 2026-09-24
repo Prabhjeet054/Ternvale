@@ -8,10 +8,9 @@
 //! stays [`ExitEvent::Unknown`]. Instruction aborts (`0x20`/`0x21`) and BRK
 //! (`0x3C`) also stay unknown: this step has no variant for them.
 //!
-//! TODO(verify): after an HVC exit the PC still points at the HVC, and the VMM
-//! adds 4 before resuming. SMC is not the same on every hypervisor: some
-//! implementations leave the PC at the SMC and some report the next
-//! instruction. Confirm against Apple `hv_vcpu_run` before advancing either.
+//! On this host, HVC already leaves `HV_REG_PC` on the following instruction.
+//! SMC leaves it on the trapped instruction, so only SMC is advanced by 4.
+//! The ARM ARM preferred return address for both is the following instruction.
 
 use std::fmt;
 
