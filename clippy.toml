@@ -1,0 +1,6 @@
+# Clippy configuration for the Ternvale workspace.
+# The gate is `cargo clippy --workspace -- -D warnings`.
+
+# Matches the module-size guideline in .cursor/rules/ternvale.mdc.
+too-many-lines-threshold = 400
+cognitive-complexity-threshold = 30

@@ -1,0 +1,6 @@
+[package]
+name = "ternvale-log"
+description = "Tracing setup, panic hook, and log files for Ternvale."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true

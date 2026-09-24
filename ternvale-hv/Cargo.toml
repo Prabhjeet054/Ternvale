@@ -1,0 +1,6 @@
+[package]
+name = "ternvale-hv"
+description = "Safe wrappers around Hypervisor.framework."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true

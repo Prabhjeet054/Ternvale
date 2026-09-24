@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+    "ternvale-log",
+    "ternvale-config",
+    "ternvale-hv",
+    "ternvale-vmm",
+    "ternvale-devices",
+    "ternvale-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false

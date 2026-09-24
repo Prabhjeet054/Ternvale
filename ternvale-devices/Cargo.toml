@@ -1,0 +1,6 @@
+[package]
+name = "ternvale-devices"
+description = "Emulated and virtio devices for Ternvale guests."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
