@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint sign clean
+.PHONY: build test test-hv lint sign clean guest-tests
 
 build:
 	$(CARGO) build --workspace
@@ -38,5 +38,10 @@ sign:
 		exit 1; \
 	fi
 
+# AArch64 bare-metal payload: clang --target=aarch64-none-elf -c, then llvm-objcopy -O binary.
+guest-tests:
+	$(MAKE) -C guest-tests
+
 clean:
 	$(CARGO) clean
+	$(MAKE) -C guest-tests clean

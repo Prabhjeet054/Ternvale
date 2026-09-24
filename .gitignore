@@ -1,4 +1,7 @@
 /target
+guest-tests/*.elf
+guest-tests/*.o
+guest-tests/*.bin
 **/*.rs.bk
 *.pdb
 .DS_Store

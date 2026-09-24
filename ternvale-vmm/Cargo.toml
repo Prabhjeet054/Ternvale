@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 # mmap, munmap, and sysconf(_SC_PAGESIZE) for guest RAM. Hypervisor FFI stays in ternvale-hv.
 libc = "0.2"
+# SHA-256 of the raw guest payload logged at load time.
+sha2 = "0.10"
 # Typed MemoryError.
 thiserror = "2"
 # hv_vm_map / hv_vm_unmap wrappers and HvError.
