@@ -4,3 +4,15 @@ description = "Tracing setup, panic hook, and log files for Ternvale."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+# Local YYYYMMDD-HHMMSS in the log file name. Avoids libc date FFI outside ternvale-hv.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Typed errors for this library crate.
+thiserror = "2"
+# Required project-wide logging facade.
+tracing = "0.1"
+# Non-blocking file writer and a guard that flushes on drop.
+tracing-appender = "0.2"
+# Stderr and file layers, EnvFilter, timestamps, targets, thread ids, JSON.
+tracing-subscriber = { version = "0.3", features = ["ansi", "env-filter", "fmt", "json", "std"] }
