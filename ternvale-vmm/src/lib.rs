@@ -4,6 +4,7 @@
 
 mod boot;
 mod esr;
+mod fdt;
 mod linux;
 mod memory;
 mod mmio;
@@ -12,6 +13,7 @@ mod vcpu;
 
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
 pub use esr::{decode as decode_esr, ExitEvent};
+pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt};
 pub use linux::{
     load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
     CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,

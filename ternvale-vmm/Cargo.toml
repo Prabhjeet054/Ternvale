@@ -16,6 +16,8 @@ thiserror = "2"
 ternvale-hv = { path = "../ternvale-hv" }
 # Map, unmap, and rejected GPA access logs.
 tracing = "0.1"
+# Build the guest device tree (FDT) without linking libfdt.
+vm-fdt = "0.3.0"
 
 [dev-dependencies]
 # Log file checks in unit tests.
