@@ -1,10 +1,8 @@
 //! Emulated and virtio devices for Ternvale guests.
-//!
-//! Stub only. Devices will be exercised through the MMIO bus without a real VM where possible.
-//! Public functions added here must carry
-//! `#[tracing::instrument(level = "debug", skip_all, fields(...))]`
-//! and log on `ternvale::mmio`, `ternvale::uart`, `ternvale::gic`, `ternvale::net`, or
-//! `ternvale::virtio::<dev>`.
+
+mod uart;
+
+pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 
 #[cfg(test)]
 mod tests {

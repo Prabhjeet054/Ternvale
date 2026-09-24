@@ -4,3 +4,19 @@ description = "Emulated and virtio devices for Ternvale guests."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+# Typed UartError.
+thiserror = "2"
+# Register, TX, and interrupt-stub logs on ternvale::uart.
+tracing = "0.1"
+# MmioDevice so the PL011 can be registered on the guest MMIO bus.
+ternvale-vmm = { path = "../ternvale-vmm" }
+
+[dev-dependencies]
+# Capture stdout while the hello payload writes through the real PL011.
+libc = "0.2"
+# Log file checks in unit tests.
+ternvale-log = { path = "../ternvale-log" }
+# Create a VM for the hello-payload UART run.
+ternvale-hv = { path = "../ternvale-hv" }
