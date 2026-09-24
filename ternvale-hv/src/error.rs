@@ -95,6 +95,12 @@ pub enum HvError {
     /// `Vm::create` was called while another `Vm` is still alive.
     #[error("a VM already exists in this process")]
     AlreadyExists,
+    /// A general-purpose register index was outside `0..=30`.
+    #[error("gpr index {index} is outside 0..=30")]
+    InvalidGpr {
+        /// The rejected `Xn` index.
+        index: u8,
+    },
 }
 
 impl HvError {

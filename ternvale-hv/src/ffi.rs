@@ -13,4 +13,28 @@ unsafe extern "C" {
     /// `hv_vm.h`: page-aligned `addr` and `ipa`, `size` a multiple of the page size.
     pub(crate) fn hv_vm_map(addr: *mut c_void, ipa: u64, size: usize, flags: u64) -> i32;
     pub(crate) fn hv_vm_unmap(ipa: u64, size: usize) -> i32;
+    /// `hv_vcpu.h`: one vCPU per thread. `config` NULL is the default.
+    /// TODO(verify): the header marks `config` nullable but does not say NULL is the default.
+    pub(crate) fn hv_vcpu_create(
+        vcpu: *mut u64,
+        exit: *mut *mut VcpuExit,
+        config: *mut c_void,
+    ) -> i32;
+    pub(crate) fn hv_vcpu_destroy(vcpu: u64) -> i32;
+    pub(crate) fn hv_vcpu_get_reg(vcpu: u64, reg: u32, value: *mut u64) -> i32;
+    pub(crate) fn hv_vcpu_set_reg(vcpu: u64, reg: u32, value: u64) -> i32;
+    pub(crate) fn hv_vcpu_get_sys_reg(vcpu: u64, reg: u16, value: *mut u64) -> i32;
+    pub(crate) fn hv_vcpu_set_sys_reg(vcpu: u64, reg: u16, value: u64) -> i32;
+    pub(crate) fn hv_vcpu_run(vcpu: u64) -> i32;
+    pub(crate) fn hv_vcpus_exit(vcpus: *const u64, vcpu_count: u32) -> i32;
+}
+
+/// `hv_vcpu_exit_t` from `hv_vcpu_types.h`. `reason` is at 0; `exception` is at 8.
+#[repr(C)]
+pub struct VcpuExit {
+    pub reason: u32,
+    _pad: u32,
+    pub syndrome: u64,
+    pub virtual_address: u64,
+    pub physical_address: u64,
 }

@@ -6,6 +6,7 @@
 mod error;
 mod ffi;
 mod map;
+mod vcpu;
 mod vm;
 
 pub use error::{
@@ -14,6 +15,11 @@ pub use error::{
 };
 pub use map::{
     map_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX, HV_MEMORY_WRITE,
+};
+pub use vcpu::{
+    get_reg, get_sys_reg, set_reg, set_sys_reg, vcpu_create, vcpu_destroy, vcpu_run, vcpus_exit,
+    Reg, SysReg, VcpuExit, HV_EXIT_REASON_CANCELED, HV_EXIT_REASON_EXCEPTION,
+    HV_EXIT_REASON_UNKNOWN, HV_EXIT_REASON_VTIMER_ACTIVATED,
 };
 pub use vm::Vm;
 
