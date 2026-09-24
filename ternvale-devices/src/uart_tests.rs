@@ -51,6 +51,11 @@ fn tx_bytes_reach_the_sink_and_rx_flags_follow_the_queue() {
 }
 
 #[test]
+fn uart_base_matches_the_platform_map() {
+    assert_eq!(PL011_BASE, ternvale_vmm::UART_BASE);
+}
+
+#[test]
 fn periph_id_matches_the_arm_pl011() {
     let (mut uart, _) = uart(Vec::new());
     let id: Vec<u64> = (0..8)

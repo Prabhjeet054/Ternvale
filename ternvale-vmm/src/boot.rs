@@ -8,7 +8,7 @@ use crate::memory::{GuestMemory, MemoryError};
 use crate::vcpu::{Vcpu, VcpuError};
 
 /// Guest physical address where a raw payload is loaded.
-pub const PAYLOAD_GPA: u64 = 0x4000_0000;
+pub const PAYLOAD_GPA: u64 = crate::platform::RAM_BASE;
 
 /// A raw image placed at [`PAYLOAD_GPA`].
 #[derive(Debug, Clone, PartialEq, Eq)]
