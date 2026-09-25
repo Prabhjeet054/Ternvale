@@ -258,11 +258,12 @@ impl Vcpu {
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
     pub fn run(&self) -> Result<ExitReason, VcpuError> {
         self.on_owner_thread()?;
-        if self.stop.load(Ordering::Acquire) {
-            tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "run with stop flag set");
-        }
         self.maybe_unmask_vtimer()?;
         loop {
+            if self.stop.load(Ordering::Acquire) {
+                tracing::info!(target: "ternvale::vcpu", vcpu_id = self.id, "vcpu run stopped");
+                return Ok(ExitReason::Canceled);
+            }
             ternvale_hv::vcpu_run(self.id)?;
             let reason = self.read_exit();
             match self.dispatch(reason)? {

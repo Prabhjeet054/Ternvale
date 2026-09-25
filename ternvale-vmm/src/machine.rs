@@ -89,6 +89,16 @@ impl Machine {
         config: &ternvale_config::VmConfig,
         serial: Box<dyn SerialDevice>,
     ) -> Result<ExitReason, MachineError> {
+        Self::run_until(config, serial, Arc::new(AtomicBool::new(false)))
+    }
+
+    /// [`Machine::run`], stopping the guest when `cancel` becomes true.
+    #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(name = %config.name))]
+    pub fn run_until(
+        config: &ternvale_config::VmConfig,
+        serial: Box<dyn SerialDevice>,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<ExitReason, MachineError> {
         config.validate()?;
         let cmdline = guest_cmdline(&config.cmdline);
         tracing::info!(
@@ -169,6 +179,7 @@ impl Machine {
                     shutdown: Arc::clone(&shutdown),
                     gic: Arc::clone(&gic),
                     irq_level: Arc::clone(&irq_level),
+                    cancel: Arc::clone(&cancel),
                 },
             );
             shutdown.store(true, Ordering::Release);
@@ -293,6 +304,7 @@ struct BootIo {
     shutdown: Arc<AtomicBool>,
     gic: Arc<ternvale_hv::Gic>,
     irq_level: Arc<AtomicBool>,
+    cancel: Arc<AtomicBool>,
 }
 
 fn boot_vcpu(
@@ -327,8 +339,9 @@ fn boot_vcpu(
     let level_run = Arc::clone(&io.irq_level);
     let rx = io.rx;
     let _stdin = std::thread::spawn(move || host::stdin_loop(io.rx_tx, io.shutdown, kick));
-    let _poll =
-        std::thread::spawn(move || host::poll_loop(poll_stop, poll_kick, io.gic, io.irq_level));
+    let _poll = std::thread::spawn(move || {
+        host::poll_loop(poll_stop, poll_kick, io.gic, io.irq_level, io.cancel)
+    });
     load_linux(
         memory,
         &vcpu,

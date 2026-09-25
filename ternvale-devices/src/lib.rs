@@ -1,7 +1,9 @@
 //! Emulated and virtio devices for Ternvale guests.
 
+mod expect;
 mod uart;
 
+pub use expect::{last_lines, Progress, Session, Step};
 pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 
 #[cfg(test)]

@@ -5,6 +5,15 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[features]
+# Builds tests/boot.rs, the hypervisor boot harness. `cargo test --workspace` skips it.
+boot-test = []
+
+[[test]]
+name = "boot"
+harness = false
+required-features = ["boot-test"]
+
 [dependencies]
 # Typed UartError.
 thiserror = "2"

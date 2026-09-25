@@ -51,9 +51,17 @@ pub(super) fn poll_loop(
     kick: crate::vcpu::VcpuStop,
     gic: Arc<ternvale_hv::Gic>,
     irq_level: Arc<AtomicBool>,
+    cancel: Arc<AtomicBool>,
 ) {
     let spi = 32 + crate::fdt::UART_SPI;
     while !shutdown.load(Ordering::Acquire) {
+        if cancel.load(Ordering::Acquire) {
+            tracing::warn!(target: "ternvale::boot", "cancel requested; stopping guest");
+            if let Err(error) = kick.request() {
+                tracing::error!(target: "ternvale::vcpu", error = %error, "cancel stop failed");
+            }
+            break;
+        }
         std::thread::sleep(Duration::from_millis(50));
         // hv_gic_set_spi(true) can be missed while the guest is inside an
         // emulated WFI. Pulse again only while the PL011 line is still high.
@@ -139,7 +147,13 @@ pub(super) fn run_loop(
                     return Ok(reason);
                 }
             }
-            ExitReason::Wfi | ExitReason::Canceled => {}
+            ExitReason::Wfi => {}
+            ExitReason::Canceled => {
+                if vcpu.stopper().is_stopped() {
+                    tracing::warn!(target: "ternvale::boot", "guest run cancelled");
+                    return Ok(ExitReason::Canceled);
+                }
+            }
             ExitReason::SystemOff | ExitReason::SystemReset | ExitReason::CpuOff => {
                 tracing::info!(target: "ternvale::boot", ?reason, "guest requested shutdown");
                 return Ok(reason);
