@@ -98,7 +98,9 @@ impl Vcpu {
             crate::esr::ExitEvent::Wfi { wfe } => {
                 self.wait_for_interrupt(wfe)?;
                 crate::psci::advance_pc(self)?;
-                Ok(Loop::Again)
+                // Return so the machine loop can push stdin into the UART.
+                // Staying inside `run` would leave those bytes queued forever.
+                Ok(Loop::Done(ExitReason::Wfi))
             }
             _ => Ok(Loop::Done(ExitReason::Exception {
                 syndrome,
@@ -159,6 +161,15 @@ impl Vcpu {
         if wfe {
             tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "wfe yield");
             std::thread::yield_now();
+            return Ok(());
+        }
+        let cpsr = self.get_cpsr()?;
+        if cpsr & 0x80 != 0 {
+            tracing::debug!(
+                target: "ternvale::vcpu",
+                vcpu_id = self.id,
+                "wfi with irqs masked; not sleeping"
+            );
             return Ok(());
         }
         tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "wfi park");

@@ -77,7 +77,7 @@ pub enum MmioError {
     },
 
     /// `SRT` was not a general-purpose register.
-    #[error("mmio register {reg} is outside 0..=30")]
+    #[error("mmio register {reg} is outside 0..=31")]
     BadReg {
         /// Guest-supplied register index.
         reg: u8,
@@ -213,7 +213,7 @@ impl MmioBus {
             tracing::warn!(target: "ternvale::mmio", size, "rejected mmio size");
             return Err(MmioError::BadSize { size });
         }
-        if reg > 30 {
+        if reg > 31 {
             tracing::warn!(target: "ternvale::mmio", reg, "rejected mmio register");
             return Err(MmioError::BadReg { reg });
         }
@@ -239,13 +239,15 @@ impl MmioBus {
         let offset = gpa - slot.base;
         let direction = if write { "write" } else { "read" };
         let value = if write {
-            let raw = regs.get_reg(reg)?;
+            let raw = if reg == 31 { 0 } else { regs.get_reg(reg)? };
             let value = mask(raw, size);
             slot.device.write(offset, size, value);
             value
         } else {
             let value = mask(slot.device.read(offset, size), size);
-            regs.set_reg(reg, value)?;
+            if reg != 31 {
+                regs.set_reg(reg, value)?;
+            }
             value
         };
         slot.accesses += 1;
@@ -278,9 +280,15 @@ impl MmioBus {
             "unmapped mmio access"
         );
         let value = if write {
-            mask(regs.get_reg(reg)?, size)
+            if reg == 31 {
+                0
+            } else {
+                mask(regs.get_reg(reg)?, size)
+            }
         } else {
-            regs.set_reg(reg, 0)?;
+            if reg != 31 {
+                regs.set_reg(reg, 0)?;
+            }
             0
         };
         tracing::trace!(

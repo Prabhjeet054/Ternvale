@@ -320,7 +320,20 @@ fn copy(
             "failed to copy linux image"
         );
         LinuxBootError::Memory { what, gpa, source }
-    })
+    })?;
+    if what == "initrd" && bytes.len() >= 6 {
+        let mut magic = [0u8; 6];
+        memory
+            .read_bytes(gpa, &mut magic)
+            .map_err(|source| LinuxBootError::Memory { what, gpa, source })?;
+        tracing::debug!(
+            target: "ternvale::boot",
+            gpa = format!("{:#x}", gpa),
+            magic = %String::from_utf8_lossy(&magic),
+            "read back initrd"
+        );
+    }
+    Ok(())
 }
 
 fn read_u32(image: &[u8], offset: usize) -> u32 {

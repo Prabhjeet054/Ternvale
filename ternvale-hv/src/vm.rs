@@ -1,6 +1,5 @@
 //! One Hypervisor.framework VM per process.
 
-use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::error::{HvError, HV_SUCCESS};
@@ -16,10 +15,11 @@ static VM_EXISTS: AtomicBool = AtomicBool::new(false);
 /// stays inside this crate.
 ///
 /// TODO(verify): Apple's headers do not say whether `hv_vm_destroy` must run
-/// on the same thread as `hv_vm_create`. `Vm` is thread-affine until that is
-/// confirmed.
+/// on the same thread as `hv_vm_create`. Destroy still runs on the thread that
+/// drops `Vm`, after the vCPU threads have joined. The handle itself is shared:
+/// the kernel VM is process-wide, and each `Vcpu` stays bound to its creator.
 pub struct Vm {
-    _thread_affine: PhantomData<*const ()>,
+    _private: (),
 }
 
 impl std::fmt::Debug for Vm {
@@ -58,9 +58,7 @@ impl Vm {
         }
         tracing::info!(target: "ternvale::hv", "VM created");
         crate::gic::note_vm_created();
-        Ok(Self {
-            _thread_affine: PhantomData,
-        })
+        Ok(Self { _private: () })
     }
 
     /// Install the in-kernel GICv3. Call this after [`Vm::create`] and before any vCPU.

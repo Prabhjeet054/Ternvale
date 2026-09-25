@@ -20,3 +20,5 @@ libc = "0.2"
 ternvale-log = { path = "../ternvale-log" }
 # Create a VM for the hello-payload UART run.
 ternvale-hv = { path = "../ternvale-hv" }
+# VmConfig for the Linux boot test.
+ternvale-config = { path = "../ternvale-config" }

@@ -483,6 +483,7 @@ name = "ternvale-devices"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "ternvale-config",
  "ternvale-hv",
  "ternvale-log",
  "ternvale-vmm",
@@ -516,6 +517,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "sha2",
+ "ternvale-config",
  "ternvale-hv",
  "ternvale-log",
  "thiserror",

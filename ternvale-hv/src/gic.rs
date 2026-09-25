@@ -42,6 +42,10 @@ pub enum IccReg {
     SreEl1,
     /// `HV_GIC_ICC_REG_IGRPEN1_EL1` (`0xc667`).
     Igrpen1El1,
+    /// `HV_GIC_ICC_REG_RPR_EL1` (`0xc65b`).
+    RprEl1,
+    /// `HV_GIC_ICC_REG_BPR1_EL1` (`0xc663`).
+    Bpr1El1,
 }
 
 impl IccReg {
@@ -51,6 +55,8 @@ impl IccReg {
             Self::CtlrEl1 => 0xc664,
             Self::SreEl1 => 0xc665,
             Self::Igrpen1El1 => 0xc667,
+            Self::RprEl1 => 0xc65b,
+            Self::Bpr1El1 => 0xc663,
         }
     }
 }
@@ -108,6 +114,90 @@ impl Gic {
         let code =
             ternvale_log::log_hv_call!("hv_gic_set_spi", format!("intid={irq} level={level}"), raw);
         check(code, "hv_gic_set_spi")
+    }
+
+    /// Read a distributor register. `offset` is the GICv3 register offset.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::gic",
+        skip_all,
+        fields(offset = format!("{:#x}", offset))
+    )]
+    pub fn distributor_reg(&self, offset: u32) -> Result<u64, HvError> {
+        let func =
+            gic_fn::<unsafe extern "C" fn(u32, *mut u64) -> i32>(c"hv_gic_get_distributor_reg")?;
+        let mut value = 0u64;
+        // SAFETY: `value` is a writable local. `offset` is a GICD register offset.
+        let raw = unsafe { func(offset, &mut value) };
+        let code = ternvale_log::log_hv_call!(
+            "hv_gic_get_distributor_reg",
+            format!("offset={offset:#x} value={value:#x}"),
+            raw
+        );
+        check(code, "hv_gic_get_distributor_reg")?;
+        Ok(value)
+    }
+
+    /// Write a distributor register.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::gic",
+        skip_all,
+        fields(offset = format!("{:#x}", offset), value = format!("{:#x}", value))
+    )]
+    pub fn set_distributor_reg(&self, offset: u32, value: u64) -> Result<(), HvError> {
+        let func = gic_fn::<unsafe extern "C" fn(u32, u64) -> i32>(c"hv_gic_set_distributor_reg")?;
+        // SAFETY: the GIC exists. `offset` is a GICD register offset.
+        let raw = unsafe { func(offset, value) };
+        let code = ternvale_log::log_hv_call!(
+            "hv_gic_set_distributor_reg",
+            format!("offset={offset:#x} value={value:#x}"),
+            raw
+        );
+        check(code, "hv_gic_set_distributor_reg")
+    }
+
+    /// Read a redistributor register. Must run on the vCPU's thread.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::gic",
+        skip_all,
+        fields(vcpu_id = vcpu, offset = format!("{:#x}", offset))
+    )]
+    pub fn redistributor_reg(&self, vcpu: u64, offset: u32) -> Result<u64, HvError> {
+        let func = gic_fn::<unsafe extern "C" fn(u64, u32, *mut u64) -> i32>(
+            c"hv_gic_get_redistributor_reg",
+        )?;
+        let mut value = 0u64;
+        // SAFETY: `value` is a writable local. `vcpu` is a live id on this thread.
+        let raw = unsafe { func(vcpu, offset, &mut value) };
+        let code = ternvale_log::log_hv_call!(
+            "hv_gic_get_redistributor_reg",
+            format!("vcpu={vcpu:#x} offset={offset:#x} value={value:#x}"),
+            raw
+        );
+        check(code, "hv_gic_get_redistributor_reg")?;
+        Ok(value)
+    }
+
+    /// Write a redistributor register. Must run on the vCPU's thread.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::gic",
+        skip_all,
+        fields(vcpu_id = vcpu, offset = format!("{:#x}", offset), value = format!("{:#x}", value))
+    )]
+    pub fn set_redistributor_reg(&self, vcpu: u64, offset: u32, value: u64) -> Result<(), HvError> {
+        let func =
+            gic_fn::<unsafe extern "C" fn(u64, u32, u64) -> i32>(c"hv_gic_set_redistributor_reg")?;
+        // SAFETY: `vcpu` is a live id on this thread. `offset` is a GICR offset.
+        let raw = unsafe { func(vcpu, offset, value) };
+        let code = ternvale_log::log_hv_call!(
+            "hv_gic_set_redistributor_reg",
+            format!("vcpu={vcpu:#x} offset={offset:#x} value={value:#x}"),
+            raw
+        );
+        check(code, "hv_gic_set_redistributor_reg")
     }
 
     /// Read an ICC system register. Must run on the vCPU's thread.
@@ -214,6 +304,24 @@ impl Gic {
         self.distributor
     }
 
+    /// Redistributor GPA the framework assigned to `vcpu`.
+    #[tracing::instrument(level = "debug", target = "ternvale::gic", skip_all, fields(vcpu_id = vcpu))]
+    pub fn vcpu_redistributor_base(&self, vcpu: u64) -> Result<u64, HvError> {
+        let func =
+            gic_fn::<unsafe extern "C" fn(u64, *mut u64) -> i32>(c"hv_gic_get_redistributor_base")?;
+        let mut base = 0u64;
+        // SAFETY: `base` is writable. `vcpu` is a live id. The header requires
+        // the vCPU's MPIDR to be set first.
+        let raw = unsafe { func(vcpu, &mut base) };
+        let code = ternvale_log::log_hv_call!(
+            "hv_gic_get_redistributor_base",
+            format!("vcpu={vcpu:#x} base={base:#x}"),
+            raw
+        );
+        check(code, "hv_gic_get_redistributor_base")?;
+        Ok(base)
+    }
+
     /// Redistributor GPA passed to `hv_gic_config_set_redistributor_base`.
     #[tracing::instrument(level = "debug", target = "ternvale::gic", skip_all)]
     pub fn redistributor_base(&self) -> u64 {
@@ -259,12 +367,15 @@ fn install(distributor: u64, redistributor: u64) -> Result<Gic, HvError> {
     let redist_size = query_usize(c"hv_gic_get_redistributor_region_size")?;
     let dist_align = query_usize(c"hv_gic_get_distributor_base_alignment")?;
     let redist_align = query_usize(c"hv_gic_get_redistributor_base_alignment")?;
+    let (spi_base, spi_count) = spi_range()?;
     tracing::info!(
         target: "ternvale::gic",
         distributor_size = format!("{:#x}", dist_size),
         redistributor_region_size = format!("{:#x}", redist_size),
         distributor_align = format!("{:#x}", dist_align),
         redistributor_align = format!("{:#x}", redist_align),
+        spi_base,
+        spi_count,
         "framework GIC sizes"
     );
     aligned(distributor, dist_align, "distributor")?;
@@ -338,6 +449,23 @@ fn call_base(name: &CStr, config: *mut c_void, base: u64) -> Result<(), HvError>
     let label = name_str(name);
     let code = ternvale_log::log_hv_call!(label, format!("base={base:#x}"), raw);
     check(code, label)
+}
+
+fn spi_range() -> Result<(u32, u32), HvError> {
+    let func = gic_fn::<unsafe extern "C" fn(*mut u32, *mut u32) -> i32>(
+        c"hv_gic_get_spi_interrupt_range",
+    )?;
+    let mut base = 0u32;
+    let mut count = 0u32;
+    // SAFETY: both pointers are writable locals. The call does not need a VM.
+    let raw = unsafe { func(&mut base, &mut count) };
+    let code = ternvale_log::log_hv_call!(
+        "hv_gic_get_spi_interrupt_range",
+        format!("base={base} count={count}"),
+        raw
+    );
+    check(code, "hv_gic_get_spi_interrupt_range")?;
+    Ok((base, count))
 }
 
 fn query_usize(name: &CStr) -> Result<usize, HvError> {

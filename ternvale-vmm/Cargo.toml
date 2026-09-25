@@ -14,6 +14,8 @@ sha2 = "0.10"
 thiserror = "2"
 # hv_vm_map / hv_vm_unmap wrappers and HvError.
 ternvale-hv = { path = "../ternvale-hv" }
+# VmConfig is the orchestrator's input document.
+ternvale-config = { path = "../ternvale-config" }
 # Map, unmap, and rejected GPA access logs.
 tracing = "0.1"
 # Build the guest device tree (FDT) without linking libfdt.

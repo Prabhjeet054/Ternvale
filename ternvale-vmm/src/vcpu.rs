@@ -34,6 +34,9 @@ pub enum ExitReason {
     SystemOff,
     /// PSCI `SYSTEM_RESET`. The guest does not resume.
     SystemReset,
+    /// The guest executed `WFI` or `WFE`. PC is already past that instruction.
+    /// The caller should poll host devices, then run again.
+    Wfi,
     /// `hv_vcpus_exit` canceled the run.
     Canceled,
     /// A reason code that is not in `hv_vcpu_types.h`.
@@ -78,6 +81,18 @@ impl VcpuStop {
         self.pending.store(true, Ordering::Release);
         self.wake.notify_one();
         tracing::info!(target: "ternvale::vcpu", vcpu_id = self.id, "stop requested");
+        ternvale_hv::vcpus_exit(&[self.id])?;
+        Ok(())
+    }
+
+    /// Cancel `hv_vcpu_run` without stopping the guest.
+    ///
+    /// The machine loop uses this to leave a hypervisor WFI and drain stdin.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
+    pub fn nudge(&self) -> Result<(), VcpuError> {
+        self.pending.store(true, Ordering::Release);
+        self.wake.notify_one();
+        tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "vcpu nudge");
         ternvale_hv::vcpus_exit(&[self.id])?;
         Ok(())
     }
@@ -237,8 +252,8 @@ impl Vcpu {
     /// Run until the next exit the caller must handle.
     ///
     /// A virtual-timer exit is masked and injected as PPI 27, then the guest
-    /// resumes. WFI parks on [`VcpuStop`] until a wake or a short timeout, then
-    /// resumes. A recognized PSCI HVC or SMC is completed here. `SYSTEM_OFF`
+    /// resumes. WFI parks briefly, then returns [`ExitReason::Wfi`] so the caller
+    /// can poll devices. A recognized PSCI HVC or SMC is completed here. `SYSTEM_OFF`
     /// and `SYSTEM_RESET` return without resuming the guest.
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
     pub fn run(&self) -> Result<ExitReason, VcpuError> {

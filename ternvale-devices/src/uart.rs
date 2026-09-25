@@ -10,6 +10,7 @@
 mod output;
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 pub use output::{ByteSink, StdoutFile, UartError};
 
@@ -56,6 +57,7 @@ pub struct Pl011 {
     cr: u16,
     imsc: u16,
     ris: u16,
+    irq: Option<Arc<dyn Fn(bool) + Send + Sync>>,
 }
 
 impl Pl011 {
@@ -73,6 +75,7 @@ impl Pl011 {
             cr: CR_RESET,
             imsc: 0,
             ris: 0,
+            irq: None,
         }
     }
 
@@ -90,6 +93,13 @@ impl Pl011 {
             return false;
         }
         self.rx.push_back(byte);
+        if self.rx.len() == 1 {
+            tracing::debug!(
+                target: "ternvale::uart",
+                imsc = format!("{:#x}", self.imsc),
+                "rx became non-empty"
+            );
+        }
         self.ris |= IRQ_RX;
         self.note_irq();
         true
@@ -182,6 +192,7 @@ impl Pl011 {
             Some(byte) => {
                 if self.rx.is_empty() {
                     self.ris &= !IRQ_RX;
+                    self.note_irq();
                 }
                 u64::from(byte)
             }
@@ -225,11 +236,15 @@ impl Pl011 {
 
     fn note_irq(&self) {
         let masked = self.ris & self.imsc;
-        if masked != 0 {
+        let level = masked != 0;
+        if let Some(hook) = &self.irq {
+            hook(level);
+        }
+        if level {
             tracing::debug!(
                 target: "ternvale::uart",
                 mis = format!("{:#x}", masked),
-                "uart interrupt stub"
+                "uart interrupt"
             );
         }
     }
@@ -252,6 +267,16 @@ impl Drop for Pl011 {
         if let Some(line) = self.line.flush() {
             tracing::debug!(target: "ternvale::uart", line = %line, "uart tx");
         }
+    }
+}
+
+impl ternvale_vmm::SerialDevice for Pl011 {
+    fn push_rx(&mut self, byte: u8) -> bool {
+        Pl011::push_rx(self, byte)
+    }
+
+    fn set_irq_hook(&mut self, hook: Arc<dyn Fn(bool) + Send + Sync>) {
+        self.irq = Some(hook);
     }
 }
 

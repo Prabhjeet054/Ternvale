@@ -5,6 +5,10 @@ mod uart;
 pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 
 #[cfg(test)]
+#[path = "boot_hv_test.rs"]
+mod boot_hv_test;
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn crate_name_is_stable() {

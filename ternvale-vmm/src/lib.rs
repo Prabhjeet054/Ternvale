@@ -5,20 +5,25 @@
 mod boot;
 mod esr;
 mod fdt;
+mod gic_redist;
 mod linux;
+mod machine;
 mod memory;
 mod mmio;
 mod platform;
 mod psci;
+mod serial;
 mod vcpu;
+mod watchdog;
 
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
 pub use esr::{decode as decode_esr, ExitEvent};
-pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt};
+pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt, PL011_REG_SIZE, UART_SPI};
 pub use linux::{
     load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
     CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
 };
+pub use machine::{guest_cmdline, Machine, MachineError, DEFAULT_CMDLINE};
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{
@@ -26,6 +31,7 @@ pub use platform::{
     RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE,
 };
 pub use psci::{call as psci_call, PsciAction, TRAP_PC_ADVANCE};
+pub use serial::SerialDevice;
 pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStop};
 
 #[cfg(test)]
