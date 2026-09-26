@@ -99,6 +99,22 @@ impl Machine {
         serial: Box<dyn SerialDevice>,
         cancel: Arc<AtomicBool>,
     ) -> Result<ExitReason, MachineError> {
+        Self::run_with(config, serial, cancel, Vec::new())
+    }
+
+    /// [`Machine::run_until`] plus extra MMIO devices, each `(base, size, device)`.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::boot",
+        skip_all,
+        fields(name = %config.name, devices = devices.len())
+    )]
+    pub fn run_with(
+        config: &ternvale_config::VmConfig,
+        serial: Box<dyn SerialDevice>,
+        cancel: Arc<AtomicBool>,
+        devices: Vec<(u64, u64, Box<dyn MmioDevice>)>,
+    ) -> Result<ExitReason, MachineError> {
         config.validate()?;
         let cmdline = guest_cmdline(&config.cmdline);
         tracing::info!(
@@ -143,6 +159,9 @@ impl Machine {
             PL011_REG_SIZE,
             Box::new(LocalUart(Rc::clone(&serial))),
         )?;
+        for (base, size, device) in devices {
+            bus.register(base, size, device)?;
+        }
         let (rx_tx, rx_rx) = mpsc::channel();
         let shutdown = Arc::new(AtomicBool::new(false));
         let wake = Arc::new(Condvar::new());

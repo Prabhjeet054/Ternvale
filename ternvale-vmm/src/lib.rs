@@ -28,7 +28,7 @@ pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{
     Layout, PlatformError, Region, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_MMIO_BASE,
-    RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE,
+    RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
 pub use psci::{call as psci_call, PsciAction, TRAP_PC_ADVANCE};
 pub use serial::SerialDevice;

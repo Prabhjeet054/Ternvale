@@ -248,6 +248,7 @@ fn virtio(w: &mut FdtWriter) -> FdtWriterResult<()> {
         w.property_string("compatible", "virtio,mmio")?;
         w.property_array_u32("reg", &reg(base, VIRTIO_MMIO_SLOT_SIZE))?;
         w.property_array_u32("interrupts", &[0, VIRTIO_SPI0 + slot as u32, 1])?;
+        w.property_null("dma-coherent")?;
         w.end_node(node)?;
     }
     Ok(())
