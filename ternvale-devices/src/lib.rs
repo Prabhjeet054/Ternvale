@@ -7,9 +7,9 @@ mod virtio;
 pub use expect::{last_lines, Progress, Session, Step};
 pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 pub use virtio::{
-    slot_base, FixedDevice, VirtioDevice, VirtioMmio, VirtioMmioError, STATUS_ACKNOWLEDGE,
-    STATUS_DEVICE_NEEDS_RESET, STATUS_DRIVER, STATUS_DRIVER_OK, STATUS_FAILED, STATUS_FEATURES_OK,
-    VIRTIO_F_VERSION_1,
+    slot_base, Buffer, Chain, FixedDevice, SplitQueue, VirtioDevice, VirtioMmio, VirtioMmioError,
+    STATUS_ACKNOWLEDGE, STATUS_DEVICE_NEEDS_RESET, STATUS_DRIVER, STATUS_DRIVER_OK, STATUS_FAILED,
+    STATUS_FEATURES_OK, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
 };
 
 #[cfg(test)]

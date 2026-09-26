@@ -4,11 +4,17 @@
 //! accepts `FEATURES_OK` only when the driver offers `VIRTIO_F_VERSION_1`.
 
 mod mmio;
+mod queue;
 
 pub use mmio::{slot_base, VirtioMmio, VirtioMmioError};
+pub use queue::{Buffer, Chain, SplitQueue};
 
 /// `VIRTIO_F_VERSION_1`. Required before `FEATURES_OK`.
 pub const VIRTIO_F_VERSION_1: u64 = 1 << 32;
+/// Indirect descriptor tables. Bit 28.
+pub const VIRTIO_F_INDIRECT_DESC: u64 = 1 << 28;
+/// Used and available event indices. Bit 29.
+pub const VIRTIO_F_EVENT_IDX: u64 = 1 << 29;
 
 /// Status bit set by the driver after it finds the device.
 pub const STATUS_ACKNOWLEDGE: u32 = 1;

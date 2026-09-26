@@ -1,4 +1,4 @@
-//! Virtqueue register writes. Descriptor walking is a later step.
+//! Virtqueue register writes. Descriptor walking lives in `virtio::queue`.
 
 use super::{Queue, VirtioMmio};
 
