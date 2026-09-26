@@ -19,7 +19,7 @@ pub const PL011_REG_SIZE: u64 = 0x1000;
 /// 24 MHz fixed clock. QEMU virt `apb-pclk` is `0x16e3600`.
 const APB_HZ: u32 = 24_000_000;
 /// First virtio-mmio SPI. Matches the dumped QEMU virt tree.
-const VIRTIO_SPI0: u32 = 0x10;
+pub const VIRTIO_SPI0: u32 = 0x10;
 /// GIC SPI, level-high. QEMU's PL011 interrupt.
 pub const UART_SPI: u32 = 1;
 

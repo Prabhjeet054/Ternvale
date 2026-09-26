@@ -3,9 +3,16 @@
 //! Register layout follows the virtio 1.2 MMIO chapter. Feature negotiation
 //! accepts `FEATURES_OK` only when the driver offers `VIRTIO_F_VERSION_1`.
 
+mod blk;
+mod irq;
 mod mmio;
 mod queue;
 
+pub use blk::{
+    AttachedBlk, BlkStats, VirtioBlk, VirtioBlkError, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO,
+    VIRTIO_BLK_ID,
+};
+pub use irq::{IrqHook, VirtioIrq};
 pub use mmio::{slot_base, VirtioMmio, VirtioMmioError};
 pub use queue::{Buffer, Chain, SplitQueue};
 
@@ -28,6 +35,23 @@ pub const STATUS_FEATURES_OK: u32 = 8;
 pub const STATUS_DEVICE_NEEDS_RESET: u32 = 64;
 /// Driver gave up on the device.
 pub const STATUS_FAILED: u32 = 128;
+
+/// A ready virtqueue the driver just kicked.
+#[derive(Debug, Clone)]
+pub struct QueueNotify {
+    /// Queue index from `QueueNotify`.
+    pub index: u16,
+    /// Negotiated queue size.
+    pub size: u16,
+    /// Guest descriptor table address.
+    pub desc: u64,
+    /// Guest available ring address (`QueueDriver`).
+    pub avail: u64,
+    /// Guest used ring address (`QueueDevice`).
+    pub used: u64,
+    /// Features the driver accepted.
+    pub features: u64,
+}
 
 /// A virtio 1.x device behind the MMIO transport.
 pub trait VirtioDevice: Send {
@@ -62,8 +86,8 @@ pub trait VirtioDevice: Send {
     /// Write device-specific config.
     fn write_config(&mut self, _offset: u64, _size: u8, _value: u64) {}
 
-    /// The driver kicked `queue`.
-    fn notify(&mut self, _queue: u16) {}
+    /// The driver kicked a ready queue.
+    fn notify(&mut self, _queue: QueueNotify) {}
 
     /// `status` changed, including a reset to 0.
     fn status_changed(&mut self, _status: u32) {}
@@ -105,3 +129,7 @@ mod tests;
 #[cfg(test)]
 #[path = "virtio_hv_test.rs"]
 mod hv_test;
+
+#[cfg(test)]
+#[path = "blk_hv_test.rs"]
+mod blk_hv_test;

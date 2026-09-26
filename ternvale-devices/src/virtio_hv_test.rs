@@ -44,12 +44,6 @@ fn linux_probes_a_virtio_mmio_dummy() {
     };
     let uart = Pl011::open(&serial_log).expect("uart");
     let base = slot_base(0).expect("slot 0");
-    let devices = vec![(
-        base,
-        VIRTIO_MMIO_SLOT_SIZE,
-        Box::new(VirtioMmio::new(0, Box::new(FixedDevice::new(1, 2))))
-            as Box<dyn ternvale_vmm::MmioDevice>,
-    )];
 
     let mut ends = [0; 2];
     // SAFETY: `pipe` writes two open fds into `ends` on success.
@@ -100,7 +94,14 @@ fn linux_probes_a_virtio_mmio_dummy() {
         }
     });
 
-    let exit = Machine::run_with(&vm, Box::new(uart), Arc::clone(&cancel), devices);
+    let exit = Machine::run_with(&vm, Box::new(uart), Arc::clone(&cancel), |_| {
+        Ok(vec![(
+            base,
+            VIRTIO_MMIO_SLOT_SIZE,
+            Box::new(VirtioMmio::new(0, Box::new(FixedDevice::new(1, 2))))
+                as Box<dyn ternvale_vmm::MmioDevice>,
+        )])
+    });
     cancel.store(true, Ordering::Release);
     feeder.join().expect("feeder");
     // SAFETY: restore the stdin saved before the pipe was installed.

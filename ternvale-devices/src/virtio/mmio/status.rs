@@ -118,7 +118,7 @@ impl VirtioMmio {
         self.driver_features = 0;
         self.queue_sel = 0;
         self.status = 0;
-        self.interrupt = 0;
+        self.interrupt.ack(0b11);
         for queue in &mut self.queues {
             queue.num = 0;
             queue.ready = false;

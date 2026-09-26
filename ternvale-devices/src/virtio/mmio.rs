@@ -5,10 +5,13 @@
 mod queue;
 mod status;
 
+use std::sync::Arc;
+
 use ternvale_vmm::{
     MmioBus, MmioDevice, MmioError, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
 
+use super::irq::VirtioIrq;
 use super::{VirtioDevice, VIRTIO_F_VERSION_1};
 
 const MAGIC: u32 = 0x7472_6976;
@@ -96,7 +99,7 @@ pub struct VirtioMmio {
     queue_sel: u32,
     queues: Vec<Queue>,
     status: u32,
-    interrupt: u32,
+    interrupt: Arc<VirtioIrq>,
 }
 
 impl VirtioMmio {
@@ -108,6 +111,17 @@ impl VirtioMmio {
         fields(slot, device_id = device.device_id())
     )]
     pub fn new(slot: u32, device: Box<dyn VirtioDevice>) -> Self {
+        Self::with_irq(slot, device, VirtioIrq::new())
+    }
+
+    /// Build a transport that shares `interrupt` with the device worker.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::mmio",
+        skip_all,
+        fields(slot, device_id = device.device_id())
+    )]
+    pub fn with_irq(slot: u32, device: Box<dyn VirtioDevice>, interrupt: Arc<VirtioIrq>) -> Self {
         let queues = (0..device.num_queues())
             .map(|index| Queue {
                 num_max: u32::from(device.queue_num_max(index)),
@@ -134,8 +148,13 @@ impl VirtioMmio {
             queue_sel: 0,
             queues,
             status: 0,
-            interrupt: 0,
+            interrupt,
         }
+    }
+
+    /// Shared interrupt line for this slot.
+    pub fn irq(&self) -> Arc<VirtioIrq> {
+        Arc::clone(&self.interrupt)
     }
 
     /// Map this transport onto platform virtio-mmio `slot`.
@@ -172,14 +191,7 @@ impl VirtioMmio {
     /// Raise interrupt-status bits. The driver clears them through `InterruptACK`.
     #[tracing::instrument(level = "debug", target = "ternvale::virtio::mmio", skip(self), fields(name = %self.name, bits))]
     pub fn raise_interrupt(&mut self, bits: u32) {
-        let bits = bits & 0b11;
-        self.interrupt |= bits;
-        tracing::debug!(
-            target: "ternvale::virtio::mmio",
-            name = %self.name,
-            interrupt = self.interrupt,
-            "virtio interrupt raised"
-        );
+        self.interrupt.raise(bits);
     }
 
     /// Guest read of one register or a config-space field.
@@ -243,7 +255,7 @@ impl VirtioMmio {
             DEVICE_FEATURES => feature_word(self.offered(), self.device_features_sel),
             QUEUE_NUM_MAX => self.selected().map(|q| q.num_max).unwrap_or(0),
             QUEUE_READY => u32::from(self.selected().is_some_and(|q| q.ready)),
-            INTERRUPT_STATUS => self.interrupt,
+            INTERRUPT_STATUS => self.interrupt.status(),
             STATUS => self.status,
             CONFIG_GENERATION => self.device.config_generation(),
             _ => {
@@ -268,16 +280,7 @@ impl VirtioMmio {
             QUEUE_NUM => self.write_queue_num(value),
             QUEUE_READY => self.write_queue_ready(value),
             QUEUE_NOTIFY => self.write_notify(value),
-            INTERRUPT_ACK => {
-                self.interrupt &= !value;
-                tracing::debug!(
-                    target: "ternvale::virtio::mmio",
-                    name = %self.name,
-                    ack = value,
-                    interrupt = self.interrupt,
-                    "virtio interrupt ack"
-                );
-            }
+            INTERRUPT_ACK => self.interrupt.ack(value),
             STATUS => self.write_status(value),
             QUEUE_DESC_LOW => self.write_addr(|q| &mut q.desc, false, value),
             QUEUE_DESC_HIGH => self.write_addr(|q| &mut q.desc, true, value),

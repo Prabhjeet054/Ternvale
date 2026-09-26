@@ -11,8 +11,12 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+#[path = "machine_attach.rs"]
+mod attach;
 #[path = "machine_host.rs"]
 mod host;
+
+pub use attach::DeviceAttach;
 
 use crate::fdt::{build_fdt, GuestFdt, PL011_REG_SIZE};
 use crate::gic_redist::RedistId;
@@ -77,6 +81,9 @@ pub enum MachineError {
     /// The DTB and the Linux placement did not converge.
     #[error("dtb placement did not settle")]
     Placement,
+    /// Attaching an MMIO device failed.
+    #[error("attach devices: {0}")]
+    Attach(String),
 }
 
 /// One guest. [`Machine::run`] owns the hypervisor VM until the guest stops.
@@ -99,22 +106,25 @@ impl Machine {
         serial: Box<dyn SerialDevice>,
         cancel: Arc<AtomicBool>,
     ) -> Result<ExitReason, MachineError> {
-        Self::run_with(config, serial, cancel, Vec::new())
+        Self::run_with(config, serial, cancel, |_| Ok(Vec::new()))
     }
 
-    /// [`Machine::run_until`] plus extra MMIO devices, each `(base, size, device)`.
+    /// [`Machine::run_until`] plus devices built after guest RAM and the GIC exist.
     #[tracing::instrument(
         level = "debug",
         target = "ternvale::boot",
         skip_all,
-        fields(name = %config.name, devices = devices.len())
+        fields(name = %config.name)
     )]
-    pub fn run_with(
+    pub fn run_with<F>(
         config: &ternvale_config::VmConfig,
         serial: Box<dyn SerialDevice>,
         cancel: Arc<AtomicBool>,
-        devices: Vec<(u64, u64, Box<dyn MmioDevice>)>,
-    ) -> Result<ExitReason, MachineError> {
+        attach: F,
+    ) -> Result<ExitReason, MachineError>
+    where
+        F: FnOnce(&DeviceAttach) -> Result<Vec<(u64, u64, Box<dyn MmioDevice>)>, MachineError>,
+    {
         config.validate()?;
         let cmdline = guest_cmdline(&config.cmdline);
         tracing::info!(
@@ -124,12 +134,11 @@ impl Machine {
             ram_mib = config.ram_mib,
             "starting vm"
         );
-        if !config.disks.is_empty() || !config.nics.is_empty() {
+        if !config.nics.is_empty() {
             tracing::warn!(
                 target: "ternvale::boot",
-                disks = config.disks.len(),
                 nics = config.nics.len(),
-                "disks and nics are not attached"
+                "nics are not attached"
             );
         }
         let kernel = read_file("kernel", &config.kernel)?;
@@ -140,8 +149,24 @@ impl Machine {
         let ram_size = config.ram_mib << 20;
         let vm = ternvale_hv::Vm::create()?;
         let gic = Arc::new(vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE)?);
-        let mut memory = crate::memory::GuestMemory::new()?;
-        memory.map(&vm, RAM_BASE, ram_size)?;
+        let memory = Arc::new(Mutex::new(crate::memory::GuestMemory::new()?));
+        {
+            let mut mem = memory.lock().unwrap_or_else(|p| p.into_inner());
+            mem.map(&vm, RAM_BASE, ram_size)?;
+        }
+        let spi_levels = Arc::new(Mutex::new(Vec::new()));
+        let devices = attach(&DeviceAttach {
+            memory: Arc::clone(&memory),
+            gic: Arc::clone(&gic),
+            spi_levels: Arc::clone(&spi_levels),
+        })?;
+        if !config.disks.is_empty() && devices.is_empty() {
+            tracing::warn!(
+                target: "ternvale::boot",
+                disks = config.disks.len(),
+                "config disks were not attached through DeviceAttach"
+            );
+        }
         let (dtb, layout) = boot_images(&cmdline, config.cpus, ram_size, &kernel, &initrd)?;
         tracing::debug!(
             target: "ternvale::boot",
@@ -151,13 +176,13 @@ impl Machine {
         );
         let serial = Rc::new(std::cell::RefCell::new(serial));
         let irq_level = Arc::new(AtomicBool::new(false));
-        install_uart_irq(Rc::clone(&serial), Arc::clone(&gic), Arc::clone(&irq_level));
+        attach::install_uart_irq(Rc::clone(&serial), Arc::clone(&gic), Arc::clone(&irq_level));
         let mut bus = MmioBus::new();
         bus.register(GIC_REDIST_BASE, GIC_REDIST_SIZE, Box::new(RedistId))?;
         bus.register(
             UART_BASE,
             PL011_REG_SIZE,
-            Box::new(LocalUart(Rc::clone(&serial))),
+            Box::new(attach::LocalUart(Rc::clone(&serial))),
         )?;
         for (base, size, device) in devices {
             bus.register(base, size, device)?;
@@ -187,7 +212,7 @@ impl Machine {
             };
             let exit = boot_vcpu(
                 &vm,
-                &mut memory,
+                &memory,
                 &mut bus,
                 &serial,
                 &watchdog,
@@ -198,6 +223,7 @@ impl Machine {
                     shutdown: Arc::clone(&shutdown),
                     gic: Arc::clone(&gic),
                     irq_level: Arc::clone(&irq_level),
+                    spi_levels: Arc::clone(&spi_levels),
                     cancel: Arc::clone(&cancel),
                 },
             );
@@ -270,46 +296,6 @@ fn boot_images(
     Err(MachineError::Placement)
 }
 
-fn install_uart_irq(
-    serial: Rc<std::cell::RefCell<Box<dyn SerialDevice>>>,
-    gic: Arc<ternvale_hv::Gic>,
-    level_flag: Arc<AtomicBool>,
-) {
-    let spi = 32 + crate::fdt::UART_SPI;
-    serial.borrow_mut().set_irq_hook(Arc::new(move |level| {
-        // set_spi(true) also pulses an edge. Repeat calls while the line stays
-        // high leave a pending SPI after the PL011 has cleared MIS.
-        if level_flag.swap(level, Ordering::AcqRel) == level {
-            return;
-        }
-        if let Err(error) = gic.set_spi(spi, level) {
-            tracing::warn!(
-                target: "ternvale::gic",
-                irq = spi,
-                level,
-                error = %error,
-                "uart spi update failed"
-            );
-        }
-    }));
-}
-
-struct LocalUart(Rc<std::cell::RefCell<Box<dyn SerialDevice>>>);
-
-impl MmioDevice for LocalUart {
-    fn name(&self) -> &str {
-        "pl011"
-    }
-
-    fn read(&mut self, offset: u64, size: u8) -> u64 {
-        self.0.borrow_mut().read(offset, size)
-    }
-
-    fn write(&mut self, offset: u64, size: u8, val: u64) {
-        self.0.borrow_mut().write(offset, size, val);
-    }
-}
-
 struct Images<'a> {
     kernel: &'a [u8],
     initrd: &'a [u8],
@@ -323,12 +309,13 @@ struct BootIo {
     shutdown: Arc<AtomicBool>,
     gic: Arc<ternvale_hv::Gic>,
     irq_level: Arc<AtomicBool>,
+    spi_levels: attach::SpiLevels,
     cancel: Arc<AtomicBool>,
 }
 
 fn boot_vcpu(
     vm: &ternvale_hv::Vm,
-    memory: &mut crate::memory::GuestMemory,
+    memory: &Arc<Mutex<crate::memory::GuestMemory>>,
     bus: &mut MmioBus,
     serial: &Rc<std::cell::RefCell<Box<dyn SerialDevice>>>,
     watchdog: &Watchdog,
@@ -356,34 +343,47 @@ fn boot_vcpu(
     let poll_kick = vcpu.stopper();
     let poll_stop = Arc::clone(&io.shutdown);
     let level_run = Arc::clone(&io.irq_level);
+    let spi_run = Arc::clone(&io.spi_levels);
     let rx = io.rx;
     let _stdin = std::thread::spawn(move || host::stdin_loop(io.rx_tx, io.shutdown, kick));
     let _poll = std::thread::spawn(move || {
-        host::poll_loop(poll_stop, poll_kick, io.gic, io.irq_level, io.cancel)
+        host::poll_loop(
+            poll_stop,
+            poll_kick,
+            io.gic,
+            io.irq_level,
+            io.spi_levels,
+            io.cancel,
+        )
     });
-    load_linux(
+    {
+        let mut mem = memory.lock().unwrap_or_else(|p| p.into_inner());
+        load_linux(
+            &mut mem,
+            &vcpu,
+            RAM_BASE,
+            images.ram_size,
+            images.kernel,
+            images.initrd,
+            images.dtb,
+        )?;
+    }
+    let exit = host::run_loop(host::RunLoop {
+        vcpu: &vcpu,
+        bus,
+        serial,
+        rx: &rx,
+        watchdog,
         memory,
-        &vcpu,
-        RAM_BASE,
-        images.ram_size,
-        images.kernel,
-        images.initrd,
-        images.dtb,
-    )?;
-    let exit = host::run_loop(&vcpu, bus, serial, &rx, watchdog, memory, &level_run)?;
+        irq_level: &level_run,
+        spi_levels: &spi_run,
+    })?;
     drop(vcpu);
     Ok(exit)
 }
 
 fn read_file(what: &'static str, path: &std::path::Path) -> Result<Vec<u8>, MachineError> {
-    std::fs::read(path).map_err(|source| {
-        tracing::error!(target: "ternvale::boot", what, path = %path.display(), error = %source, "failed to read boot file");
-        MachineError::Read {
-            what,
-            path: path.to_path_buf(),
-            source,
-        }
-    })
+    attach::read_boot_file(what, path)
 }
 
 #[cfg(test)]

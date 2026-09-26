@@ -6,6 +6,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+use super::attach::SpiLevels;
 use crate::machine::MachineError;
 use crate::mmio::MmioBus;
 use crate::platform::RAM_BASE;
@@ -51,9 +52,10 @@ pub(super) fn poll_loop(
     kick: crate::vcpu::VcpuStop,
     gic: Arc<ternvale_hv::Gic>,
     irq_level: Arc<AtomicBool>,
+    spi_levels: SpiLevels,
     cancel: Arc<AtomicBool>,
 ) {
-    let spi = 32 + crate::fdt::UART_SPI;
+    let uart_spi = 32 + crate::fdt::UART_SPI;
     while !shutdown.load(Ordering::Acquire) {
         if cancel.load(Ordering::Acquire) {
             tracing::warn!(target: "ternvale::boot", "cancel requested; stopping guest");
@@ -64,13 +66,30 @@ pub(super) fn poll_loop(
         }
         std::thread::sleep(Duration::from_millis(50));
         // hv_gic_set_spi(true) can be missed while the guest is inside an
-        // emulated WFI. Pulse again only while the PL011 line is still high.
+        // emulated WFI. Pulse again only while the line stays high.
         if irq_level.load(Ordering::Acquire) {
-            if let Err(error) = gic.set_spi(spi, true) {
+            if let Err(error) = gic.set_spi(uart_spi, true) {
                 tracing::debug!(
                     target: "ternvale::gic",
                     error = %error,
                     "uart spi reassert failed"
+                );
+            }
+        }
+        let levels = match spi_levels.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poison) => poison.into_inner().clone(),
+        };
+        for (spi, level) in levels {
+            if !level.load(Ordering::Acquire) {
+                continue;
+            }
+            if let Err(error) = gic.set_spi(spi, true) {
+                tracing::debug!(
+                    target: "ternvale::gic",
+                    irq = spi,
+                    error = %error,
+                    "virtio spi reassert failed"
                 );
             }
         }
@@ -118,18 +137,38 @@ pub(super) fn stdin_loop(tx: Sender<u8>, shutdown: Arc<AtomicBool>, kick: crate:
     }
 }
 
-pub(super) fn run_loop(
-    vcpu: &Vcpu,
-    bus: &mut MmioBus,
-    serial: &Rc<std::cell::RefCell<Box<dyn SerialDevice>>>,
-    rx: &Receiver<u8>,
-    watchdog: &Watchdog,
-    memory: &mut crate::memory::GuestMemory,
-    irq_level: &AtomicBool,
-) -> Result<ExitReason, MachineError> {
+pub(super) struct RunLoop<'a> {
+    pub vcpu: &'a Vcpu,
+    pub bus: &'a mut MmioBus,
+    pub serial: &'a Rc<std::cell::RefCell<Box<dyn SerialDevice>>>,
+    pub rx: &'a Receiver<u8>,
+    pub watchdog: &'a Watchdog,
+    pub memory: &'a Arc<Mutex<crate::memory::GuestMemory>>,
+    pub irq_level: &'a AtomicBool,
+    pub spi_levels: &'a SpiLevels,
+}
+
+pub(super) fn run_loop(ctx: RunLoop<'_>) -> Result<ExitReason, MachineError> {
+    let RunLoop {
+        vcpu,
+        bus,
+        serial,
+        rx,
+        watchdog,
+        memory,
+        irq_level,
+        spi_levels,
+    } = ctx;
     loop {
         drain_rx(serial, rx);
-        if irq_level.load(Ordering::Acquire) {
+        let virtio_pending = match spi_levels.lock() {
+            Ok(list) => list.iter().any(|(_, level)| level.load(Ordering::Acquire)),
+            Err(poison) => poison
+                .into_inner()
+                .iter()
+                .any(|(_, level)| level.load(Ordering::Acquire)),
+        };
+        if irq_level.load(Ordering::Acquire) || virtio_pending {
             escape_masked_wfi(vcpu, memory)?;
         }
         let pc = vcpu.get_pc()?;
@@ -218,17 +257,18 @@ fn dispatch_exit(
 
 fn escape_masked_wfi(
     vcpu: &Vcpu,
-    memory: &mut crate::memory::GuestMemory,
+    memory: &Arc<Mutex<crate::memory::GuestMemory>>,
 ) -> Result<(), MachineError> {
     // hv_vcpu_run stays inside a WFI that began with PSTATE.I set. That
     // instruction is a nop when IRQs are masked, so a pending SPI never wakes it.
     let pc = vcpu.get_pc()?;
+    let mut mem = memory.lock().unwrap_or_else(|p| p.into_inner());
     for wfi_pc in [pc, pc.wrapping_sub(4)] {
-        if guest_insn(memory, wfi_pc) != Some(0xd503_207f) {
+        if guest_insn(&mem, wfi_pc) != Some(0xd503_207f) {
             continue;
         }
         let phys = RAM_BASE + (wfi_pc - 0xffff_8000_8000_0000);
-        memory.write_bytes(phys, &0xd503_201f_u32.to_le_bytes())?;
+        mem.write_bytes(phys, &0xd503_201f_u32.to_le_bytes())?;
         vcpu.set_pc(wfi_pc)?;
         let cpsr = vcpu.get_cpsr()?;
         if cpsr & 0x80 != 0 {

@@ -101,6 +101,12 @@ pub struct GuestMemory {
     regions: Vec<Region>,
 }
 
+// SAFETY: host mappings are exclusive to this VMM. Callers share `GuestMemory`
+// only behind a `Mutex`, and every access goes through the checked read/write
+// helpers. The Hypervisor map is process-wide and not tied to a thread.
+unsafe impl Send for GuestMemory {}
+unsafe impl Sync for GuestMemory {}
+
 impl std::fmt::Debug for GuestMemory {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter

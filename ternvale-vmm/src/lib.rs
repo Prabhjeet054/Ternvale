@@ -18,12 +18,12 @@ mod watchdog;
 
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
 pub use esr::{decode as decode_esr, ExitEvent};
-pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt, PL011_REG_SIZE, UART_SPI};
+pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt, PL011_REG_SIZE, UART_SPI, VIRTIO_SPI0};
 pub use linux::{
     load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
     CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
 };
-pub use machine::{guest_cmdline, Machine, MachineError, DEFAULT_CMDLINE};
+pub use machine::{guest_cmdline, DeviceAttach, Machine, MachineError, DEFAULT_CMDLINE};
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{

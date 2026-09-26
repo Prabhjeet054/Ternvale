@@ -49,8 +49,8 @@ impl VirtioDevice for Dummy {
         self.config = (self.config & !(mask << shift)) | ((value as u32 & mask) << shift);
     }
 
-    fn notify(&mut self, queue: u16) {
-        self.notified.lock().expect("notified").push(queue);
+    fn notify(&mut self, queue: super::QueueNotify) {
+        self.notified.lock().expect("notified").push(queue.index);
     }
 
     fn status_changed(&mut self, status: u32) {

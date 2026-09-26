@@ -64,31 +64,41 @@ impl VirtioMmio {
     }
 
     pub(super) fn write_notify(&mut self, value: u32) {
-        let Some(queue) = self.queues.get(value as usize) else {
-            tracing::warn!(
-                target: "ternvale::virtio::mmio",
-                name = %self.name,
-                queue = value,
-                "notify for an unknown queue"
-            );
-            return;
+        let notify = {
+            let Some(queue) = self.queues.get(value as usize) else {
+                tracing::warn!(
+                    target: "ternvale::virtio::mmio",
+                    name = %self.name,
+                    queue = value,
+                    "notify for an unknown queue"
+                );
+                return;
+            };
+            if !queue.ready {
+                tracing::warn!(
+                    target: "ternvale::virtio::mmio",
+                    name = %self.name,
+                    queue = value,
+                    "notify for a queue that is not ready"
+                );
+                return;
+            }
+            crate::virtio::QueueNotify {
+                index: value as u16,
+                size: queue.num as u16,
+                desc: queue.desc,
+                avail: queue.driver,
+                used: queue.device,
+                features: self.driver_features,
+            }
         };
-        if !queue.ready {
-            tracing::warn!(
-                target: "ternvale::virtio::mmio",
-                name = %self.name,
-                queue = value,
-                "notify for a queue that is not ready"
-            );
-            return;
-        }
         tracing::trace!(
             target: "ternvale::virtio::mmio",
             name = %self.name,
             queue = value,
             "virtio queue notify"
         );
-        self.device.notify(value as u16);
+        self.device.notify(notify);
     }
 
     pub(super) fn write_addr(
