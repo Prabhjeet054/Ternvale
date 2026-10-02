@@ -11,6 +11,7 @@ boot-test = []
 
 [[test]]
 name = "boot"
+path = "tests/boot/main.rs"
 harness = false
 required-features = ["boot-test"]
 

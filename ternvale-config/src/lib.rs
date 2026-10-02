@@ -101,6 +101,7 @@ backend = "user"
         assert_eq!(config.cpus, 2);
         assert_eq!(config.ram_mib, 512);
         assert_eq!(config.cmdline, "console=ttyAMA0");
+        assert!(!config.boot_disk);
         assert_eq!(config.disks.len(), 1);
         assert!(!config.disks[0].read_only);
         assert_eq!(config.nics.len(), 1);
@@ -147,6 +148,51 @@ backend = "user"
         let text = format!("{}\nbogus = true\n", sample(&fix));
         let error = VmConfig::from_toml(&text).expect_err("unknown field");
         assert!(error.to_string().contains("bogus"), "{error}");
+    }
+
+    #[test]
+    fn rejects_boot_disk_without_disks() {
+        let fix = Fixture::new();
+        let text = format!(
+            r#"
+name = "diskboot"
+cpus = 1
+ram_mib = 256
+kernel = "{kernel}"
+boot_disk = true
+serial_log = "{serial}"
+"#,
+            kernel = toml_path(&fix.path("kernel")),
+            serial = toml_path(&fix.path("serial.log")),
+        );
+        let error = VmConfig::from_toml(&text).expect_err("boot_disk without disks");
+        assert!(matches!(error, ConfigError::BootDiskWithoutDisks));
+        assert!(error.to_string().contains("boot_disk"), "{error}");
+    }
+
+    #[test]
+    fn accepts_boot_disk_with_a_disk() {
+        let fix = Fixture::new();
+        let text = format!(
+            r#"
+name = "diskboot"
+cpus = 1
+ram_mib = 256
+kernel = "{kernel}"
+boot_disk = true
+serial_log = "{serial}"
+
+[[disks]]
+path = "{disk}"
+read_only = false
+"#,
+            kernel = toml_path(&fix.path("kernel")),
+            serial = toml_path(&fix.path("serial.log")),
+            disk = toml_path(&fix.path("disk.img")),
+        );
+        let config = VmConfig::from_toml(&text).expect("parse");
+        assert!(config.boot_disk);
+        assert_eq!(config.disks.len(), 1);
     }
 
     #[test]

@@ -32,6 +32,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: String::new(),
+        boot_disk: false,
         disks: Vec::new(),
         nics: Vec::new(),
         serial_log: serial_log.clone(),

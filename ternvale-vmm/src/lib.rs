@@ -23,7 +23,10 @@ pub use linux::{
     load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
     CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
 };
-pub use machine::{guest_cmdline, DeviceAttach, Machine, MachineError, DEFAULT_CMDLINE};
+pub use machine::{
+    guest_cmdline, guest_cmdline_for, DeviceAttach, Machine, MachineError, DEFAULT_CMDLINE,
+    DISK_ROOT_CMDLINE,
+};
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{

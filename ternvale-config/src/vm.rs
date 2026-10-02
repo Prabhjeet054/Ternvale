@@ -49,6 +49,10 @@ pub struct VmConfig {
     /// Kernel command line. May be empty.
     #[serde(default)]
     pub cmdline: String,
+    /// When true, append `root=/dev/vda rootfstype=ext4 rw` (unless `cmdline` already
+    /// has a `root=` token) and require at least one disk.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub boot_disk: bool,
     /// Disk images, in guest attachment order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub disks: Vec<Disk>,
@@ -153,6 +157,20 @@ impl VmConfig {
                 path = %disk.path.display(),
                 read_only = disk.read_only,
                 "accepted disk"
+            );
+        }
+        if self.boot_disk {
+            if self.disks.is_empty() {
+                tracing::error!(
+                    target: "ternvale::config",
+                    "boot_disk requires at least one disk"
+                );
+                return Err(ConfigError::BootDiskWithoutDisks);
+            }
+            tracing::debug!(
+                target: "ternvale::config",
+                disks = self.disks.len(),
+                "boot_disk enabled; guest cmdline will include root=/dev/vda"
             );
         }
         for (index, nic) in self.nics.iter().enumerate() {

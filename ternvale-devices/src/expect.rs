@@ -45,6 +45,7 @@ pub enum Progress {
 pub struct Session {
     steps: Vec<Step>,
     index: usize,
+    started: Instant,
     step_at: Instant,
     mark: Option<usize>,
 }
@@ -57,6 +58,7 @@ impl Session {
         Self {
             steps,
             index: 0,
+            started: now,
             step_at: now,
             mark: None,
         }
@@ -90,6 +92,8 @@ impl Session {
                         target: "ternvale::boot",
                         step = self.index,
                         pattern,
+                        elapsed_ms = self.elapsed_ms(now),
+                        step_ms = now.saturating_duration_since(self.step_at).as_millis() as u64,
                         "expect matched"
                     );
                     self.advance(now);
@@ -114,6 +118,11 @@ impl Session {
 }
 
 impl Session {
+    /// Milliseconds since [`Session::new`].
+    fn elapsed_ms(&self, now: Instant) -> u64 {
+        now.saturating_duration_since(self.started).as_millis() as u64
+    }
+
     fn advance(&mut self, now: Instant) {
         self.index += 1;
         self.step_at = now;
@@ -182,6 +191,14 @@ mod tests {
             }
             other => panic!("expected timeout, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn elapsed_counts_from_session_start() {
+        let start = Instant::now();
+        let session = Session::new(vec![expect("x", 1000)], start);
+        assert_eq!(session.elapsed_ms(start + Duration::from_millis(250)), 250);
+        assert_eq!(session.elapsed_ms(start), 0);
     }
 
     #[test]

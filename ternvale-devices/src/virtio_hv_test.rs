@@ -37,6 +37,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: String::new(),
+        boot_disk: false,
         disks: Vec::new(),
         nics: Vec::new(),
         serial_log: serial_log.clone(),

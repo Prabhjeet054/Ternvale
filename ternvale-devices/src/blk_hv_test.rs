@@ -57,6 +57,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: String::new(),
+        boot_disk: false,
         disks: vec![ternvale_config::Disk {
             path: image.clone(),
             read_only: false,

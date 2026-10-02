@@ -18,6 +18,10 @@ mod host;
 
 pub use attach::DeviceAttach;
 
+#[path = "boot_cmdline.rs"]
+mod cmdline;
+pub use cmdline::{guest_cmdline, guest_cmdline_for, DEFAULT_CMDLINE, DISK_ROOT_CMDLINE};
+
 use crate::fdt::{build_fdt, GuestFdt, PL011_REG_SIZE};
 use crate::gic_redist::RedistId;
 use crate::linux::{load_linux, place, LinuxLayout};
@@ -27,22 +31,7 @@ use crate::serial::SerialDevice;
 use crate::vcpu::{ExitReason, Vcpu};
 use crate::watchdog::Watchdog;
 
-/// Kernel command line used when the config leaves it empty.
-pub const DEFAULT_CMDLINE: &str = "console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init";
-
 const HANG: Duration = Duration::from_secs(10);
-
-/// `cmdline`, or [`DEFAULT_CMDLINE`] when it is empty.
-#[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all)]
-pub fn guest_cmdline(cmdline: &str) -> String {
-    if cmdline.is_empty() {
-        tracing::info!(target: "ternvale::boot", cmdline = DEFAULT_CMDLINE, "default kernel cmdline");
-        DEFAULT_CMDLINE.to_string()
-    } else {
-        tracing::info!(target: "ternvale::boot", cmdline, "kernel cmdline");
-        cmdline.to_string()
-    }
-}
 
 /// Why the machine did not finish booting or running.
 #[derive(Debug, thiserror::Error)]
@@ -126,12 +115,13 @@ impl Machine {
         F: FnOnce(&DeviceAttach) -> Result<Vec<(u64, u64, Box<dyn MmioDevice>)>, MachineError>,
     {
         config.validate()?;
-        let cmdline = guest_cmdline(&config.cmdline);
+        let cmdline = guest_cmdline_for(&config.cmdline, config.boot_disk);
         tracing::info!(
             target: "ternvale::boot",
             name = %config.name,
             cpus = config.cpus,
             ram_mib = config.ram_mib,
+            boot_disk = config.boot_disk,
             "starting vm"
         );
         if !config.nics.is_empty() {
@@ -384,15 +374,4 @@ fn boot_vcpu(
 
 fn read_file(what: &'static str, path: &std::path::Path) -> Result<Vec<u8>, MachineError> {
     attach::read_boot_file(what, path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{guest_cmdline, DEFAULT_CMDLINE};
-
-    #[test]
-    fn empty_cmdline_uses_the_pl011_console_default() {
-        assert_eq!(guest_cmdline(""), DEFAULT_CMDLINE);
-        assert_eq!(guest_cmdline("console=ttyAMA0"), "console=ttyAMA0");
-    }
 }

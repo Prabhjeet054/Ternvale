@@ -3,11 +3,13 @@
 //! Register layout follows the virtio 1.2 MMIO chapter. Feature negotiation
 //! accepts `FEATURES_OK` only when the driver offers `VIRTIO_F_VERSION_1`.
 
+mod attach_disks;
 mod blk;
 mod irq;
 mod mmio;
 mod queue;
 
+pub use attach_disks::attach_disks;
 pub use blk::{
     AttachedBlk, BlkStats, VirtioBlk, VirtioBlkError, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO,
     VIRTIO_BLK_ID,

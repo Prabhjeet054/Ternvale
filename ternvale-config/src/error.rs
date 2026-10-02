@@ -71,6 +71,10 @@ pub enum ConfigError {
         /// Index into `nics`.
         index: usize,
     },
+
+    /// `boot_disk` was set but `disks` is empty.
+    #[error("boot_disk requires at least one disk")]
+    BootDiskWithoutDisks,
 }
 
 /// Error type other Ternvale crates can return without depending on each other.
