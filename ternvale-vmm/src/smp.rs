@@ -10,8 +10,9 @@
 //! The table mutex is a leaf lock: nothing else is locked while it is held,
 //! and the only call made under it is `hv_vcpus_exit`.
 
-use std::sync::{Condvar, Mutex, MutexGuard};
+use std::sync::{Condvar, Mutex};
 
+use crate::lockwatch::Guard;
 use crate::psci::{
     sign, PowerRequest, AFFINITY_OFF, AFFINITY_ON, AFFINITY_ON_PENDING, ALREADY_ON,
     INVALID_ADDRESS, INVALID_PARAMS, ON_PENDING, SUCCESS,
@@ -118,7 +119,7 @@ impl CpuPower {
             if table.created >= index {
                 return true;
             }
-            table = self.wait(table);
+            table = table.wait(&self.changed);
         }
     }
 
@@ -173,7 +174,7 @@ impl CpuPower {
             if table.ready.iter().all(|ready| *ready) {
                 return true;
             }
-            table = self.wait(table);
+            table = table.wait(&self.changed);
         }
     }
 
@@ -199,7 +200,8 @@ impl CpuPower {
                 );
                 return Some((entry, context));
             }
-            table = self.wait(table);
+            // Powered off until CPU_ON, possibly for the whole run.
+            table = table.park(&self.changed);
         }
     }
 
@@ -340,14 +342,8 @@ impl CpuPower {
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, Table> {
+    fn lock(&self) -> Guard<'_, Table> {
         crate::lockwatch::lock(&self.table, "cpu-power")
-    }
-
-    fn wait<'a>(&self, guard: MutexGuard<'a, Table>) -> MutexGuard<'a, Table> {
-        self.changed
-            .wait(guard)
-            .unwrap_or_else(|poison| poison.into_inner())
     }
 }
 

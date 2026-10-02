@@ -6,12 +6,10 @@
 //! PSCI `CPU_ON`. Every thread runs inside a `vcpu` span carrying `vm`, `cpu`,
 //! `mpidr`, and `vcpu_id`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use ternvale_hv::SysReg;
 
-use super::attach::SpiLevels;
 use super::{Images, MachineError};
 use crate::gic_redist::RedistMap;
 use crate::linux::{load_linux, CPSR_EL1H_MASKED};
@@ -35,8 +33,6 @@ pub(super) struct Shared<'a> {
     pub power: &'a CpuPower,
     pub redist: &'a RedistMap,
     pub watchdog: &'a Watchdog,
-    pub irq_level: &'a AtomicBool,
-    pub spi_levels: &'a SpiLevels,
     pub images: &'a Images<'a>,
     /// CPU 0's vtimer offset. Each secondary copies it before its first entry
     /// so every CPU reads the same `CNTVCT_EL0`.
@@ -240,12 +236,6 @@ fn enter_at(
 
 fn run_loop(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<Leave, MachineError> {
     loop {
-        let virtio_pending = crate::lockwatch::lock(shared.spi_levels, "spi-levels")
-            .iter()
-            .any(|(_, level)| level.load(Ordering::Acquire));
-        if shared.irq_level.load(Ordering::Acquire) || virtio_pending {
-            escape_masked_wfi(vcpu, shared.memory)?;
-        }
         let pc = vcpu.get_pc().map_err(op(index, "read pc"))?;
         shared.watchdog.note_exit(pc);
         let reason = vcpu.run().map_err(op(index, "run"))?;
@@ -337,44 +327,6 @@ fn dispatch_exit(
             Ok(false)
         }
     }
-}
-
-fn escape_masked_wfi(vcpu: &Vcpu, memory: &Mutex<GuestMemory>) -> Result<(), MachineError> {
-    // hv_vcpu_run stays inside a WFI that began with PSTATE.I set. That
-    // instruction is a nop when IRQs are masked, so a pending SPI never wakes it.
-    let pc = vcpu.get_pc()?;
-    let mut mem = crate::lockwatch::lock(memory, "guest-memory");
-    for wfi_pc in [pc, pc.wrapping_sub(4)] {
-        if guest_insn(&mem, wfi_pc) != Some(0xd503_207f) {
-            continue;
-        }
-        let phys = RAM_BASE + (wfi_pc - 0xffff_8000_8000_0000);
-        mem.write_bytes(phys, &0xd503_201f_u32.to_le_bytes())?;
-        vcpu.set_pc(wfi_pc)?;
-        let cpsr = vcpu.get_cpsr()?;
-        if cpsr & 0x80 != 0 {
-            vcpu.set_cpsr(cpsr & !0x80)?;
-        }
-        tracing::info!(
-            target: "ternvale::vcpu",
-            vcpu_id = vcpu.id(),
-            pc = format!("{wfi_pc:#x}"),
-            "replaced masked wfi with nop"
-        );
-        break;
-    }
-    Ok(())
-}
-
-fn guest_insn(memory: &GuestMemory, pc: u64) -> Option<u32> {
-    const KIMAGE: u64 = 0xffff_8000_8000_0000;
-    if pc < KIMAGE {
-        return None;
-    }
-    let phys = RAM_BASE.checked_add(pc - KIMAGE)?;
-    let mut buf = [0u8; 4];
-    memory.read_bytes(phys, &mut buf).ok()?;
-    Some(u32::from_le_bytes(buf))
 }
 
 fn op(cpu: u32, what: &'static str) -> impl FnOnce(VcpuError) -> MachineError {

@@ -19,8 +19,7 @@ static OVERRIDE: Mutex<Option<(u32, u32)>> = Mutex::new(None);
 /// Replace the host version for tests. `None` reads `kern.osproductversion`.
 #[cfg(test)]
 pub fn set_gic_os_version_override(version: Option<(u32, u32)>) {
-    let mut slot = OVERRIDE.lock().unwrap_or_else(|poison| poison.into_inner());
-    *slot = version;
+    *ternvale_log::lockwatch::lock(&OVERRIDE, "macos-version-override") = version;
 }
 
 /// Accept macOS 15.0 and any later release.
@@ -61,7 +60,7 @@ pub fn ensure_gic_os() -> Result<(), HvError> {
 
 fn host_version() -> Result<(u32, u32), HvError> {
     #[cfg(test)]
-    if let Some(version) = *OVERRIDE.lock().unwrap_or_else(|poison| poison.into_inner()) {
+    if let Some(version) = *ternvale_log::lockwatch::lock(&OVERRIDE, "macos-version-override") {
         return Ok(version);
     }
     let mut buf = [0u8; 32];

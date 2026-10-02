@@ -34,15 +34,27 @@ pub(super) struct Counters {
 /// this is the host cost of the guest's work; an idle WFI inside
 /// `hv_vcpu_run` adds little.
 pub(super) fn thread_cpu_ms() -> Option<u64> {
+    cpu_clock_ms(libc::CLOCK_THREAD_CPUTIME_ID, "thread")
+}
+
+/// CPU time the whole process (every vCPU and host thread) has used, in
+/// milliseconds. Sampled twice around a guest idle period, the difference
+/// should be a small fraction of the wall time.
+#[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all)]
+pub fn process_cpu_ms() -> Option<u64> {
+    cpu_clock_ms(libc::CLOCK_PROCESS_CPUTIME_ID, "process")
+}
+
+fn cpu_clock_ms(clock: libc::clockid_t, which: &'static str) -> Option<u64> {
     let mut now = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
     };
-    // SAFETY: `now` is a valid, writable timespec. CLOCK_THREAD_CPUTIME_ID
-    // reads the calling thread's CPU clock and writes only `now`.
-    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut now) };
+    // SAFETY: `now` is a valid, writable timespec. The clock is one of the
+    // CPU-time clocks and clock_gettime writes only `now`.
+    let rc = unsafe { libc::clock_gettime(clock, &mut now) };
     if rc != 0 {
-        tracing::warn!(target: "ternvale::vcpu", rc, "thread cpu clock unavailable");
+        tracing::warn!(target: "ternvale::vcpu", rc, clock = which, "cpu clock unavailable");
         return None;
     }
     let secs = u64::try_from(now.tv_sec).ok()?;
@@ -94,6 +106,13 @@ mod tests {
         }
         let after = thread_cpu_ms().expect("cpu clock");
         assert!(after >= before + 20, "before={before} after={after}");
+    }
+
+    #[test]
+    fn process_cpu_time_covers_this_thread() {
+        let thread = thread_cpu_ms().expect("thread clock");
+        let process = process_cpu_ms().expect("process clock");
+        assert!(process >= thread, "process={process} thread={thread}");
     }
 
     #[test]

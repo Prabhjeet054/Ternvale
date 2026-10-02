@@ -6,8 +6,9 @@
 # runs defaults to 20. Each run's console output goes to
 # target/boot-logs/stress-<stamp>/run-NN.txt and summary.txt gets one line per
 # run: exit status, wall seconds, ERROR / WARN / lock-wait line counts from the
-# host log, the lock watch summary, and the artifact directory.
-# Exits 1 if any run failed or logged a lock wait over the threshold.
+# host log, the lock watch summary, and the artifact directory. lock_waits counts
+# lock and brief condvar waits over the threshold and deadlock cycles.
+# Exits 1 if any run failed or logged one of those.
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
@@ -45,8 +46,8 @@ for ((i = 1; i <= runs; i++)); do
     if [[ -n "$host_log" ]]; then
         errors=$(strip "$host_log" | grep -c ' ERROR ' || true)
         warns=$(strip "$host_log" | grep -c ' WARN ' || true)
-        lock_waits=$(strip "$host_log" | grep -cE 'lock wait exceeds threshold|lock acquired after a long wait' || true)
-        locks=$(strip "$host_log" | grep 'lock watch summary' | tail -1 | grep -oE 'contended=[0-9]+ long_waits=[0-9]+ max_wait_us=[0-9]+' || true)
+        lock_waits=$(strip "$host_log" | grep -cE 'lock wait exceeds threshold|lock acquired after a long wait|condvar wait exceeds threshold|condvar wait ended after a long wait|deadlock: lock wait-for cycle' || true)
+        locks=$(strip "$host_log" | grep 'lock watch summary' | tail -1 | grep -oE 'contended=[0-9]+ long_waits=[0-9]+ max_wait_us=[0-9]+ deadlocks=[0-9]+' || true)
     fi
     if [[ "$status" -ne 0 ]]; then
         failed=$((failed + 1))

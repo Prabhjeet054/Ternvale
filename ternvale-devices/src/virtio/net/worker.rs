@@ -4,7 +4,7 @@
 //! asynchronous backend (and kicks the driver chose not to send) are picked up.
 
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ternvale_vmm::GuestMemory;
@@ -130,7 +130,7 @@ impl Worker {
         });
     }
 
-    fn lock(&self) -> MutexGuard<'_, GuestMemory> {
+    fn lock(&self) -> ternvale_vmm::lockwatch::Guard<'_, GuestMemory> {
         ternvale_vmm::lockwatch::lock(&self.memory, "guest-memory")
     }
 

@@ -73,7 +73,7 @@ impl Watchdog {
         Some(text)
     }
 
-    fn lock<'a, T>(&'a self, mutex: &'a Mutex<T>) -> std::sync::MutexGuard<'a, T> {
+    fn lock<'a, T>(&'a self, mutex: &'a Mutex<T>) -> crate::lockwatch::Guard<'a, T> {
         crate::lockwatch::lock(mutex, "watchdog")
     }
 }

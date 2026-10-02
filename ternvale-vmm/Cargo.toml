@@ -20,7 +20,6 @@ ternvale-config = { path = "../ternvale-config" }
 tracing = "0.1"
 # Build the guest device tree (FDT) without linking libfdt.
 vm-fdt = "0.3.0"
-
-[dev-dependencies]
-# Log file checks in unit tests.
+# lockwatch (deadlock detector) for every mutex; re-exported as ternvale_vmm::lockwatch.
+# Also log file checks in unit tests. Already a dependency of ternvale-hv.
 ternvale-log = { path = "../ternvale-log" }

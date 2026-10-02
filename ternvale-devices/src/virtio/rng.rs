@@ -5,7 +5,7 @@
 //! chain, on the notifying vCPU thread. `getentropy` does not block.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
 use ternvale_vmm::GuestMemory;
 
@@ -113,7 +113,7 @@ impl VirtioRng {
         Arc::clone(&self.stats)
     }
 
-    fn lock(&self) -> MutexGuard<'_, GuestMemory> {
+    fn lock(&self) -> ternvale_vmm::lockwatch::Guard<'_, GuestMemory> {
         ternvale_vmm::lockwatch::lock(&self.memory, "guest-memory")
     }
 

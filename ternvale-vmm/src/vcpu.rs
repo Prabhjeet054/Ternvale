@@ -89,7 +89,7 @@ mod exit;
 mod stats;
 mod stop;
 
-pub use stats::VcpuStats;
+pub use stats::{process_cpu_ms, VcpuStats};
 pub use stop::VcpuStop;
 
 impl std::fmt::Debug for Vcpu {

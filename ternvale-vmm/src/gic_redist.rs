@@ -8,8 +8,9 @@
 //! [`RedistMap`]. Other redistributor writes are dropped:
 //! `hv_gic_set_redistributor_reg` returns `HV_DENIED` once the guest runs.
 
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
+use crate::lockwatch::Guard;
 use crate::mmio::MmioDevice;
 use crate::platform::{GIC_REDIST_BASE, GIC_REDIST_SIZE};
 use crate::smp::{gicr_affinity, mpidr};
@@ -101,7 +102,7 @@ impl RedistMap {
             | if last { TYPER_LAST } else { 0 }
     }
 
-    fn lock(&self) -> MutexGuard<'_, Vec<Option<Frame>>> {
+    fn lock(&self) -> Guard<'_, Vec<Option<Frame>>> {
         crate::lockwatch::lock(&self.frames, "redist-map")
     }
 }

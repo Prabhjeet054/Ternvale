@@ -7,7 +7,6 @@ mod esr;
 mod fdt;
 mod gic_redist;
 mod linux;
-pub mod lockwatch;
 mod machine;
 mod memory;
 mod mmio;
@@ -38,7 +37,9 @@ pub use platform::{
 pub use psci::{call as psci_call, PowerRequest, PsciAction, TRAP_PC_ADVANCE};
 pub use serial::SerialDevice;
 pub use smp::{dt_cpu_reg, mpidr, CpuPower, MPIDR_AFFINITY_MASK, MPIDR_RES1};
-pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStop};
+/// The deadlock detector every mutex in this crate and `ternvale-devices` goes through.
+pub use ternvale_log::lockwatch;
+pub use vcpu::{process_cpu_ms, ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStop};
 
 #[cfg(test)]
 #[path = "gic_hv_test.rs"]

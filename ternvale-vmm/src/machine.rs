@@ -247,8 +247,6 @@ impl Machine {
             power: &power,
             redist: &redist,
             watchdog: &watchdog,
-            irq_level: &irq_level,
-            spi_levels: &spi_levels,
             images: &images,
             vtimer_offset: &vtimer_offset,
         };
@@ -268,6 +266,7 @@ impl Machine {
             contended = locks.contended,
             long_waits = locks.long_waits,
             max_wait_us = locks.max_wait_us,
+            deadlocks = locks.deadlocks,
             "lock watch summary (process-wide)"
         );
         drop(bus);

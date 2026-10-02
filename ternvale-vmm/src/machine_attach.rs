@@ -1,8 +1,9 @@
 //! Extra MMIO devices attached after UART and GIC redistributor.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
+use crate::lockwatch::Guard;
 use crate::memory::GuestMemory;
 use crate::mmio::MmioDevice;
 use crate::serial::SerialDevice;
@@ -14,7 +15,7 @@ pub type SpiLevels = Arc<Mutex<Vec<SpiLevel>>>;
 /// The UART, shared by the bus (every vCPU) and the stdin thread.
 pub(super) type SharedSerial = Arc<Mutex<Box<dyn SerialDevice>>>;
 
-pub(super) fn lock_serial(serial: &SharedSerial) -> MutexGuard<'_, Box<dyn SerialDevice>> {
+pub(super) fn lock_serial(serial: &SharedSerial) -> Guard<'_, Box<dyn SerialDevice>> {
     crate::lockwatch::lock(serial, "serial")
 }
 

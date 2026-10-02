@@ -190,16 +190,13 @@ impl Vcpu {
             return Ok(());
         }
         let parked = std::time::Instant::now();
-        let (_guard, wait) = self
-            .wake
-            .wait_timeout(guard, Duration::from_millis(10))
-            .unwrap_or_else(|poison| poison.into_inner());
+        let (_guard, timed_out) = guard.wait_timeout(&self.wake, Duration::from_millis(10));
         self.counters.park(parked.elapsed());
         self.pending.store(false, Ordering::Release);
         tracing::debug!(
             target: "ternvale::vcpu",
             vcpu_id = self.id,
-            timed_out = wait.timed_out(),
+            timed_out,
             "wfi woke"
         );
         Ok(())

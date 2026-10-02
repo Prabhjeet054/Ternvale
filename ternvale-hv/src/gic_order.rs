@@ -61,8 +61,8 @@ impl Order {
 
 static ORDER: Mutex<Order> = Mutex::new(Order::new());
 
-pub(crate) fn lock_order() -> std::sync::MutexGuard<'static, Order> {
-    ORDER.lock().unwrap_or_else(|poison| poison.into_inner())
+pub(crate) fn lock_order() -> ternvale_log::lockwatch::Guard<'static, Order> {
+    ternvale_log::lockwatch::lock(&ORDER, "gic-create-order")
 }
 
 #[cfg(test)]

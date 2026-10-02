@@ -6,7 +6,7 @@
 //! devices in one process never share a CID.
 
 use std::collections::BTreeSet;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 use super::VsockError;
 
@@ -17,7 +17,7 @@ const CID_ANY: u32 = u32::MAX;
 
 static LEASED: Mutex<BTreeSet<u32>> = Mutex::new(BTreeSet::new());
 
-fn leased() -> MutexGuard<'static, BTreeSet<u32>> {
+fn leased() -> ternvale_vmm::lockwatch::Guard<'static, BTreeSet<u32>> {
     ternvale_vmm::lockwatch::lock(&LEASED, "vsock-cid-leases")
 }
 

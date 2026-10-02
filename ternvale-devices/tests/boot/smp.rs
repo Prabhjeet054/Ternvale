@@ -1,6 +1,7 @@
 //! SMP scenario: boot the busybox initrd on several CPUs (default 4), check
-//! `nproc` and `/proc/cpuinfo`, run one `dd` per CPU, and require every CPU
-//! to be busy in `/proc/stat` and to run a `dd` in `top`.
+//! `nproc` and `/proc/cpuinfo`, require an idle guest to cost the host little,
+//! run one `dd` per CPU, and require every CPU to be busy in `/proc/stat` and
+//! to run a `dd` in `top`.
 
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,6 +16,7 @@ use crate::common::{
     assets_root, banner_timeout, boot_cpus, drive, init_logging, log_dir, restore_stdin,
     stdin_pipe, write_result,
 };
+use crate::idle;
 
 const COMMAND: Duration = Duration::from_secs(30);
 /// Megabytes each `dd` copies in the literal workload (`count=2000`).
@@ -66,6 +68,7 @@ pub fn run() -> Result<(), String> {
     let feeder = std::thread::spawn(move || {
         drive(&serial_for_feed, &mut input, &flag, &host_log, script(cpus))
     });
+    let idle_watch = idle::watch(serial_log.clone(), Arc::clone(&cancel));
 
     let started = Instant::now();
     let exit = Machine::run_until(&vm, Box::new(uart), Arc::clone(&cancel));
@@ -73,11 +76,14 @@ pub fn run() -> Result<(), String> {
     let script_result = feeder
         .join()
         .unwrap_or_else(|_| Err("feeder panicked".to_string()));
+    let idle_cost = idle_watch.join().unwrap_or(None);
     restore_stdin(saved);
 
     let serial = std::fs::read_to_string(&serial_log).unwrap_or_default();
     write_result(&log_dir, &exit, &script_result, &serial);
-    let checked = script_result.and_then(|()| check_activity(&serial, cpus));
+    let checked = script_result
+        .and_then(|()| idle::check(idle_cost))
+        .and_then(|()| check_activity(&serial, cpus));
     let host = guard.log_path().display().to_string();
     match (checked, exit) {
         (Ok(()), Ok(ExitReason::SystemOff)) => {
@@ -135,10 +141,15 @@ fn script(cpus: u32) -> Vec<Step> {
         )
     };
     // This initramfs has only /bin/busybox and mounts neither /proc nor /dev.
-    let commands: [(String, String); 9] = [
+    let commands: [(String, String); 10] = [
         (
             "/bin/busybox --install -s /bin; mkdir -p /proc /dev; mount -t proc proc /proc; mount -t devtmpfs dev /dev; echo SETUP\"\"_OK\n".into(),
             "SETUP_OK".into(),
+        ),
+        // Every CPU idle; `idle::watch` measures the host CPU in between.
+        (
+            "echo IDLE\"\"_A; sleep 3; echo IDLE\"\"_B\n".into(),
+            idle::END.into(),
         ),
         ("echo nproc=$(nproc)\n".into(), format!("nproc={cpus}")),
         (

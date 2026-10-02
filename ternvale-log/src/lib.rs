@@ -7,6 +7,7 @@
 
 mod config;
 mod error;
+pub mod lockwatch;
 mod panic;
 mod subscriber;
 

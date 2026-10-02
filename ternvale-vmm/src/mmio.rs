@@ -8,9 +8,10 @@
 //! device sits behind its own mutex, so vCPUs only contend on the same device.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 use crate::esr::ExitEvent;
+use crate::lockwatch::Guard;
 use crate::vcpu::{Vcpu, VcpuError};
 
 /// A device behind one guest-physical window.
@@ -111,7 +112,7 @@ struct Slot {
 }
 
 impl Slot {
-    fn lock(&self) -> MutexGuard<'_, Box<dyn MmioDevice>> {
+    fn lock(&self) -> Guard<'_, Box<dyn MmioDevice>> {
         crate::lockwatch::lock(&self.device, &self.name)
     }
 }
