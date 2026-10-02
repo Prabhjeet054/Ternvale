@@ -1,0 +1,15 @@
+[package]
+name = "ternvale-agent-proto"
+description = "Host <-> guest agent protocol: versioned, length-prefixed JSON messages."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Message (de)serialization; the wire format is JSON.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Typed FrameError / VersionError (library crate rule).
+thiserror = "2"
+# Every message sent or received is logged at DEBUG on ternvale::agent.
+tracing = "0.1"

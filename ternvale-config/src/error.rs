@@ -86,6 +86,15 @@ pub enum ConfigError {
     /// `HOME` is unset, so the default NVRAM path cannot be built.
     #[error("HOME is unset; set nvram explicitly")]
     NoHome,
+
+    /// A `[vsock]` setting is out of range.
+    #[error("{field}: {reason}")]
+    InvalidVsock {
+        /// Field, such as `vsock.cid`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
 }
 
 /// Error type other Ternvale crates can return without depending on each other.

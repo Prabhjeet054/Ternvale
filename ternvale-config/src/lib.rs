@@ -5,9 +5,11 @@
 
 mod error;
 mod vm;
+mod vsock;
 
 pub use error::{ConfigError, TernvaleError};
 pub use vm::{default_nvram_path, Disk, Nic, VmConfig};
+pub use vsock::{VsockSection, MAX_UDS_DIR};
 
 #[cfg(test)]
 mod tests {
@@ -266,6 +268,31 @@ firmware = "{firmware}"
         let text = firmware_only(&fix, &format!("nvram = \"{}\"", toml_path(&fix.dir)));
         let error = VmConfig::from_toml(&text).expect_err("dir nvram");
         assert!(matches!(error, ConfigError::NvramPath { .. }), "{error}");
+    }
+
+    #[test]
+    fn vsock_section_parses_round_trips_and_is_validated() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&sample(&fix)).expect("no vsock");
+        assert_eq!(config.vsock, None);
+        let text = format!("{}\n[vsock]\ncid = 7\n", sample(&fix));
+        let config = VmConfig::from_toml(&text).expect("vsock");
+        let vsock = config.vsock.clone().expect("section");
+        assert_eq!((vsock.cid, vsock.agent), (Some(7), true));
+        let again = VmConfig::from_toml(&config.to_toml().expect("serialize")).expect("reparse");
+        assert_eq!(again, config);
+        let text = format!("{}\n[vsock]\ncid = 2\n", sample(&fix));
+        let error = VmConfig::from_toml(&text).expect_err("reserved cid");
+        assert!(
+            matches!(
+                error,
+                ConfigError::InvalidVsock {
+                    field: "vsock.cid",
+                    ..
+                }
+            ),
+            "{error}"
+        );
     }
 
     #[test]

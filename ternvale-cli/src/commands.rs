@@ -13,7 +13,7 @@ use ternvale_config::VmConfig;
 use crate::client::{self, Reach};
 use crate::disk;
 use crate::paths;
-use crate::protocol::{Request, Response, StatsJson, StatusJson};
+use crate::protocol::{AgentJson, Request, Response, StatsJson, StatusJson};
 
 /// How long `stop` waits for an orderly exit.
 const STOP_WAIT: Duration = Duration::from_secs(30);
@@ -67,6 +67,18 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
     }
     for (index, nic) in config.nics.iter().enumerate() {
         line(format!("  nic {index}       {}", nic.backend));
+    }
+    if let Some(vsock) = &config.vsock {
+        let cid = vsock.cid.map_or("auto".to_string(), |cid| cid.to_string());
+        let dir = vsock
+            .uds_dir
+            .clone()
+            .unwrap_or_else(|| crate::vsock::default_uds_dir_beside(socket, &config.name));
+        let agent = if vsock.agent { "on" } else { "off" };
+        line(format!(
+            "  vsock       cid {cid}, agent {agent}, sockets in {}",
+            dir.display()
+        ));
     }
     line(format!("  serial log  {}", config.serial_log.display()));
     line(format!("  socket      {}", socket.display()));
@@ -227,6 +239,9 @@ pub fn render(status: &StatusJson, stats: Option<&StatsJson>) -> String {
     if let Some(failure) = &status.failure {
         lines.push(format!("  failure: {failure}"));
     }
+    if let Some(agent) = &status.agent {
+        lines.push(render_agent(agent));
+    }
     if let Some(stats) = stats {
         if let Some(ms) = stats.process_cpu_ms {
             lines.push(format!("  process cpu {}", seconds(ms)));
@@ -255,6 +270,40 @@ pub fn render(status: &StatusJson, stats: Option<&StatsJson>) -> String {
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+/// One `agent:` line for `ternvale status`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(state = %agent.state))]
+pub fn render_agent(agent: &AgentJson) -> String {
+    let mut line = format!("  agent: {}", agent.state);
+    if agent.state == "connected" {
+        if let Some(version) = agent.version {
+            line.push_str(&format!(" (v{version})"));
+        }
+        let mut about: Vec<String> = agent.os.iter().chain(&agent.agent).cloned().collect();
+        if let Some(ms) = agent.connected_ms {
+            about.push(format!("up {}", seconds(ms)));
+        }
+        if let Some(rtt) = agent.rtt_us {
+            about.push(format!("rtt {}.{:03} ms", rtt / 1000, rtt % 1000));
+        }
+        about.push(format!("{}/{} pings answered", agent.pongs, agent.pings));
+        line.push_str(&format!(", {}", about.join(", ")));
+    } else if agent.state == "waiting" {
+        line.push_str(" (no guest agent has connected yet)");
+    }
+    if agent.disconnects > 0 || agent.connects > 1 {
+        line.push_str(&format!(
+            "; {} connect(s), {} disconnect(s)",
+            agent.connects, agent.disconnects
+        ));
+    }
+    if agent.state != "connected" {
+        if let Some(error) = &agent.last_error {
+            line.push_str(&format!("; last error: {error}"));
+        }
+    }
+    line
 }
 
 fn seconds(ms: u64) -> String {

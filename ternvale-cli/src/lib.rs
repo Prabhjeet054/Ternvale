@@ -17,6 +17,7 @@ pub mod paths;
 pub mod protocol;
 pub mod run;
 pub mod server;
+pub mod vsock;
 
 use std::process::ExitCode;
 
@@ -102,3 +103,7 @@ fn non_run(command: Command) -> Result<ExitCode> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "agent_tests.rs"]
+mod agent_tests;

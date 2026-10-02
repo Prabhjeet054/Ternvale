@@ -70,6 +70,7 @@ fn boot_once(
         serial_log: serial_log.to_path_buf(),
         firmware: Some(assets_root().join("firmware/QEMU_EFI.fd")),
         nvram: Some(nvram.to_path_buf()),
+        vsock: None,
     };
     tracing::info!(target: "ternvale::boot", serial = %serial_log.display(), nvram = %nvram.display(), "firmware boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

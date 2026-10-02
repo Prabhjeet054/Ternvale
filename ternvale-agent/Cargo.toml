@@ -1,0 +1,24 @@
+[package]
+name = "ternvale-agent"
+description = "In-guest Ternvale agent: connects to the host over vsock and answers its requests."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ternvale-agent"
+path = "src/main.rs"
+
+[dependencies]
+ternvale-agent-proto = { path = "../ternvale-agent-proto" }
+# Typed AgentError (library code; no anyhow outside ternvale-cli).
+thiserror = "2"
+tracing = "0.1"
+# stderr log output for the binary, level from TERNVALE_AGENT_LOG.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Safe AF_VSOCK stream (rust-vsock); keeps this crate free of raw socket FFI.
+vsock = "0.5"
+# Safe sync(2) / reboot(2) wrappers for the Shutdown request.
+nix = { version = "0.31", default-features = false, features = ["fs", "reboot"] }

@@ -26,8 +26,12 @@ tracing = "0.1"
 ternvale-vmm = { path = "../ternvale-vmm" }
 # fill_entropy (safe getentropy wrapper) for virtio-rng; raw FFI stays in ternvale-hv.
 ternvale-hv = { path = "../ternvale-hv" }
+# Host side of the guest agent protocol (AgentServer).
+ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 
 [dev-dependencies]
+# AgentServer tests run the real agent loop over a Unix socket.
+ternvale-agent = { path = "../ternvale-agent" }
 # Capture stdout while the hello payload writes through the real PL011.
 libc = "0.2"
 # Log file checks in unit tests.

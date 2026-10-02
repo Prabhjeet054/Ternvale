@@ -8,6 +8,8 @@
 #   test-assets/virtio-root/Image   (copied from virtio-blk or fetched)
 #   test-assets/virtio-root/data.ext4, plus pciutils in rootfs.ext4
 #                                   (via scripts/make-pci-assets.sh)
+#   the guest agent in rootfs.ext4  (via scripts/install-guest-agent.sh); the
+#                                   rootfs init starts it on ternvale.agent=
 #
 # Prerequisites:
 #   - Docker Desktop with linux/arm64 support
@@ -80,6 +82,9 @@ cat >"${tmp}/overlay/sbin/init" <<'INIT'
 /bin/busybox mount -t sysfs sys /sys
 /bin/busybox mount -t devtmpfs dev /dev 2>/dev/null || true
 /bin/busybox echo "ternvale root ready"
+if /bin/busybox grep -q 'ternvale\.agent=' /proc/cmdline && [ -x /usr/sbin/ternvale-agent-start ]; then
+    /usr/sbin/ternvale-agent-start
+fi
 exec /bin/busybox setsid /bin/busybox sh -c 'exec /bin/busybox sh -i' \
     </dev/console >/dev/console 2>&1
 INIT
@@ -236,4 +241,5 @@ log "wrote ${out}/rootfs.ext4 ($(du -h "${out}/rootfs.ext4" | awk '{print $1}'))
 log "wrote ${out}/initramfs.cpio ($(du -h "${out}/initramfs.cpio" | awk '{print $1}'))"
 [[ -f "${out}/Image" ]] && log "wrote ${out}/Image"
 "${script_dir}/make-pci-assets.sh" "${out}"
+"${script_dir}/install-guest-agent.sh" "${out}"
 log "done"

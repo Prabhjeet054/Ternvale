@@ -100,6 +100,7 @@ fn boot(
         serial_log: serial_log.to_path_buf(),
         firmware: Some(assets_root().join("firmware/QEMU_EFI.fd")),
         nvram: Some(nvram.to_path_buf()),
+        vsock: None,
     };
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));

@@ -25,5 +25,11 @@ ternvale-log = { path = "../ternvale-log" }
 ternvale-config = { path = "../ternvale-config" }
 # Machine, VmControl (lifecycle state machine and pause/resume).
 ternvale-vmm = { path = "../ternvale-vmm" }
-# PL011 serial, virtio-blk and virtio-net attachment for `run`.
+# PL011 serial, virtio-blk/net/vsock attachment and the agent server for `run`.
 ternvale-devices = { path = "../ternvale-devices" }
+# AGENT_PORT: where `run` puts the agent server's host socket.
+ternvale-agent-proto = { path = "../ternvale-agent-proto" }
+
+[dev-dependencies]
+# Status tests connect the real agent loop to the agent server.
+ternvale-agent = { path = "../ternvale-agent" }

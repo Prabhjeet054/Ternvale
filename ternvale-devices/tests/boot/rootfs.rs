@@ -146,6 +146,7 @@ fn run_once(
         serial_log: serial_log.clone(),
         firmware: None,
         nvram: None,
+        vsock: None,
     };
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));

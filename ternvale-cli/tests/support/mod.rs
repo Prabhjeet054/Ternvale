@@ -2,6 +2,9 @@
 //! run directory, spawning `ternvale run` with a stdin pipe, the guest serial
 //! log, a held control connection, and the host log's state transitions.
 
+// Compiled into each test binary separately; each uses only part of it.
+#![allow(dead_code)]
+
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -138,7 +141,13 @@ impl Harness {
 
     /// Write a busybox-initramfs config with `cpus` vCPUs and return its path.
     pub fn write_config(&self, cpus: u32) -> PathBuf {
-        let assets = root().join("test-assets");
+        self.write_config_with("", cpus, "")
+    }
+
+    /// Config booting `test-assets/<assets>/{Image,initramfs.cpio}`, with
+    /// `extra` TOML appended (top-level keys first, then tables).
+    pub fn write_config_with(&self, assets: &str, cpus: u32, extra: &str) -> PathBuf {
+        let assets = root().join("test-assets").join(assets);
         for file in ["Image", "initramfs.cpio"] {
             assert!(
                 assets.join(file).is_file(),
@@ -148,7 +157,7 @@ impl Harness {
         }
         let path = self.out.join("vm.toml");
         let text = format!(
-            "name = \"{}\"\ncpus = {cpus}\nram_mib = 256\nkernel = \"{}\"\ninitrd = \"{}\"\nserial_log = \"{}\"\n",
+            "name = \"{}\"\ncpus = {cpus}\nram_mib = 256\nkernel = \"{}\"\ninitrd = \"{}\"\nserial_log = \"{}\"\n{extra}",
             self.name,
             assets.join("Image").display(),
             assets.join("initramfs.cpio").display(),

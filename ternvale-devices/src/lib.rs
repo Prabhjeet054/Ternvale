@@ -1,9 +1,11 @@
 //! Emulated and virtio devices for Ternvale guests.
 
+mod agent;
 mod expect;
 mod uart;
 mod virtio;
 
+pub use agent::{AgentServer, AgentServerConfig, AgentServerError, AgentState, AgentStatus};
 pub use expect::{last_lines, Progress, Session, Step};
 pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 pub use virtio::{

@@ -2,7 +2,8 @@
 //!
 //! Guest serial goes to stdout and `serial_log`; host logs go to stderr and
 //! `~/Library/Logs/Ternvale`. Config disks are virtio-blk on virtio-mmio
-//! slots `0..d`, NICs are virtio-net on the slots after them.
+//! slots `0..d`, NICs are virtio-net on the slots after them, and `[vsock]`
+//! adds virtio-vsock on the next slot plus the guest agent server.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -11,7 +12,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ternvale_config::VmConfig;
-use ternvale_devices::{attach_disks, open_backend, Pl011, VirtioNet, DEFAULT_MAC};
+use ternvale_devices::{
+    attach_disks, open_backend, Pl011, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
+};
 use ternvale_log::LogConfig;
 use ternvale_vmm::{DeviceAttach, Machine, MachineError, MmioDevice, VmControl, VmState};
 
@@ -47,7 +50,10 @@ pub fn run(config_path: &Path) -> Result<ExitCode> {
 
     let socket = paths::socket_path(&config.name)?;
     let control = Arc::new(VmControl::new(&config.name, config.cpus));
-    let server = ControlServer::start(&socket, Arc::clone(&control))
+    let vsock = crate::vsock::prepare(&config, &socket)
+        .with_context(|| format!("set up vsock for vm {}", config.name))?;
+    let agent = vsock.as_ref().and_then(|setup| setup.agent.clone());
+    let server = ControlServer::with_agent(&socket, Arc::clone(&control), agent)
         .with_context(|| format!("start the control socket for vm {}", config.name))?;
     let reaper = spawn_reaper(Arc::clone(&control), socket.clone())?;
     let uart = Pl011::open(&config.serial_log)
@@ -59,14 +65,16 @@ pub fn run(config_path: &Path) -> Result<ExitCode> {
         .map(|disk| (disk.path.clone(), disk.read_only))
         .collect();
     let nics: Vec<String> = config.nics.iter().map(|nic| nic.backend.clone()).collect();
+    let device = vsock.as_ref().map(|setup| setup.device.clone());
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
-        attach_devices(attach, &disks, &nics)
+        attach_devices(attach, &disks, &nics, device.as_ref())
     });
 
     if reaper.join().is_err() {
         tracing::error!(target: "ternvale::cli", "force-stop reaper thread panicked");
     }
     drop(server);
+    drop(vsock);
     let status = control.status();
     let code = match &exit {
         Ok(reason) => {
@@ -87,12 +95,13 @@ pub fn run(config_path: &Path) -> Result<ExitCode> {
 
 type Attached = Vec<(u64, u64, Box<dyn MmioDevice>)>;
 
-/// Disks on slots `0..d`, then NICs. MACs count up from [`DEFAULT_MAC`].
-#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(disks = disks.len(), nics = nics.len()))]
+/// Disks on slots `0..d`, then NICs, then vsock. MACs count up from [`DEFAULT_MAC`].
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(disks = disks.len(), nics = nics.len(), vsock = vsock.is_some()))]
 fn attach_devices(
     attach: &DeviceAttach,
     disks: &[(std::path::PathBuf, bool)],
     nics: &[String],
+    vsock: Option<&VsockConfig>,
 ) -> Result<Attached, MachineError> {
     let mut devices = attach_disks(attach, disks)?;
     for (index, backend_name) in nics.iter().enumerate() {
@@ -113,6 +122,19 @@ fn attach_devices(
         )
         .map_err(fail)?;
         tracing::info!(target: "ternvale::cli", slot, backend = %backend_name, mac = ?mac, "attached virtio-net");
+        devices.push((base, size, device));
+    }
+    if let Some(vsock) = vsock {
+        let slot = u32::try_from(disks.len() + nics.len())
+            .map_err(|_| MachineError::Attach("vsock slot does not fit in u32".into()))?;
+        let (base, size, device, _stats, cid) = VirtioVsock::attach(
+            slot,
+            vsock,
+            Arc::clone(&attach.memory),
+            attach.virtio_irq_hook(slot),
+        )
+        .map_err(|error| MachineError::Attach(format!("vsock: {error}")))?;
+        tracing::info!(target: "ternvale::cli", slot, cid, uds_dir = %vsock.uds_dir.display(), "attached virtio-vsock");
         devices.push((base, size, device));
     }
     Ok(devices)

@@ -4,8 +4,11 @@
 //! `{"cmd":"resume"}`, `{"cmd":"shutdown"}`, `{"cmd":"force-stop"}`,
 //! `{"cmd":"query-stats"}`. Every response has `ok`; success carries
 //! `status` (and `stats` for `query-stats`), failure carries `error`.
+//! `status.agent` describes the guest agent connection when the VM runs an
+//! agent server.
 
 use serde::{Deserialize, Serialize};
+use ternvale_devices::AgentStatus;
 use ternvale_vmm::{VmStats, VmStatus};
 
 /// Longest request line accepted, in bytes.
@@ -78,6 +81,52 @@ pub struct StatusJson {
     pub stop_cause: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
+    /// Guest agent connection; absent when the VM runs no agent server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentJson>,
+}
+
+/// Guest agent connection in `status`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentJson {
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_pong_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rtt_us: Option<u64>,
+    pub connects: u64,
+    pub disconnects: u64,
+    pub pings: u64,
+    pub pongs: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+impl From<&AgentStatus> for AgentJson {
+    fn from(status: &AgentStatus) -> Self {
+        Self {
+            state: status.state.as_str().to_string(),
+            version: status.version,
+            os: status.os.clone(),
+            agent: status.agent.clone(),
+            connected_ms: status.connected_ms,
+            last_pong_ms: status.last_pong_ms,
+            rtt_us: status.rtt_us,
+            connects: status.connects,
+            disconnects: status.disconnects,
+            pings: status.pings,
+            pongs: status.pongs,
+            last_error: status.last_error.clone(),
+        }
+    }
 }
 
 /// One vCPU in `query-stats`. Counters are absent until the vCPU exists.
@@ -180,6 +229,7 @@ impl From<&VmStatus> for StatusJson {
             pauses: status.pauses,
             stop_cause: status.stop_cause.map(|cause| cause.to_string()),
             failure: status.failure.clone(),
+            agent: None,
         }
     }
 }

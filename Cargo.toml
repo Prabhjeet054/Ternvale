@@ -7,6 +7,8 @@ members = [
     "ternvale-vmm",
     "ternvale-devices",
     "ternvale-cli",
+    "ternvale-agent-proto",
+    "ternvale-agent",
 ]
 
 [workspace.package]

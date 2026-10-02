@@ -10,6 +10,9 @@
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
 //! Set `TERNVALE_BOOT_SCENARIO=devices` to read /dev/hwrng and ping/pong over vsock
 //! (requires `./scripts/make-devices-initramfs.sh` assets under `test-assets/virtio-devices/`).
+//! Set `TERNVALE_BOOT_SCENARIO=agent` to run the guest agent from the same assets against the
+//! host `AgentServer`: handshake, heartbeats, reconnect after a server restart, requests, and
+//! a guest power-off on `Shutdown`.
 //! Set `TERNVALE_BOOT_SCENARIO=smp` to check `nproc`, `/proc/cpuinfo`, the host CPU cost of
 //! an idle guest, and a per-CPU `dd` workload on `TERNVALE_BOOT_CPUS` CPUs (default 4) with
 //! the initrd assets.
@@ -19,6 +22,7 @@
 //! (`./scripts/fetch-installer-iso.sh`) from UEFI on a read-only virtio-blk disk and start
 //! `setup-alpine` (`TERNVALE_INSTALLER_TRANSPORT=pci` puts the disk on virtio-pci).
 
+mod agent;
 mod common;
 mod devices;
 mod firmware;
@@ -51,11 +55,12 @@ fn run() -> Result<(), String> {
         "pci" => rootfs::run_pci(),
         "net" => net::run(),
         "devices" => devices::run(),
+        "agent" => agent::run(),
         "smp" => smp::run(),
         "firmware" => firmware::run(),
         "installer" => installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, smp, firmware, or installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, or installer)"
         )),
     }
 }

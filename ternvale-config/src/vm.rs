@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
+use crate::VsockSection;
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
@@ -70,6 +71,9 @@ pub struct VmConfig {
     /// used with `firmware`; defaults to [`default_nvram_path`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nvram: Option<PathBuf>,
+    /// Optional virtio-vsock device (and guest agent server).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vsock: Option<VsockSection>,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -215,6 +219,9 @@ impl VmConfig {
             );
         }
         validate_serial_log(&self.serial_log)?;
+        if let Some(vsock) = &self.vsock {
+            vsock.validate()?;
+        }
         tracing::debug!(target: "ternvale::config", name = %self.name, "VM config is valid");
         Ok(())
     }

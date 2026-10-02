@@ -6,9 +6,11 @@
 # linux-virt package, and the load order of virtio_mmio, virtio_rng, and
 # vmw_vsock_virtio_transport comes from its modules.dep. guest-tests/vsock-ping.c
 # is compiled static for aarch64 musl in a linux/arm64 Alpine container (busybox
-# has no vsock support). The initramfs /init loads the modules, waits for
+# has no vsock support). The guest agent is built static by
+# build-guest-agent.sh. The initramfs /init loads the modules, waits for
 # /dev/hwrng and /dev/vsock, prints "ternvale devices ready rng=<current>",
-# and starts a shell.
+# starts /bin/ternvale-agent in the background when the kernel cmdline has
+# ternvale.agent=<1|trace|debug|info|warn>, and starts a shell.
 #
 # Usage:
 #   ./scripts/make-devices-initramfs.sh [OUT_DIR]
@@ -47,6 +49,7 @@ set -e
 apk add --no-cache gcc musl-dev linux-headers >/dev/null
 gcc -static -Os -Wall -Werror -o /build/vsock-ping /build/vsock-ping.c
 '
+"${script_dir}/build-guest-agent.sh" "${tmp}/build/ternvale-agent"
 
 curl -fsSL --retry 3 -A Ternvale -o "${tmp}/apkindex.tar.gz" \
     "${alpine}/main/aarch64/APKINDEX.tar.gz"
@@ -119,8 +122,9 @@ mkdir -p "${tmp}/initrd/bin" "${tmp}/initrd/lib" "${tmp}/initrd/modules"
 tar -xOf "${tmp}/busybox.apk" bin/busybox >"${tmp}/initrd/bin/busybox"
 tar -xOf "${tmp}/musl.apk" lib/ld-musl-aarch64.so.1 >"${tmp}/initrd/lib/ld-musl-aarch64.so.1"
 cp "${tmp}/build/vsock-ping" "${tmp}/initrd/bin/vsock-ping"
+cp "${tmp}/build/ternvale-agent" "${tmp}/initrd/bin/ternvale-agent"
 chmod 755 "${tmp}/initrd/bin/busybox" "${tmp}/initrd/bin/vsock-ping" \
-    "${tmp}/initrd/lib/ld-musl-aarch64.so.1"
+    "${tmp}/initrd/bin/ternvale-agent" "${tmp}/initrd/lib/ld-musl-aarch64.so.1"
 ln -sf ld-musl-aarch64.so.1 "${tmp}/initrd/lib/libc.musl-aarch64.so.1"
 
 : >"${tmp}/initrd/modules/order"
@@ -153,6 +157,12 @@ while { [ ! -e /dev/hwrng ] || [ ! -e /dev/vsock ]; } && [ "$i" -lt 100 ]; do
 done
 rng=$(cat /sys/class/misc/hw_random/rng_current 2>/dev/null)
 echo "ternvale devices ready rng=${rng:-missing} vsock=$([ -e /dev/vsock ] && echo yes || echo no)"
+agent=$(sed -n 's/.*ternvale\.agent=\([a-z0-9]*\).*/\1/p' /proc/cmdline)
+if [ -n "${agent}" ]; then
+  case "${agent}" in trace|debug|info|warn) level=${agent} ;; *) level=info ;; esac
+  TERNVALE_AGENT_LOG=${level} setsid /bin/ternvale-agent </dev/null >/dev/console 2>&1 &
+  echo "ternvale agent started pid=$! log=${level}"
+fi
 exec setsid sh -c 'exec sh -i' </dev/console >/dev/console 2>&1
 INIT
 chmod 755 "${tmp}/initrd/init"

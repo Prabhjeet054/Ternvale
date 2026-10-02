@@ -14,9 +14,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
+use ternvale_devices::AgentServer;
 use ternvale_vmm::VmControl;
 
-use crate::protocol::{Request, Response, DEFAULT_PAUSE_MS, MAX_LINE, MAX_PAUSE_MS};
+use crate::protocol::{AgentJson, Request, Response, DEFAULT_PAUSE_MS, MAX_LINE, MAX_PAUSE_MS};
 
 const ACCEPT_POLL: Duration = Duration::from_millis(50);
 const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -33,6 +34,16 @@ impl ControlServer {
     /// socket; a stale socket file left by a crash is replaced.
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(path = %path.display(), vm = control.name()))]
     pub fn start(path: &Path, control: Arc<VmControl>) -> Result<Self> {
+        Self::with_agent(path, control, None)
+    }
+
+    /// [`Self::start`], also reporting `agent` in every status.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(path = %path.display(), vm = control.name(), agent = agent.is_some()))]
+    pub fn with_agent(
+        path: &Path,
+        control: Arc<VmControl>,
+        agent: Option<Arc<AgentServer>>,
+    ) -> Result<Self> {
         let dir = path.parent().with_context(|| {
             format!("control socket {} has no parent directory", path.display())
         })?;
@@ -52,7 +63,7 @@ impl ControlServer {
         let flag = Arc::clone(&stop);
         let thread = std::thread::Builder::new()
             .name("control".to_string())
-            .spawn(move || accept_loop(&listener, &control, &flag))
+            .spawn(move || accept_loop(&listener, &control, agent.as_ref(), &flag))
             .context("spawn control socket thread")?;
         tracing::info!(target: "ternvale::cli", path = %path.display(), "control socket listening");
         Ok(Self {
@@ -104,7 +115,12 @@ fn clear_stale(path: &Path) -> Result<()> {
         .with_context(|| format!("remove stale control socket {}", path.display()))
 }
 
-fn accept_loop(listener: &UnixListener, control: &Arc<VmControl>, stop: &AtomicBool) {
+fn accept_loop(
+    listener: &UnixListener,
+    control: &Arc<VmControl>,
+    agent: Option<&Arc<AgentServer>>,
+    stop: &AtomicBool,
+) {
     let mut next_id = 0u64;
     while !stop.load(Ordering::Acquire) {
         match listener.accept() {
@@ -112,9 +128,10 @@ fn accept_loop(listener: &UnixListener, control: &Arc<VmControl>, stop: &AtomicB
                 next_id += 1;
                 let id = next_id;
                 let control = Arc::clone(control);
+                let agent = agent.cloned();
                 let spawned = std::thread::Builder::new()
                     .name(format!("control-{id}"))
-                    .spawn(move || serve(stream, &control, id));
+                    .spawn(move || serve(stream, &control, agent.as_deref(), id));
                 if let Err(error) = spawned {
                     tracing::error!(target: "ternvale::cli", conn = id, error = %error, "could not spawn control connection thread");
                 }
@@ -131,16 +148,16 @@ fn accept_loop(listener: &UnixListener, control: &Arc<VmControl>, stop: &AtomicB
     tracing::debug!(target: "ternvale::cli", "control socket accept loop stopped");
 }
 
-fn serve(stream: UnixStream, control: &VmControl, id: u64) {
+fn serve(stream: UnixStream, control: &VmControl, agent: Option<&AgentServer>, id: u64) {
     let span =
         tracing::info_span!(target: "ternvale::cli", "control", vm = control.name(), conn = id);
     let _entered = span.enter();
-    if let Err(error) = serve_lines(stream, control) {
+    if let Err(error) = serve_lines(stream, control, agent) {
         tracing::warn!(target: "ternvale::cli", error = %format!("{error:#}"), "control connection ended with an error");
     }
 }
 
-fn serve_lines(stream: UnixStream, control: &VmControl) -> Result<()> {
+fn serve_lines(stream: UnixStream, control: &VmControl, agent: Option<&AgentServer>) -> Result<()> {
     stream
         .set_nonblocking(false)
         .context("make control connection blocking")?;
@@ -164,7 +181,7 @@ fn serve_lines(stream: UnixStream, control: &VmControl) -> Result<()> {
             tracing::warn!(target: "ternvale::cli", bytes = line.len(), "control request too long");
             Response::error(format!("request longer than {MAX_LINE} bytes"))
         } else {
-            handle_line(line.trim_end(), control)
+            handle_line(line.trim_end(), control, agent)
         };
         let mut out = serde_json::to_string(&response).context("encode control response")?;
         out.push('\n');
@@ -177,9 +194,10 @@ fn serve_lines(stream: UnixStream, control: &VmControl) -> Result<()> {
     }
 }
 
-/// Parse one request line and apply it to `control`.
+/// Parse one request line and apply it to `control`; a status in the
+/// response includes `agent`'s connection.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name()))]
-pub fn handle_line(line: &str, control: &VmControl) -> Response {
+pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>) -> Response {
     let request: Request = match serde_json::from_str(line) {
         Ok(request) => request,
         Err(error) => {
@@ -206,8 +224,11 @@ pub fn handle_line(line: &str, control: &VmControl) -> Response {
             .map(|status| Response::status(&status)),
     };
     match result {
-        Ok(response) => {
-            tracing::debug!(target: "ternvale::cli", state = ?response.status.as_ref().map(|s| s.state.as_str()), "control request done");
+        Ok(mut response) => {
+            if let (Some(status), Some(agent)) = (response.status.as_mut(), agent) {
+                status.agent = Some(AgentJson::from(&agent.status()));
+            }
+            tracing::debug!(target: "ternvale::cli", state = ?response.status.as_ref().map(|s| s.state.as_str()), agent = ?response.status.as_ref().and_then(|s| s.agent.as_ref()).map(|a| a.state.as_str()), "control request done");
             response
         }
         Err(error) => {
