@@ -13,6 +13,14 @@ pub use virtio::{
     STATUS_DRIVER_OK, STATUS_FAILED, STATUS_FEATURES_OK, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO,
     VIRTIO_BLK_ID, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
 };
+pub use virtio::{
+    open_backend, summarize_frame, AttachedNet, LoopbackBackend, NetBackend, NetError, NetStats,
+    PacketKind, PacketSummary, PcapWriter, VirtioNet, DEFAULT_MAC, GATEWAY_IP, GATEWAY_MAC,
+    MAX_FRAME, NET_HDR_LEN, PCAP_ENV, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF,
+    VIRTIO_NET_F_STATUS, VIRTIO_NET_ID, VIRTIO_NET_S_LINK_UP,
+};
+#[cfg(feature = "vmnet")]
+pub use virtio::{VmnetBackend, VMNET_SHARED_MODE};
 
 #[cfg(test)]
 #[path = "boot_hv_test.rs"]

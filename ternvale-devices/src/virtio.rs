@@ -7,6 +7,7 @@ mod attach_disks;
 mod blk;
 mod irq;
 mod mmio;
+mod net;
 mod queue;
 
 pub use attach_disks::attach_disks;
@@ -16,6 +17,14 @@ pub use blk::{
 };
 pub use irq::{IrqHook, VirtioIrq};
 pub use mmio::{slot_base, VirtioMmio, VirtioMmioError};
+pub use net::{
+    open_backend, summarize as summarize_frame, AttachedNet, LoopbackBackend, NetBackend, NetError,
+    NetStats, PacketKind, PacketSummary, PcapWriter, VirtioNet, DEFAULT_MAC, GATEWAY_IP,
+    GATEWAY_MAC, MAX_FRAME, NET_HDR_LEN, PCAP_ENV, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF,
+    VIRTIO_NET_F_STATUS, VIRTIO_NET_ID, VIRTIO_NET_S_LINK_UP,
+};
+#[cfg(feature = "vmnet")]
+pub use net::{VmnetBackend, VMNET_SHARED_MODE};
 pub use queue::{Buffer, Chain, SplitQueue};
 
 /// `VIRTIO_F_VERSION_1`. Required before `FEATURES_OK`.

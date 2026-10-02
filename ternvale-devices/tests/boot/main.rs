@@ -3,9 +3,12 @@
 //! `scripts/boot-test.sh` runs this binary and keeps the logs under `target/boot-logs/`.
 //! Set `TERNVALE_BOOT_SCENARIO=rootfs` for the virtio-blk persistence scenario
 //! (requires `./scripts/make-rootfs.sh` assets under `test-assets/virtio-root/`).
+//! Set `TERNVALE_BOOT_SCENARIO=net` to ping the loopback gateway over virtio-net
+//! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
 
 mod common;
 mod initrd;
+mod net;
 mod rootfs;
 
 fn main() {
@@ -26,8 +29,9 @@ fn run() -> Result<(), String> {
     match scenario.as_str() {
         "initrd" | "" => initrd::run(),
         "rootfs" => rootfs::run(),
+        "net" => net::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd or rootfs)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, or net)"
         )),
     }
 }

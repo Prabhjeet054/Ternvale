@@ -6,6 +6,8 @@
 #   initrd  (default) — busybox initramfs smoke test
 #   rootfs            — virtio-blk ext4 persistence (needs ./scripts/make-rootfs.sh),
 #                       then a host `fsck.ext4 -fn` of the image via scripts/fsck-rootfs.sh
+#   net               — virtio-net loopback ping (needs ./scripts/make-net-initramfs.sh),
+#                       then tshark filters over net.pcap via scripts/check-pcap.sh
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
@@ -27,6 +29,12 @@ set -e
 if [[ "$scenario" == "rootfs" && "$status" -eq 0 ]]; then
     set +e
     "${script_dir}/fsck-rootfs.sh" "${log_dir}/rootfs.ext4" /root/t persist
+    status=$?
+    set -e
+fi
+if [[ "$scenario" == "net" && "$status" -eq 0 ]]; then
+    set +e
+    "${script_dir}/check-pcap.sh" "${log_dir}/net.pcap"
     status=$?
     set -e
 fi

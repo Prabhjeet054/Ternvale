@@ -8,6 +8,8 @@ publish.workspace = true
 [features]
 # Builds tests/boot.rs, the hypervisor boot harness. `cargo test --workspace` skips it.
 boot-test = []
+# Stub vmnet.framework (shared mode) virtio-net backend. Off by default; see docs/NET.md.
+vmnet = []
 
 [[test]]
 name = "boot"
