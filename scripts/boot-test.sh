@@ -6,6 +6,10 @@
 #   initrd  (default) — busybox initramfs smoke test
 #   rootfs            — virtio-blk ext4 persistence (needs ./scripts/make-rootfs.sh),
 #                       then a host `fsck.ext4 -fn` of the image via scripts/fsck-rootfs.sh
+#   pci               — the rootfs scenario with the disk on virtio-pci (00:01.0) behind
+#                       the ECAM host bridge, plus `lspci -nn` and a hand mount of
+#                       data.ext4 on 00:02.0 (needs ./scripts/make-pci-assets.sh);
+#                       host fsck of both images
 #   net               — virtio-net loopback ping (needs ./scripts/make-net-initramfs.sh),
 #                       then tshark filters over net.pcap via scripts/check-pcap.sh
 #   devices           — virtio-rng /dev/hwrng samples and a vsock ping/pong on port 5000
@@ -31,9 +35,15 @@ set +e
 cargo test -p ternvale-devices --features boot-test --test boot -- --nocapture
 status=$?
 set -e
-if [[ "$scenario" == "rootfs" && "$status" -eq 0 ]]; then
+if [[ ( "$scenario" == "rootfs" || "$scenario" == "pci" ) && "$status" -eq 0 ]]; then
     set +e
     "${script_dir}/fsck-rootfs.sh" "${log_dir}/rootfs.ext4" /root/t persist
+    status=$?
+    set -e
+fi
+if [[ "$scenario" == "pci" && "$status" -eq 0 ]]; then
+    set +e
+    "${script_dir}/fsck-rootfs.sh" "${log_dir}/data.ext4" /m pci-data
     status=$?
     set -e
 fi

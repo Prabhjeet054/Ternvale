@@ -9,7 +9,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use ternvale_vmm::GuestMemory;
+use ternvale_vmm::pci::Bdf;
+use ternvale_vmm::{DeviceAttach, GuestMemory, MachineError};
 
 use super::irq::{IrqHook, VirtioIrq};
 use super::queue::SplitQueue;
@@ -171,6 +172,31 @@ impl VirtioBlk {
             Box::new(transport),
             stats,
         ))
+    }
+
+    /// Open `path` as a virtio-pci function on the next free device of bus 0.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip(attach),
+        fields(path = %path.display(), read_only)
+    )]
+    pub fn attach_pci(
+        attach: &DeviceAttach,
+        path: &Path,
+        read_only: bool,
+    ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
+        let irq = VirtioIrq::new();
+        let blk = Self::open(
+            path,
+            read_only,
+            Arc::clone(&attach.memory),
+            Arc::clone(&irq),
+        )
+        .map_err(|error| MachineError::Attach(error.to_string()))?;
+        let stats = Arc::clone(&blk.stats);
+        let bdf = super::pci::attach_pci(attach, Box::new(blk), irq)?;
+        Ok((bdf, stats))
     }
 
     /// Per-device request counters.

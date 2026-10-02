@@ -1,6 +1,6 @@
 //! Virtio status state machine. Every accepted or rejected write is logged.
 
-use super::VirtioMmio;
+use super::VirtioCore;
 use crate::virtio::{
     STATUS_ACKNOWLEDGE, STATUS_DRIVER, STATUS_DRIVER_OK, STATUS_FAILED, STATUS_FEATURES_OK,
     VIRTIO_F_VERSION_1,
@@ -14,37 +14,40 @@ const DRIVER: u32 = STATUS_ACKNOWLEDGE | STATUS_DRIVER;
 const FEATURES: u32 = STATUS_ACKNOWLEDGE | STATUS_DRIVER | STATUS_FEATURES_OK;
 const DRIVER_OK: u32 = STATUS_ACKNOWLEDGE | STATUS_DRIVER | STATUS_FEATURES_OK | STATUS_DRIVER_OK;
 
-impl VirtioMmio {
-    pub(super) fn write_driver_features(&mut self, value: u32) {
+impl VirtioCore {
+    /// Write 32-bit driver feature word `sel`. Ignored after `FEATURES_OK`.
+    pub(crate) fn write_driver_features(&mut self, sel: u32, value: u32) {
         if self.status & STATUS_FEATURES_OK != 0 {
             tracing::warn!(
-                target: "ternvale::virtio::mmio",
+                target: "ternvale::virtio::transport",
                 name = %self.name,
                 "driver feature write after FEATURES_OK"
             );
             return;
         }
-        match self.driver_features_sel {
+        match sel {
             0 => self.driver_features = (self.driver_features & !0xffff_ffff) | u64::from(value),
             1 => {
                 self.driver_features =
                     (self.driver_features & 0xffff_ffff) | (u64::from(value) << 32);
             }
             _ => tracing::warn!(
-                target: "ternvale::virtio::mmio",
+                target: "ternvale::virtio::transport",
                 name = %self.name,
-                sel = self.driver_features_sel,
+                sel,
                 "driver feature select out of range"
             ),
         }
     }
 
-    pub(super) fn write_status(&mut self, requested: u32) {
+    /// Apply a driver status write. 0 resets the device; the transport clears
+    /// its own select registers.
+    pub(crate) fn write_status(&mut self, requested: u32) {
         if requested == 0 {
             let from = self.status;
             self.reset();
             tracing::info!(
-                target: "ternvale::virtio::mmio",
+                target: "ternvale::virtio::transport",
                 name = %self.name,
                 from,
                 to = 0,
@@ -55,7 +58,7 @@ impl VirtioMmio {
         }
         if let Err(reason) = self.check_status(requested) {
             tracing::error!(
-                target: "ternvale::virtio::mmio",
+                target: "ternvale::virtio::transport",
                 name = %self.name,
                 from = self.status,
                 requested,
@@ -70,7 +73,7 @@ impl VirtioMmio {
         let from = self.status;
         self.status = requested;
         tracing::info!(
-            target: "ternvale::virtio::mmio",
+            target: "ternvale::virtio::transport",
             name = %self.name,
             from,
             to = requested,
@@ -113,10 +116,7 @@ impl VirtioMmio {
     }
 
     fn reset(&mut self) {
-        self.device_features_sel = 0;
-        self.driver_features_sel = 0;
         self.driver_features = 0;
-        self.queue_sel = 0;
         self.status = 0;
         self.interrupt.ack(0b11);
         for queue in &mut self.queues {

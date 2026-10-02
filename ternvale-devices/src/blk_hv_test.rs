@@ -43,7 +43,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
     unsafe {
         std::env::set_var(
             "TERNVALE_LOG",
-            "info,ternvale::virtio::blk=trace,ternvale::virtio::mmio=info",
+            "info,ternvale::virtio::blk=trace,ternvale::virtio::mmio=info,ternvale::virtio::transport=info",
         );
     }
     let mut config = ternvale_log::LogConfig::new("virtio-blk", dir.clone());

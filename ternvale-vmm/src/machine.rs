@@ -1,7 +1,8 @@
 //! Boots a configured guest and runs it until PSCI powers it off.
 //!
-//! Order: config, guest RAM, GIC, UART on the MMIO bus, DTB, then one host
-//! thread per vCPU (`machine_vcpu.rs`). CPU 0 loads Linux; the others start on
+//! Order: config, guest RAM, GIC, attached devices (MMIO and PCI), UART and
+//! the PCI ECAM/BAR windows on the MMIO bus, DTB, then one host thread per
+//! vCPU (`machine_vcpu.rs`). CPU 0 loads Linux; the others start on
 //! PSCI `CPU_ON`. Host stdin goes straight into the shared UART, which raises
 //! GIC SPI 1. A watchdog warns if no exit arrives for 10 seconds. Any vCPU can
 //! end the VM; [`CpuPower`] then cancels every vCPU with one `hv_vcpus_exit`.
@@ -99,6 +100,9 @@ pub enum MachineError {
     /// Attaching an MMIO device failed.
     #[error("attach devices: {0}")]
     Attach(String),
+    /// Adding a PCI function or mapping the PCI windows failed.
+    #[error("vm pci: {0}")]
+    Pci(#[from] crate::pci::PciError),
 }
 
 /// One guest. [`Machine::run`] owns the hypervisor VM until the guest stops.
@@ -171,12 +175,13 @@ impl Machine {
             mem.map(&vm, RAM_BASE, ram_size)?;
         }
         let spi_levels = Arc::new(Mutex::new(Vec::new()));
-        let devices = attach(&DeviceAttach {
-            memory: Arc::clone(&memory),
-            gic: Arc::clone(&gic),
-            spi_levels: Arc::clone(&spi_levels),
-        })?;
-        if !config.disks.is_empty() && devices.is_empty() {
+        let attached = DeviceAttach::new(
+            Arc::clone(&memory),
+            Arc::clone(&gic),
+            Arc::clone(&spi_levels),
+        );
+        let devices = attach(&attached)?;
+        if !config.disks.is_empty() && devices.is_empty() && attached.pci.function_count() <= 1 {
             tracing::warn!(
                 target: "ternvale::boot",
                 disks = config.disks.len(),
@@ -208,6 +213,9 @@ impl Machine {
         for (base, size, device) in devices {
             bus.register(base, size, device)?;
         }
+        attached.pci.register(&mut bus)?;
+        // PCI functions (and their guest-memory handles) must die with the bus, before the VM.
+        drop(attached);
         let power = Arc::new(CpuPower::new(config.cpus, RAM_BASE, ram_size));
         let shutdown = Arc::new(AtomicBool::new(false));
         let watchdog = Arc::new(Watchdog::new(HANG));

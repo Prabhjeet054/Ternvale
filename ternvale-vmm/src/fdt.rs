@@ -8,6 +8,9 @@ use std::process::Command;
 
 use vm_fdt::{FdtWriter, FdtWriterResult};
 
+#[path = "fdt_pci.rs"]
+mod pci_node;
+
 use crate::memory::{GuestMemory, MemoryError};
 use crate::platform::{
     GIC_DIST_BASE, GIC_DIST_SIZE, GIC_REDIST_BASE, GIC_REDIST_SIZE, UART_BASE, VIRTIO_MMIO_BASE,
@@ -97,6 +100,7 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     uart(&mut w, clock)?;
     apb_clock(&mut w, clock)?;
     virtio(&mut w)?;
+    pci_node::pcie(&mut w, gic)?;
     w.end_node(root)?;
     let blob = w.finish()?;
     tracing::info!(target: "ternvale::boot", bytes = blob.len(), "built guest dtb");

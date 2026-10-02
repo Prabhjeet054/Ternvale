@@ -82,8 +82,11 @@ fn dumps_a_decompiled_dtb_when_asked() {
 }
 
 fn dtc_dts(blob: &[u8]) -> String {
+    // Tests run in parallel and may decompile identical blobs.
+    static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
-        "ternvale-vmm-{}-dtc-{}",
+        "ternvale-vmm-{}-dtc-{}-{call}",
         std::process::id(),
         blob.len()
     ));
@@ -135,6 +138,29 @@ fn decompiled_dts_matches_platform_regs() {
     assert!(dts.contains("stdout-path = \"/pl011@9000000\""), "{dts}");
     assert!(dts.contains("#address-cells = <0x02>"), "{dts}");
     assert!(dts.contains("#size-cells = <0x02>"), "{dts}");
+}
+
+#[test]
+fn decompiled_dts_has_the_ecam_host_bridge() {
+    let dts = dtc_dts(&build_fdt(&sample()).expect("dtb"));
+    let start = dts.find("pcie@3f000000 {").expect("pcie node");
+    let node = &dts[start..start + dts[start..].find("};").expect("node end")];
+    for needle in [
+        "compatible = \"pci-host-ecam-generic\"",
+        "device_type = \"pci\"",
+        "reg = <0x00 0x3f000000 0x00 0x1000000>",
+        "bus-range = <0x00 0x0f>",
+        "#address-cells = <0x03>",
+        "#size-cells = <0x02>",
+        "#interrupt-cells = <0x01>",
+        "ranges = <0x2000000 0x00 0x10000000 0x00 0x10000000 0x00 0x2f000000>",
+        "interrupt-map-mask = <0x1800 0x00 0x00 0x07>",
+        "interrupt-map = <0x00 0x00 0x00 0x01 0x02 0x00 0x00 0x00 0x03 0x04",
+        "dma-coherent",
+    ] {
+        assert!(node.contains(needle), "missing {needle}:\n{node}");
+    }
+    assert!(!node.contains("msi-parent"), "{node}");
 }
 
 #[test]

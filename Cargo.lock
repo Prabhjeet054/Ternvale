@@ -522,6 +522,7 @@ dependencies = [
  "ternvale-log",
  "thiserror",
  "tracing",
+ "tracing-subscriber",
  "vm-fdt",
 ]
 

@@ -1,8 +1,9 @@
-//! Attach config disk images as virtio-blk MMIO devices.
+//! Attach config disk images as virtio-blk devices (virtio-mmio or virtio-pci).
 
 use std::path::Path;
 use std::sync::Arc;
 
+use ternvale_vmm::pci::Bdf;
 use ternvale_vmm::{DeviceAttach, MachineError, MmioDevice};
 
 use super::VirtioBlk;
@@ -44,4 +45,32 @@ pub fn attach_disks<P: AsRef<Path>>(
         devices.push((base, size, device));
     }
     Ok(devices)
+}
+
+/// Open each `(path, read_only)` as a virtio-blk PCI function, in order, on
+/// the free device numbers of bus 0 (the first disk is 00:01.0).
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::virtio::blk",
+    skip_all,
+    fields(disks = disks.len())
+)]
+pub fn attach_disks_pci<P: AsRef<Path>>(
+    attach: &DeviceAttach,
+    disks: &[(P, bool)],
+) -> Result<Vec<Bdf>, MachineError> {
+    let mut functions = Vec::with_capacity(disks.len());
+    for (path, read_only) in disks {
+        let path = path.as_ref();
+        let (bdf, _stats) = VirtioBlk::attach_pci(attach, path, *read_only)?;
+        tracing::info!(
+            target: "ternvale::virtio::blk",
+            %bdf,
+            path = %path.display(),
+            read_only = *read_only,
+            "attached virtio-blk over pci from config disk"
+        );
+        functions.push(bdf);
+    }
+    Ok(functions)
 }

@@ -1,9 +1,7 @@
 //! Virtio-mmio v2 register file.
 //!
-//! Status transitions live in [`status`]. Queue registers live in [`queue`].
-
-mod queue;
-mod status;
+//! Status, feature, and queue state lives in [`VirtioCore`]; this file maps
+//! the virtio-mmio register offsets onto it and owns the select registers.
 
 use std::sync::Arc;
 
@@ -11,8 +9,9 @@ use ternvale_vmm::{
     MmioBus, MmioDevice, MmioError, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
 
+use super::core::{feature_word, mask, QueueAddr, VirtioCore};
 use super::irq::VirtioIrq;
-use super::{VirtioDevice, VIRTIO_F_VERSION_1};
+use super::VirtioDevice;
 
 const MAGIC: u32 = 0x7472_6976;
 const VERSION: u32 = 2;
@@ -79,27 +78,12 @@ pub enum VirtioMmioError {
     },
 }
 
-#[derive(Debug)]
-pub(super) struct Queue {
-    num_max: u32,
-    num: u32,
-    ready: bool,
-    desc: u64,
-    driver: u64,
-    device: u64,
-}
-
 /// Virtio-mmio v2 transport for one [`VirtioDevice`].
 pub struct VirtioMmio {
-    device: Box<dyn VirtioDevice>,
-    name: String,
+    core: VirtioCore,
     device_features_sel: u32,
     driver_features_sel: u32,
-    driver_features: u64,
     queue_sel: u32,
-    queues: Vec<Queue>,
-    status: u32,
-    interrupt: Arc<VirtioIrq>,
 }
 
 impl VirtioMmio {
@@ -122,16 +106,6 @@ impl VirtioMmio {
         fields(slot, device_id = device.device_id())
     )]
     pub fn with_irq(slot: u32, device: Box<dyn VirtioDevice>, interrupt: Arc<VirtioIrq>) -> Self {
-        let queues = (0..device.num_queues())
-            .map(|index| Queue {
-                num_max: u32::from(device.queue_num_max(index)),
-                num: 0,
-                ready: false,
-                desc: 0,
-                driver: 0,
-                device: 0,
-            })
-            .collect();
         tracing::info!(
             target: "ternvale::virtio::mmio",
             slot,
@@ -140,21 +114,16 @@ impl VirtioMmio {
             "virtio-mmio transport created"
         );
         Self {
-            device,
-            name: format!("virtio-mmio-{slot}"),
+            core: VirtioCore::new(format!("virtio-mmio-{slot}"), device, interrupt),
             device_features_sel: 0,
             driver_features_sel: 0,
-            driver_features: 0,
             queue_sel: 0,
-            queues,
-            status: 0,
-            interrupt,
         }
     }
 
     /// Shared interrupt line for this slot.
     pub fn irq(&self) -> Arc<VirtioIrq> {
-        Arc::clone(&self.interrupt)
+        Arc::clone(&self.core.interrupt)
     }
 
     /// Map this transport onto platform virtio-mmio `slot`.
@@ -189,9 +158,9 @@ impl VirtioMmio {
     }
 
     /// Raise interrupt-status bits. The driver clears them through `InterruptACK`.
-    #[tracing::instrument(level = "debug", target = "ternvale::virtio::mmio", skip(self), fields(name = %self.name, bits))]
+    #[tracing::instrument(level = "debug", target = "ternvale::virtio::mmio", skip(self), fields(name = %self.core.name, bits))]
     pub fn raise_interrupt(&mut self, bits: u32) {
-        self.interrupt.raise(bits);
+        self.core.interrupt.raise(bits);
     }
 
     /// Guest read of one register or a config-space field.
@@ -199,19 +168,13 @@ impl VirtioMmio {
         level = "debug",
         target = "ternvale::virtio::mmio",
         skip(self),
-        fields(name = %self.name, offset = format!("{offset:#x}"), size)
+        fields(name = %self.core.name, offset = format!("{offset:#x}"), size)
     )]
     pub fn read(&mut self, offset: u64, size: u8) -> u64 {
         let value = if offset >= CONFIG {
-            self.device.read_config(offset - CONFIG, size)
+            self.core.device.read_config(offset - CONFIG, size)
         } else if size != 4 {
-            tracing::warn!(
-                target: "ternvale::virtio::mmio",
-                name = %self.name,
-                offset = format!("{offset:#x}"),
-                size,
-                "virtio-mmio register access is not 4 bytes"
-            );
+            self.warn_size(offset, size);
             0
         } else {
             self.read_reg(offset)
@@ -225,43 +188,38 @@ impl VirtioMmio {
         level = "debug",
         target = "ternvale::virtio::mmio",
         skip(self),
-        fields(name = %self.name, offset = format!("{offset:#x}"), size, value = format!("{value:#x}"))
+        fields(name = %self.core.name, offset = format!("{offset:#x}"), size, value = format!("{value:#x}"))
     )]
     pub fn write(&mut self, offset: u64, size: u8, value: u64) {
         self.trace(offset, size, value, "write");
         if offset >= CONFIG {
-            self.device.write_config(offset - CONFIG, size, value);
+            self.core.device.write_config(offset - CONFIG, size, value);
             return;
         }
         if size != 4 {
-            tracing::warn!(
-                target: "ternvale::virtio::mmio",
-                name = %self.name,
-                offset = format!("{offset:#x}"),
-                size,
-                "virtio-mmio register access is not 4 bytes"
-            );
+            self.warn_size(offset, size);
             return;
         }
         self.write_reg(offset, value as u32);
     }
 
     fn read_reg(&mut self, offset: u64) -> u64 {
+        let core = &self.core;
         let value = match offset {
             MAGIC_VALUE => MAGIC,
             VERSION_REG => VERSION,
-            DEVICE_ID => self.device.device_id(),
-            VENDOR_ID => self.device.vendor_id(),
-            DEVICE_FEATURES => feature_word(self.offered(), self.device_features_sel),
-            QUEUE_NUM_MAX => self.selected().map(|q| q.num_max).unwrap_or(0),
-            QUEUE_READY => u32::from(self.selected().is_some_and(|q| q.ready)),
-            INTERRUPT_STATUS => self.interrupt.status(),
-            STATUS => self.status,
-            CONFIG_GENERATION => self.device.config_generation(),
+            DEVICE_ID => core.device.device_id(),
+            VENDOR_ID => core.device.vendor_id(),
+            DEVICE_FEATURES => feature_word(core.offered(), self.device_features_sel),
+            QUEUE_NUM_MAX => core.queue(self.queue_sel).map_or(0, |q| q.num_max),
+            QUEUE_READY => u32::from(core.queue(self.queue_sel).is_some_and(|q| q.ready)),
+            INTERRUPT_STATUS => core.interrupt.status(),
+            STATUS => core.status,
+            CONFIG_GENERATION => core.device.config_generation(),
             _ => {
                 tracing::warn!(
                     target: "ternvale::virtio::mmio",
-                    name = %self.name,
+                    name = %core.name,
                     offset = format!("{offset:#x}"),
                     "read of write-only or unknown virtio-mmio register"
                 );
@@ -272,25 +230,43 @@ impl VirtioMmio {
     }
 
     fn write_reg(&mut self, offset: u64, value: u32) {
+        let sel = self.queue_sel;
         match offset {
             DEVICE_FEATURES_SEL => self.device_features_sel = value,
             DRIVER_FEATURES_SEL => self.driver_features_sel = value,
-            DRIVER_FEATURES => self.write_driver_features(value),
+            DRIVER_FEATURES => self
+                .core
+                .write_driver_features(self.driver_features_sel, value),
             QUEUE_SEL => self.queue_sel = value,
-            QUEUE_NUM => self.write_queue_num(value),
-            QUEUE_READY => self.write_queue_ready(value),
-            QUEUE_NOTIFY => self.write_notify(value),
-            INTERRUPT_ACK => self.interrupt.ack(value),
-            STATUS => self.write_status(value),
-            QUEUE_DESC_LOW => self.write_addr(|q| &mut q.desc, false, value),
-            QUEUE_DESC_HIGH => self.write_addr(|q| &mut q.desc, true, value),
-            QUEUE_DRIVER_LOW => self.write_addr(|q| &mut q.driver, false, value),
-            QUEUE_DRIVER_HIGH => self.write_addr(|q| &mut q.driver, true, value),
-            QUEUE_DEVICE_LOW => self.write_addr(|q| &mut q.device, false, value),
-            QUEUE_DEVICE_HIGH => self.write_addr(|q| &mut q.device, true, value),
+            QUEUE_NUM => self.core.set_queue_num(sel, value),
+            QUEUE_READY => self.core.set_queue_ready(sel, value),
+            QUEUE_NOTIFY => self.core.notify(value),
+            INTERRUPT_ACK => self.core.interrupt.ack(value),
+            STATUS => {
+                if value == 0 {
+                    self.device_features_sel = 0;
+                    self.driver_features_sel = 0;
+                    self.queue_sel = 0;
+                }
+                self.core.write_status(value);
+            }
+            QUEUE_DESC_LOW => self.core.set_queue_addr(sel, QueueAddr::Desc, false, value),
+            QUEUE_DESC_HIGH => self.core.set_queue_addr(sel, QueueAddr::Desc, true, value),
+            QUEUE_DRIVER_LOW => self
+                .core
+                .set_queue_addr(sel, QueueAddr::Driver, false, value),
+            QUEUE_DRIVER_HIGH => self
+                .core
+                .set_queue_addr(sel, QueueAddr::Driver, true, value),
+            QUEUE_DEVICE_LOW => self
+                .core
+                .set_queue_addr(sel, QueueAddr::Device, false, value),
+            QUEUE_DEVICE_HIGH => self
+                .core
+                .set_queue_addr(sel, QueueAddr::Device, true, value),
             _ => tracing::warn!(
                 target: "ternvale::virtio::mmio",
-                name = %self.name,
+                name = %self.core.name,
                 offset = format!("{offset:#x}"),
                 value = format!("{value:#x}"),
                 "write to read-only or unknown virtio-mmio register"
@@ -298,31 +274,20 @@ impl VirtioMmio {
         }
     }
 
-    pub(super) fn offered(&self) -> u64 {
-        self.device.device_features() | VIRTIO_F_VERSION_1
-    }
-
-    pub(super) fn selected(&self) -> Option<&Queue> {
-        self.queues.get(self.queue_sel as usize)
-    }
-
-    pub(super) fn selected_mut(&mut self) -> Option<&mut Queue> {
-        self.queues.get_mut(self.queue_sel as usize)
-    }
-
-    pub(super) fn warn_queue(&self, message: &'static str) {
+    fn warn_size(&self, offset: u64, size: u8) {
         tracing::warn!(
             target: "ternvale::virtio::mmio",
-            name = %self.name,
-            queue = self.queue_sel,
-            message
+            name = %self.core.name,
+            offset = format!("{offset:#x}"),
+            size,
+            "virtio-mmio register access is not 4 bytes"
         );
     }
 
     fn trace(&self, offset: u64, size: u8, value: u64, direction: &'static str) {
         tracing::trace!(
             target: "ternvale::virtio::mmio",
-            name = %self.name,
+            name = %self.core.name,
             offset = format!("{offset:#x}"),
             size,
             value = format!("{value:#x}"),
@@ -334,7 +299,7 @@ impl VirtioMmio {
 
 impl MmioDevice for VirtioMmio {
     fn name(&self) -> &str {
-        &self.name
+        &self.core.name
     }
 
     fn read(&mut self, offset: u64, size: u8) -> u64 {
@@ -343,22 +308,5 @@ impl MmioDevice for VirtioMmio {
 
     fn write(&mut self, offset: u64, size: u8, val: u64) {
         VirtioMmio::write(self, offset, size, val);
-    }
-}
-
-fn feature_word(features: u64, sel: u32) -> u32 {
-    match sel {
-        0 => features as u32,
-        1 => (features >> 32) as u32,
-        _ => 0,
-    }
-}
-
-fn mask(value: u64, size: u8) -> u64 {
-    match size {
-        1 => value & 0xff,
-        2 => value & 0xffff,
-        4 => value & 0xffff_ffff,
-        _ => value,
     }
 }

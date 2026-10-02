@@ -6,6 +6,8 @@
 #   test-assets/virtio-root/rootfs.ext4
 #   test-assets/virtio-root/initramfs.cpio
 #   test-assets/virtio-root/Image   (copied from virtio-blk or fetched)
+#   test-assets/virtio-root/data.ext4, plus pciutils in rootfs.ext4
+#                                   (via scripts/make-pci-assets.sh)
 #
 # Prerequisites:
 #   - Docker Desktop with linux/arm64 support
@@ -233,4 +235,5 @@ fi
 log "wrote ${out}/rootfs.ext4 ($(du -h "${out}/rootfs.ext4" | awk '{print $1}'))"
 log "wrote ${out}/initramfs.cpio ($(du -h "${out}/initramfs.cpio" | awk '{print $1}'))"
 [[ -f "${out}/Image" ]] && log "wrote ${out}/Image"
+"${script_dir}/make-pci-assets.sh" "${out}"
 log "done"

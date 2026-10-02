@@ -3,6 +3,9 @@
 //! `scripts/boot-test.sh` runs this binary and keeps the logs under `target/boot-logs/`.
 //! Set `TERNVALE_BOOT_SCENARIO=rootfs` for the virtio-blk persistence scenario
 //! (requires `./scripts/make-rootfs.sh` assets under `test-assets/virtio-root/`).
+//! Set `TERNVALE_BOOT_SCENARIO=pci` for the same scenario with the root disk on virtio-pci
+//! behind the ECAM host bridge, plus `lspci -nn` and a hand mount of a second virtio-pci
+//! disk (also needs `./scripts/make-pci-assets.sh`; the kernel has `virtio_pci` built in).
 //! Set `TERNVALE_BOOT_SCENARIO=net` to ping the loopback gateway over virtio-net
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
 //! Set `TERNVALE_BOOT_SCENARIO=devices` to read /dev/hwrng and ping/pong over vsock
@@ -16,6 +19,7 @@ mod devices;
 mod idle;
 mod initrd;
 mod net;
+mod pci;
 mod rootfs;
 mod smp;
 
@@ -37,11 +41,12 @@ fn run() -> Result<(), String> {
     match scenario.as_str() {
         "initrd" | "" => initrd::run(),
         "rootfs" => rootfs::run(),
+        "pci" => rootfs::run_pci(),
         "net" => net::run(),
         "devices" => devices::run(),
         "smp" => smp::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, net, devices, or smp)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, or smp)"
         )),
     }
 }

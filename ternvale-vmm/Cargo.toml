@@ -23,3 +23,8 @@ vm-fdt = "0.3.0"
 # lockwatch (deadlock detector) for every mutex; re-exported as ternvale_vmm::lockwatch.
 # Also log file checks in unit tests. Already a dependency of ternvale-hv.
 ternvale-log = { path = "../ternvale-log" }
+
+[dev-dependencies]
+# Scoped subscriber that captures TRACE lines (pci config access logs) in unit
+# tests without the process-wide logger. Already built for ternvale-log.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }

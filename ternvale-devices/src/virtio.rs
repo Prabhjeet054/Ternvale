@@ -1,18 +1,21 @@
-//! Virtio-mmio v2 (virtio 1.x) transport.
+//! Virtio 1.x devices and their transports: virtio-mmio v2 and modern virtio-pci.
 //!
-//! Register layout follows the virtio 1.2 MMIO chapter. Feature negotiation
-//! accepts `FEATURES_OK` only when the driver offers `VIRTIO_F_VERSION_1`.
+//! Register layouts follow the virtio 1.2 MMIO and PCI chapters. Both
+//! transports share [`core`], which accepts `FEATURES_OK` only when the driver
+//! offers `VIRTIO_F_VERSION_1`.
 
 mod attach_disks;
 mod blk;
+mod core;
 mod irq;
 mod mmio;
 mod net;
+mod pci;
 mod queue;
 mod rng;
 mod vsock;
 
-pub use attach_disks::attach_disks;
+pub use attach_disks::{attach_disks, attach_disks_pci};
 pub use blk::{
     AttachedBlk, BlkStats, VirtioBlk, VirtioBlkError, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO,
     VIRTIO_BLK_ID,
@@ -27,6 +30,7 @@ pub use net::{
 };
 #[cfg(feature = "vmnet")]
 pub use net::{VmnetBackend, VMNET_SHARED_MODE};
+pub use pci::{attach_pci, VirtioPci, VIRTIO_PCI_DEVICE_BASE, VIRTIO_PCI_VENDOR_ID};
 pub use queue::{Buffer, Chain, SplitQueue};
 pub use rng::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
 pub use vsock::{
