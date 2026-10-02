@@ -7,12 +7,15 @@
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
 //! Set `TERNVALE_BOOT_SCENARIO=devices` to read /dev/hwrng and ping/pong over vsock
 //! (requires `./scripts/make-devices-initramfs.sh` assets under `test-assets/virtio-devices/`).
+//! Set `TERNVALE_BOOT_SCENARIO=smp` to check `nproc`, `/proc/cpuinfo`, and a per-CPU `dd`
+//! workload on `TERNVALE_BOOT_CPUS` CPUs (default 4) with the initrd assets.
 
 mod common;
 mod devices;
 mod initrd;
 mod net;
 mod rootfs;
+mod smp;
 
 fn main() {
     let code = match run() {
@@ -34,8 +37,9 @@ fn run() -> Result<(), String> {
         "rootfs" => rootfs::run(),
         "net" => net::run(),
         "devices" => devices::run(),
+        "smp" => smp::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, net, or devices)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, net, devices, or smp)"
         )),
     }
 }

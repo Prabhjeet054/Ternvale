@@ -99,7 +99,7 @@ fn mmio_reports_entropy_device_with_one_queue() {
     VirtioMmio::register(&mut bus, 3, Box::new(rng)).expect("register");
     let regs = Regs(RefCell::new([0; 31]));
     let base = ternvale_vmm::VIRTIO_MMIO_BASE + 3 * ternvale_vmm::VIRTIO_MMIO_SLOT_SIZE;
-    let mut read = |offset: u64| {
+    let read = |offset: u64| {
         bus.dispatch(
             &regs,
             ExitEvent::Mmio {

@@ -29,6 +29,9 @@ unsafe extern "C" {
     pub(crate) fn hv_vcpus_exit(vcpus: *const u64, vcpu_count: u32) -> i32;
     /// `hv_vcpu.h`: `true` masks VTimer exits. The VTIMER_ACTIVATED exit already sets the mask.
     pub(crate) fn hv_vcpu_set_vtimer_mask(vcpu: u64, masked: bool) -> i32;
+    /// `hv_vcpu.h`: `CNTVCT_EL0 = mach_absolute_time() - vtimer_offset`.
+    pub(crate) fn hv_vcpu_get_vtimer_offset(vcpu: u64, offset: *mut u64) -> i32;
+    pub(crate) fn hv_vcpu_set_vtimer_offset(vcpu: u64, offset: u64) -> i32;
 }
 
 // GICv3 symbols are resolved with `dlsym` so a host without them returns

@@ -138,6 +138,23 @@ fn decompiled_dts_matches_platform_regs() {
 }
 
 #[test]
+fn cpu_nodes_use_the_mpidr_affinity_as_reg() {
+    let mut fdt = sample();
+    fdt.cpu_count = 16;
+    let dts = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    assert_eq!(dts.matches("device_type = \"cpu\"").count(), 16, "{dts}");
+    for cpu in 0..16u32 {
+        let reg = crate::smp::mpidr(cpu) & 0xff_ffff;
+        assert!(dts.contains(&format!("cpu@{reg:x} {{")), "cpu {cpu}: {dts}");
+        assert!(
+            dts.contains(&format!("reg = <{reg:#04x}>")),
+            "cpu {cpu}: {dts}"
+        );
+    }
+    assert!(!dts.contains("cpu@10 "), "no seventeenth cpu: {dts}");
+}
+
+#[test]
 fn rejects_zero_cpus() {
     let mut fdt = sample();
     fdt.cpu_count = 0;

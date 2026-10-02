@@ -114,10 +114,7 @@ impl VirtioRng {
     }
 
     fn lock(&self) -> MutexGuard<'_, GuestMemory> {
-        match self.memory.lock() {
-            Ok(guard) => guard,
-            Err(poison) => poison.into_inner(),
-        }
+        ternvale_vmm::lockwatch::lock(&self.memory, "guest-memory")
     }
 
     fn serve(&mut self) {

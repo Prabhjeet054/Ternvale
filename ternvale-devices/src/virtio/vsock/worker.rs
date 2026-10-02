@@ -121,10 +121,7 @@ impl Worker {
     }
 
     fn lock(&self) -> MutexGuard<'_, GuestMemory> {
-        match self.memory.lock() {
-            Ok(guard) => guard,
-            Err(poison) => poison.into_inner(),
-        }
+        ternvale_vmm::lockwatch::lock(&self.memory, "guest-memory")
     }
 
     fn process_tx(&mut self) {
@@ -167,10 +164,7 @@ impl Worker {
         let mut completed = false;
         let memory = Arc::clone(&self.memory);
         while self.muxer.has_rx() {
-            let mut mem = match memory.lock() {
-                Ok(guard) => guard,
-                Err(poison) => poison.into_inner(),
-            };
+            let mut mem = ternvale_vmm::lockwatch::lock(&memory, "guest-memory");
             let Some(chain) = bound.queue.chains(&mem).next() else {
                 tracing::trace!(target: "ternvale::virtio::vsock", "no rx buffer; holding packets");
                 break;

@@ -25,10 +25,7 @@ impl VirtioIrq {
     /// Install the GIC (or test) callback.
     #[tracing::instrument(level = "debug", target = "ternvale::virtio::mmio", skip(self, hook))]
     pub fn set_hook(&self, hook: IrqHook) {
-        match self.hook.lock() {
-            Ok(mut slot) => *slot = Some(hook),
-            Err(poison) => *poison.into_inner() = Some(hook),
-        }
+        *ternvale_vmm::lockwatch::lock(&self.hook, "virtio-irq-hook") = Some(hook);
     }
 
     /// Current interrupt-status register value.
@@ -93,10 +90,7 @@ impl VirtioIrq {
     }
 
     fn call_hook(&self, level: bool) {
-        let hook = match self.hook.lock() {
-            Ok(guard) => guard.clone(),
-            Err(poison) => poison.into_inner().clone(),
-        };
+        let hook = ternvale_vmm::lockwatch::lock(&self.hook, "virtio-irq-hook").clone();
         if let Some(hook) = hook {
             hook(level);
         }

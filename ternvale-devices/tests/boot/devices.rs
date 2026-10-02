@@ -16,8 +16,8 @@ use ternvale_devices::{
 use ternvale_vmm::{ExitReason, Machine, MachineError};
 
 use crate::common::{
-    assets_root, banner_timeout, drive, init_logging_at, log_dir, restore_stdin, stdin_pipe,
-    write_result,
+    assets_root, banner_timeout, boot_cpus, drive, init_logging_at, log_dir, restore_stdin,
+    stdin_pipe, write_result,
 };
 
 const COMMAND: Duration = Duration::from_secs(30);
@@ -56,9 +56,10 @@ pub fn run() -> Result<(), String> {
     );
 
     let serial_log = log_dir.join("guest-serial.log");
+    let cpus = boot_cpus(1)?;
     let vm = VmConfig {
         name: "boot-devices".to_string(),
-        cpus: 1,
+        cpus,
         ram_mib: 256,
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),

@@ -2,12 +2,22 @@
 //!
 //! A read result is written back to the destination register, zero-extended to
 //! the access size. Drop logs each device's access count.
+//!
+//! Registration needs `&mut self` and happens before any vCPU runs. After that
+//! the window list is read-only and [`MmioBus::dispatch`] takes `&self`: each
+//! device sits behind its own mutex, so vCPUs only contend on the same device.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 
 use crate::esr::ExitEvent;
 use crate::vcpu::{Vcpu, VcpuError};
 
 /// A device behind one guest-physical window.
-pub trait MmioDevice {
+///
+/// Every vCPU thread dispatches into the same bus, so devices must be `Send`.
+/// The bus serializes access to each device with its own mutex.
+pub trait MmioDevice: Send {
     /// Short name used in logs and the shutdown counter dump.
     fn name(&self) -> &str;
 
@@ -95,8 +105,15 @@ pub enum MmioError {
 struct Slot {
     base: u64,
     size: u64,
-    device: Box<dyn MmioDevice>,
-    accesses: u64,
+    name: String,
+    device: Mutex<Box<dyn MmioDevice>>,
+    accesses: AtomicU64,
+}
+
+impl Slot {
+    fn lock(&self) -> MutexGuard<'_, Box<dyn MmioDevice>> {
+        crate::lockwatch::lock(&self.device, &self.name)
+    }
 }
 
 /// Registered MMIO devices, dispatched from [`ExitEvent::Mmio`].
@@ -177,8 +194,9 @@ impl MmioBus {
         self.devices.push(Slot {
             base,
             size,
-            device,
-            accesses: 0,
+            name: device.name().to_string(),
+            device: Mutex::new(device),
+            accesses: AtomicU64::new(0),
         });
         Ok(())
     }
@@ -188,8 +206,8 @@ impl MmioBus {
     pub fn access_count(&self, name: &str) -> Option<u64> {
         self.devices
             .iter()
-            .find(|slot| slot.device.name() == name)
-            .map(|slot| slot.accesses)
+            .find(|slot| slot.name == name)
+            .map(|slot| slot.accesses.load(Ordering::Relaxed))
     }
 
     /// Perform one [`ExitEvent::Mmio`] against the matching device.
@@ -197,8 +215,10 @@ impl MmioBus {
     /// Reads store the zero-extended result in `event.reg`. Writes take the
     /// low `size` bytes of that register. An address outside every window
     /// returns 0 on read and is ignored on write.
+    ///
+    /// Holds only the matching device's lock, and only for the device call.
     #[tracing::instrument(level = "debug", target = "ternvale::mmio", skip_all)]
-    pub fn dispatch(&mut self, regs: &impl GuestRegs, event: ExitEvent) -> Result<(), MmioError> {
+    pub fn dispatch(&self, regs: &impl GuestRegs, event: ExitEvent) -> Result<(), MmioError> {
         let ExitEvent::Mmio {
             gpa,
             size,
@@ -235,25 +255,25 @@ impl MmioBus {
         }) else {
             return self.unmapped(regs, gpa, size, write, reg);
         };
-        let slot = &mut self.devices[index];
+        let slot = &self.devices[index];
         let offset = gpa - slot.base;
         let direction = if write { "write" } else { "read" };
         let value = if write {
             let raw = if reg == 31 { 0 } else { regs.get_reg(reg)? };
             let value = mask(raw, size);
-            slot.device.write(offset, size, value);
+            slot.lock().write(offset, size, value);
             value
         } else {
-            let value = mask(slot.device.read(offset, size), size);
+            let value = mask(slot.lock().read(offset, size), size);
             if reg != 31 {
                 regs.set_reg(reg, value)?;
             }
             value
         };
-        slot.accesses += 1;
+        slot.accesses.fetch_add(1, Ordering::Relaxed);
         tracing::trace!(
             target: "ternvale::mmio",
-            device = slot.device.name(),
+            device = %slot.name,
             offset = format!("{:#x}", offset),
             size,
             value = format!("{:#x}", value),
@@ -309,8 +329,8 @@ impl Drop for MmioBus {
         for slot in &self.devices {
             tracing::debug!(
                 target: "ternvale::mmio",
-                device = slot.device.name(),
-                accesses = slot.accesses,
+                device = %slot.name,
+                accesses = slot.accesses.load(Ordering::Relaxed),
                 base = format!("{:#x}", slot.base),
                 "mmio access count"
             );

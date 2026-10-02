@@ -10,6 +10,9 @@
 #                       then tshark filters over net.pcap via scripts/check-pcap.sh
 #   devices           — virtio-rng /dev/hwrng samples and a vsock ping/pong on port 5000
 #                       (needs ./scripts/make-devices-initramfs.sh)
+#   smp               — nproc, /proc/cpuinfo, and one dd per CPU checked in /proc/stat
+#                       and top, on TERNVALE_BOOT_CPUS CPUs (default 4)
+# scripts/boot-stress.sh repeats this script N times and summarizes the runs.
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)

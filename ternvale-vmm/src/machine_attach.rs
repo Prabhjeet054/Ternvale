@@ -1,8 +1,7 @@
 //! Extra MMIO devices attached after UART and GIC redistributor.
 
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::memory::GuestMemory;
 use crate::mmio::MmioDevice;
@@ -12,6 +11,12 @@ use crate::serial::SerialDevice;
 pub type SpiLevel = (u32, Arc<AtomicBool>);
 /// Shared list of active SPI level flags.
 pub type SpiLevels = Arc<Mutex<Vec<SpiLevel>>>;
+/// The UART, shared by the bus (every vCPU) and the stdin thread.
+pub(super) type SharedSerial = Arc<Mutex<Box<dyn SerialDevice>>>;
+
+pub(super) fn lock_serial(serial: &SharedSerial) -> MutexGuard<'_, Box<dyn SerialDevice>> {
+    crate::lockwatch::lock(serial, "serial")
+}
 
 /// Guest memory and GIC available while building MMIO devices.
 pub struct DeviceAttach {
@@ -33,10 +38,7 @@ impl DeviceAttach {
         let spi = 32 + crate::fdt::VIRTIO_SPI0 + slot;
         let gic = Arc::clone(&self.gic);
         let level = Arc::new(AtomicBool::new(false));
-        match self.spi_levels.lock() {
-            Ok(mut list) => list.push((spi, Arc::clone(&level))),
-            Err(poison) => poison.into_inner().push((spi, Arc::clone(&level))),
-        }
+        crate::lockwatch::lock(&self.spi_levels, "spi-levels").push((spi, Arc::clone(&level)));
         Arc::new(move |assert| {
             if level.swap(assert, Ordering::AcqRel) == assert {
                 return;
@@ -55,12 +57,12 @@ impl DeviceAttach {
 }
 
 pub(super) fn install_uart_irq(
-    serial: Rc<std::cell::RefCell<Box<dyn SerialDevice>>>,
+    serial: &SharedSerial,
     gic: Arc<ternvale_hv::Gic>,
     level_flag: Arc<AtomicBool>,
 ) {
     let spi = 32 + crate::fdt::UART_SPI;
-    serial.borrow_mut().set_irq_hook(Arc::new(move |level| {
+    lock_serial(serial).set_irq_hook(Arc::new(move |level| {
         // set_spi(true) also pulses an edge. Repeat calls while the line stays
         // high leave a pending SPI after the PL011 has cleared MIS.
         if level_flag.swap(level, Ordering::AcqRel) == level {
@@ -78,19 +80,20 @@ pub(super) fn install_uart_irq(
     }));
 }
 
-pub(super) struct LocalUart(pub(super) Rc<std::cell::RefCell<Box<dyn SerialDevice>>>);
+/// Bus window for the UART. Lock order: the bus slot lock, then the serial lock.
+pub(super) struct SharedUart(pub(super) SharedSerial);
 
-impl MmioDevice for LocalUart {
+impl MmioDevice for SharedUart {
     fn name(&self) -> &str {
         "pl011"
     }
 
     fn read(&mut self, offset: u64, size: u8) -> u64 {
-        self.0.borrow_mut().read(offset, size)
+        lock_serial(&self.0).read(offset, size)
     }
 
     fn write(&mut self, offset: u64, size: u8, val: u64) {
-        self.0.borrow_mut().write(offset, size, val);
+        lock_serial(&self.0).write(offset, size, val);
     }
 }
 

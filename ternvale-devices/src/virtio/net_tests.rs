@@ -150,7 +150,7 @@ fn mmio_reports_net_identity_features_and_mac() {
     let mut bus = MmioBus::new();
     VirtioMmio::register(&mut bus, 0, Box::new(net)).expect("register");
     let regs = Regs(RefCell::new([0; 31]));
-    let mut read = |offset: u64, size: u8| {
+    let read = |offset: u64, size: u8| {
         bus.dispatch(
             &regs,
             ExitEvent::Mmio {

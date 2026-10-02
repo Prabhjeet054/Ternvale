@@ -66,6 +66,7 @@ impl Vcpu {
         ternvale_hv::set_vtimer_mask(self.id, true)?;
         ternvale_hv::raise_ppi(self.id, ternvale_hv::VTIMER_PPI)?;
         self.timer_masked.store(true, Ordering::Release);
+        self.counters.vtimer();
         tracing::info!(
             target: "ternvale::gic",
             vcpu_id = self.id,
@@ -136,12 +137,18 @@ impl Vcpu {
                 }
                 Ok(Loop::Again)
             }
+            crate::psci::PsciAction::Power(request) => {
+                if advance {
+                    crate::psci::advance_pc(self)?;
+                }
+                Ok(Loop::Done(ExitReason::Psci(request)))
+            }
             crate::psci::PsciAction::CpuOff => {
                 self.set_x(0, 0)?;
                 if advance {
                     crate::psci::advance_pc(self)?;
                 }
-                self.stop.store(true, Ordering::Release);
+                tracing::info!(target: "ternvale::psci", vcpu_id = self.id, "cpu off");
                 Ok(Loop::Done(ExitReason::CpuOff))
             }
             crate::psci::PsciAction::SystemOff => {
@@ -173,10 +180,7 @@ impl Vcpu {
             return Ok(());
         }
         tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "wfi park");
-        let guard = self
-            .park
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
+        let guard = crate::lockwatch::lock(&self.park, "wfi-park");
         if self.stop.load(Ordering::Acquire) || self.pending.swap(false, Ordering::AcqRel) {
             tracing::debug!(
                 target: "ternvale::vcpu",
@@ -185,10 +189,12 @@ impl Vcpu {
             );
             return Ok(());
         }
+        let parked = std::time::Instant::now();
         let (_guard, wait) = self
             .wake
             .wait_timeout(guard, Duration::from_millis(10))
             .unwrap_or_else(|poison| poison.into_inner());
+        self.counters.park(parked.elapsed());
         self.pending.store(false, Ordering::Release);
         tracing::debug!(
             target: "ternvale::vcpu",

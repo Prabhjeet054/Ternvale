@@ -1,20 +1,21 @@
 //! Boots a configured guest and runs it until PSCI powers it off.
 //!
-//! Order: config, guest RAM, GIC, UART on the MMIO bus, DTB, Linux loader,
-//! then one thread per vCPU. Host stdin is queued to the UART. The boot thread
-//! drains that queue and raises GIC SPI 1. A watchdog warns if no exit arrives
-//! for 10 seconds.
+//! Order: config, guest RAM, GIC, UART on the MMIO bus, DTB, then one host
+//! thread per vCPU (`machine_vcpu.rs`). CPU 0 loads Linux; the others start on
+//! PSCI `CPU_ON`. Host stdin goes straight into the shared UART, which raises
+//! GIC SPI 1. A watchdog warns if no exit arrives for 10 seconds. Any vCPU can
+//! end the VM; [`CpuPower`] then cancels every vCPU with one `hv_vcpus_exit`.
 
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 #[path = "machine_attach.rs"]
 mod attach;
 #[path = "machine_host.rs"]
 mod host;
+#[path = "machine_vcpu.rs"]
+mod vcpu_thread;
 
 pub use attach::DeviceAttach;
 
@@ -23,12 +24,13 @@ mod cmdline;
 pub use cmdline::{guest_cmdline, guest_cmdline_for, DEFAULT_CMDLINE, DISK_ROOT_CMDLINE};
 
 use crate::fdt::{build_fdt, GuestFdt, PL011_REG_SIZE};
-use crate::gic_redist::RedistId;
-use crate::linux::{load_linux, place, LinuxLayout};
+use crate::gic_redist::{RedistId, RedistMap};
+use crate::linux::{place, LinuxLayout};
 use crate::mmio::{MmioBus, MmioDevice};
 use crate::platform::{GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, RAM_BASE, UART_BASE};
 use crate::serial::SerialDevice;
-use crate::vcpu::{ExitReason, Vcpu};
+use crate::smp::CpuPower;
+use crate::vcpu::ExitReason;
 use crate::watchdog::Watchdog;
 
 const HANG: Duration = Duration::from_secs(10);
@@ -54,6 +56,30 @@ pub enum MachineError {
     /// A vCPU call failed.
     #[error("vm vcpu: {0}")]
     Vcpu(#[from] crate::vcpu::VcpuError),
+    /// A named vCPU operation on guest CPU `cpu` failed.
+    #[error("vm cpu {cpu} {what}: {source}")]
+    VcpuOp {
+        /// Guest CPU index.
+        cpu: u32,
+        /// Operation, for example `set MPIDR_EL1`.
+        what: &'static str,
+        /// Underlying vCPU error.
+        source: crate::vcpu::VcpuError,
+    },
+    /// A vCPU host thread could not be started.
+    #[error("spawn vcpu {cpu} thread: {source}")]
+    Spawn {
+        /// Guest CPU index.
+        cpu: u32,
+        /// OS error.
+        source: std::io::Error,
+    },
+    /// A vCPU host thread panicked. The panic hook logged the message.
+    #[error("vcpu {cpu} thread panicked")]
+    VcpuPanic {
+        /// Guest CPU index.
+        cpu: u32,
+    },
     /// MMIO dispatch failed.
     #[error("vm mmio: {0}")]
     Mmio(#[from] crate::mmio::MmioError),
@@ -141,7 +167,7 @@ impl Machine {
         let gic = Arc::new(vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE)?);
         let memory = Arc::new(Mutex::new(crate::memory::GuestMemory::new()?));
         {
-            let mut mem = memory.lock().unwrap_or_else(|p| p.into_inner());
+            let mut mem = crate::lockwatch::lock(&memory, "guest-memory");
             mem.map(&vm, RAM_BASE, ram_size)?;
         }
         let spi_levels = Arc::new(Mutex::new(Vec::new()));
@@ -164,75 +190,86 @@ impl Machine {
             dtb = format!("{:#x}", layout.dtb),
             "boot images placed"
         );
-        let serial = Rc::new(std::cell::RefCell::new(serial));
+        let serial: attach::SharedSerial = Arc::new(Mutex::new(serial));
         let irq_level = Arc::new(AtomicBool::new(false));
-        attach::install_uart_irq(Rc::clone(&serial), Arc::clone(&gic), Arc::clone(&irq_level));
+        attach::install_uart_irq(&serial, Arc::clone(&gic), Arc::clone(&irq_level));
+        let redist = RedistMap::new(config.cpus);
         let mut bus = MmioBus::new();
-        bus.register(GIC_REDIST_BASE, GIC_REDIST_SIZE, Box::new(RedistId))?;
+        bus.register(
+            GIC_REDIST_BASE,
+            GIC_REDIST_SIZE,
+            Box::new(RedistId::new(Arc::clone(&redist))),
+        )?;
         bus.register(
             UART_BASE,
             PL011_REG_SIZE,
-            Box::new(attach::LocalUart(Rc::clone(&serial))),
+            Box::new(attach::SharedUart(Arc::clone(&serial))),
         )?;
         for (base, size, device) in devices {
             bus.register(base, size, device)?;
         }
-        let (rx_tx, rx_rx) = mpsc::channel();
+        let power = Arc::new(CpuPower::new(config.cpus, RAM_BASE, ram_size));
         let shutdown = Arc::new(AtomicBool::new(false));
-        let wake = Arc::new(Condvar::new());
-        let parked = Arc::new(Mutex::new(()));
         let watchdog = Arc::new(Watchdog::new(HANG));
         let stop_watch = Arc::clone(&shutdown);
         let dog = Arc::clone(&watchdog);
         let _watch = std::thread::spawn(move || host::watch_loop(dog, stop_watch));
-        let exit = std::thread::scope(|scope| {
-            let mut stops = Vec::new();
-            for id in 1..config.cpus {
-                let vm = &vm;
-                let shutdown = Arc::clone(&shutdown);
-                let wake = Arc::clone(&wake);
-                let parked = Arc::clone(&parked);
-                stops.push(scope.spawn(move || host::park_vcpu(vm, id, &shutdown, &wake, &parked)));
-            }
-            let images = Images {
-                kernel: &kernel,
-                initrd: &initrd,
-                dtb: &dtb,
-                ram_size,
-            };
-            let exit = boot_vcpu(
-                &vm,
-                &memory,
-                &mut bus,
-                &serial,
-                &watchdog,
-                &images,
-                BootIo {
-                    rx_tx,
-                    rx: rx_rx,
-                    shutdown: Arc::clone(&shutdown),
-                    gic: Arc::clone(&gic),
-                    irq_level: Arc::clone(&irq_level),
-                    spi_levels: Arc::clone(&spi_levels),
-                    cancel: Arc::clone(&cancel),
-                },
+        let stdin = {
+            let (serial, shutdown, power) = (
+                Arc::clone(&serial),
+                Arc::clone(&shutdown),
+                Arc::clone(&power),
             );
-            shutdown.store(true, Ordering::Release);
-            wake.notify_all();
-            for handle in stops {
-                match handle.join() {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => {
-                        tracing::error!(target: "ternvale::vcpu", error = %error, "secondary vcpu failed");
-                    }
-                    Err(_) => {
-                        tracing::error!(target: "ternvale::vcpu", "secondary vcpu thread panicked");
-                    }
-                }
+            std::thread::spawn(move || host::stdin_loop(serial, shutdown, power))
+        };
+        let poll = host::Poll {
+            shutdown: Arc::clone(&shutdown),
+            power: Arc::clone(&power),
+            gic: Arc::clone(&gic),
+            irq_level: Arc::clone(&irq_level),
+            spi_levels: Arc::clone(&spi_levels),
+            cancel: Arc::clone(&cancel),
+        };
+        let poll = std::thread::spawn(move || host::poll_loop(poll));
+        let images = Images {
+            kernel: &kernel,
+            initrd: &initrd,
+            dtb: &dtb,
+            ram_size,
+        };
+        let vtimer_offset = OnceLock::new();
+        let shared = vcpu_thread::Shared {
+            name: &config.name,
+            vm: &vm,
+            gic: &gic,
+            memory: &memory,
+            bus: &bus,
+            power: &power,
+            redist: &redist,
+            watchdog: &watchdog,
+            irq_level: &irq_level,
+            spi_levels: &spi_levels,
+            images: &images,
+            vtimer_offset: &vtimer_offset,
+        };
+        let outcome = run_vcpus(config.cpus, &shared);
+        shutdown.store(true, Ordering::Release);
+        for (what, handle) in [("stdin", stdin), ("poll", poll)] {
+            if handle.join().is_err() {
+                tracing::error!(target: "ternvale::boot", thread = what, "host thread panicked");
             }
-            exit
-        })?;
-        tracing::info!(target: "ternvale::boot", ?exit, "vm stopped");
+        }
+        outcome?;
+        let exit = power.stop_reason().unwrap_or(ExitReason::Canceled);
+        tracing::info!(target: "ternvale::boot", ?exit, cpus = config.cpus, "vm stopped");
+        let locks = crate::lockwatch::LockWatch::global().stats();
+        tracing::info!(
+            target: "ternvale::lock",
+            contended = locks.contended,
+            long_waits = locks.long_waits,
+            max_wait_us = locks.max_wait_us,
+            "lock watch summary (process-wide)"
+        );
         drop(bus);
         drop(serial);
         drop(memory);
@@ -293,83 +330,38 @@ struct Images<'a> {
     ram_size: u64,
 }
 
-struct BootIo {
-    rx_tx: std::sync::mpsc::Sender<u8>,
-    rx: Receiver<u8>,
-    shutdown: Arc<AtomicBool>,
-    gic: Arc<ternvale_hv::Gic>,
-    irq_level: Arc<AtomicBool>,
-    spi_levels: attach::SpiLevels,
-    cancel: Arc<AtomicBool>,
-}
-
-fn boot_vcpu(
-    vm: &ternvale_hv::Vm,
-    memory: &Arc<Mutex<crate::memory::GuestMemory>>,
-    bus: &mut MmioBus,
-    serial: &Rc<std::cell::RefCell<Box<dyn SerialDevice>>>,
-    watchdog: &Watchdog,
-    images: &Images<'_>,
-    io: BootIo,
-) -> Result<ExitReason, MachineError> {
-    let vcpu = Vcpu::create(vm)?;
-    // Affinity 0 with the RES1 bit. The framework will not bind a redistributor
-    // to this vCPU until MPIDR_EL1 is written, so SPIs routed at affinity 0
-    // never reach the CPU interface.
-    vcpu.set_sys_reg(ternvale_hv::SysReg::MpidrEl1, 0x8000_0000)?;
-    match io.gic.vcpu_redistributor_base(vcpu.id()) {
-        Ok(base) => tracing::info!(
-            target: "ternvale::gic",
-            base = format!("{base:#x}"),
-            "vcpu redistributor"
-        ),
-        Err(error) => tracing::warn!(
-            target: "ternvale::gic",
-            error = %error,
-            "vcpu redistributor base unavailable"
-        ),
-    }
-    let kick = vcpu.stopper();
-    let poll_kick = vcpu.stopper();
-    let poll_stop = Arc::clone(&io.shutdown);
-    let level_run = Arc::clone(&io.irq_level);
-    let spi_run = Arc::clone(&io.spi_levels);
-    let rx = io.rx;
-    let _stdin = std::thread::spawn(move || host::stdin_loop(io.rx_tx, io.shutdown, kick));
-    let _poll = std::thread::spawn(move || {
-        host::poll_loop(
-            poll_stop,
-            poll_kick,
-            io.gic,
-            io.irq_level,
-            io.spi_levels,
-            io.cancel,
-        )
-    });
-    {
-        let mut mem = memory.lock().unwrap_or_else(|p| p.into_inner());
-        load_linux(
-            &mut mem,
-            &vcpu,
-            RAM_BASE,
-            images.ram_size,
-            images.kernel,
-            images.initrd,
-            images.dtb,
-        )?;
-    }
-    let exit = host::run_loop(host::RunLoop {
-        vcpu: &vcpu,
-        bus,
-        serial,
-        rx: &rx,
-        watchdog,
-        memory,
-        irq_level: &level_run,
-        spi_levels: &spi_run,
-    })?;
-    drop(vcpu);
-    Ok(exit)
+/// One scoped host thread per guest CPU, named `vcpu<N>`. Returns the first
+/// thread error after every thread has joined.
+fn run_vcpus(cpus: u32, shared: &vcpu_thread::Shared<'_>) -> Result<(), MachineError> {
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        let mut first_error = None;
+        for index in 0..cpus {
+            let spawned = std::thread::Builder::new()
+                .name(format!("vcpu{index}"))
+                .spawn_scoped(scope, move || vcpu_thread::vcpu_thread(index, shared));
+            match spawned {
+                Ok(handle) => handles.push((index, handle)),
+                Err(source) => {
+                    tracing::error!(target: "ternvale::vcpu", cpu = index, error = %source, "could not spawn vcpu thread");
+                    shared.power.request_stop(ExitReason::Canceled);
+                    first_error = Some(MachineError::Spawn { cpu: index, source });
+                    break;
+                }
+            }
+        }
+        tracing::info!(target: "ternvale::boot", threads = handles.len(), "vcpu threads started");
+        for (index, handle) in handles {
+            let result = handle
+                .join()
+                .unwrap_or(Err(MachineError::VcpuPanic { cpu: index }));
+            if let Err(error) = result {
+                tracing::error!(target: "ternvale::vcpu", cpu = index, error = %error, "vcpu thread returned an error");
+                first_error.get_or_insert(error);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    })
 }
 
 fn read_file(what: &'static str, path: &std::path::Path) -> Result<Vec<u8>, MachineError> {

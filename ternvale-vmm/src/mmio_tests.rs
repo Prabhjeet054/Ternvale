@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use super::{GuestRegs, MmioBus, MmioDevice, MmioError};
 use crate::esr::ExitEvent;
@@ -22,7 +22,7 @@ impl GuestRegs for MockRegs {
 struct MockDev {
     label: &'static str,
     next_read: u64,
-    writes: Rc<RefCell<Vec<(u64, u8, u64)>>>,
+    writes: Arc<Mutex<Vec<(u64, u8, u64)>>>,
 }
 
 impl MmioDevice for MockDev {
@@ -35,7 +35,10 @@ impl MmioDevice for MockDev {
     }
 
     fn write(&mut self, offset: u64, size: u8, val: u64) {
-        self.writes.borrow_mut().push((offset, size, val));
+        self.writes
+            .lock()
+            .expect("writes")
+            .push((offset, size, val));
     }
 }
 
@@ -63,12 +66,12 @@ fn rejects_overlap_and_accepts_adjacent_ranges() {
 
 #[test]
 fn read_and_write_hit_the_first_and_last_byte() {
-    let writes = Rc::new(RefCell::new(Vec::new()));
+    let writes = Arc::new(Mutex::new(Vec::new()));
     let mut bus = MmioBus::new();
     bus.register(
         0x1000,
         0x100,
-        Box::new(recording("uart", Rc::clone(&writes))),
+        Box::new(recording("uart", Arc::clone(&writes))),
     )
     .expect("reg");
     let regs = MockRegs {
@@ -82,12 +85,15 @@ fn read_and_write_hit_the_first_and_last_byte() {
     bus.dispatch(&regs, mmio(0x1100, 1, true, 4))
         .expect("past the window");
     assert_eq!(regs.regs.borrow()[4], 0xbb);
-    assert_eq!(writes.borrow().as_slice(), &[(0, 1, 0xaa), (0xff, 1, 0xbb)]);
+    assert_eq!(
+        writes.lock().expect("writes").as_slice(),
+        &[(0, 1, 0xaa), (0xff, 1, 0xbb)]
+    );
 }
 
 #[test]
 fn unmapped_read_is_zero_and_unmapped_write_is_ignored() {
-    let mut bus = MmioBus::new();
+    let bus = MmioBus::new();
     let regs = MockRegs {
         regs: RefCell::new([0; 31]),
     };
@@ -111,7 +117,7 @@ fn sizes_mask_the_register_and_reads_write_back() {
         Box::new(MockDev {
             label: "dev",
             next_read: 0x1122_3344_5566_7788,
-            writes: Rc::new(RefCell::new(Vec::new())),
+            writes: Arc::new(Mutex::new(Vec::new())),
         }),
     )
     .expect("reg");
@@ -164,11 +170,52 @@ fn shutdown_logs_the_access_count() {
     std::fs::remove_dir_all(&dir).expect("remove log dir");
 }
 
-fn dev(label: &'static str) -> MockDev {
-    recording(label, Rc::new(RefCell::new(Vec::new())))
+#[test]
+fn concurrent_vcpu_threads_share_one_bus_and_lose_no_access() {
+    const THREADS: u64 = 4;
+    const PER_THREAD: u64 = 500;
+    let a = Arc::new(Mutex::new(Vec::new()));
+    let b = Arc::new(Mutex::new(Vec::new()));
+    let mut bus = MmioBus::new();
+    bus.register(0x1000, 0x100, Box::new(recording("a", Arc::clone(&a))))
+        .expect("a");
+    bus.register(0x2000, 0x100, Box::new(recording("b", Arc::clone(&b))))
+        .expect("b");
+    let bus = &bus;
+    std::thread::scope(|scope| {
+        for thread in 0..THREADS {
+            scope.spawn(move || {
+                let regs = MockRegs {
+                    regs: RefCell::new([0; 31]),
+                };
+                regs.regs.borrow_mut()[0] = thread;
+                let gpa = if thread % 2 == 0 { 0x1000 } else { 0x2000 };
+                for _ in 0..PER_THREAD {
+                    bus.dispatch(&regs, mmio(gpa + thread, 1, true, 0))
+                        .expect("write");
+                }
+            });
+        }
+    });
+    let total = THREADS / 2 * PER_THREAD;
+    assert_eq!(bus.access_count("a"), Some(total));
+    assert_eq!(bus.access_count("b"), Some(total));
+    let a = a.lock().expect("a");
+    assert_eq!(a.len() as u64, total);
+    assert!(a
+        .iter()
+        .all(|(offset, _, val)| offset == val && val % 2 == 0));
+    let b = b.lock().expect("b");
+    assert!(b
+        .iter()
+        .all(|(offset, _, val)| offset == val && val % 2 == 1));
 }
 
-fn recording(label: &'static str, writes: Rc<RefCell<Vec<(u64, u8, u64)>>>) -> MockDev {
+fn dev(label: &'static str) -> MockDev {
+    recording(label, Arc::new(Mutex::new(Vec::new())))
+}
+
+fn recording(label: &'static str, writes: Arc<Mutex<Vec<(u64, u8, u64)>>>) -> MockDev {
     MockDev {
         label,
         next_read: 0,

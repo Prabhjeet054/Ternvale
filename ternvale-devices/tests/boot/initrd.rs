@@ -8,8 +8,8 @@ use ternvale_devices::{Pl011, Step};
 use ternvale_vmm::{ExitReason, Machine};
 
 use crate::common::{
-    assets_root, banner_timeout, drive, init_logging, log_dir, restore_stdin, stdin_pipe,
-    write_result,
+    assets_root, banner_timeout, boot_cpus, drive, init_logging, log_dir, restore_stdin,
+    stdin_pipe, write_result,
 };
 
 pub fn run() -> Result<(), String> {
@@ -29,10 +29,11 @@ pub fn run() -> Result<(), String> {
     if !cmdline.is_empty() {
         tracing::info!(target: "ternvale::boot", cmdline, "boot harness cmdline override");
     }
+    let cpus = boot_cpus(1)?;
     let root = assets_root();
     let vm = VmConfig {
         name: "boot".to_string(),
-        cpus: 1,
+        cpus,
         ram_mib: 256,
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
@@ -55,7 +56,7 @@ pub fn run() -> Result<(), String> {
             &mut input,
             &flag,
             &host_log,
-            initrd_script(),
+            initrd_script(cpus),
         )
     });
 
@@ -88,18 +89,61 @@ pub fn run() -> Result<(), String> {
     }
 }
 
-fn initrd_script() -> Vec<Step> {
+/// With more than one CPU, also require every CPU online in the kernel log
+/// and in `/proc/cpuinfo`.
+fn smp_steps(cpus: u32, banner: Duration) -> Vec<Step> {
+    if cpus < 2 {
+        return Vec::new();
+    }
+    vec![Step::Expect {
+        pattern: format!("SMP: Total of {cpus} processors activated"),
+        timeout: banner,
+    }]
+}
+
+fn cpuinfo_steps(cpus: u32, command: Duration) -> Vec<Step> {
+    if cpus < 2 {
+        return Vec::new();
+    }
+    // This initramfs does not mount /proc.
+    let mut steps: Vec<Step> = [
+        &b"/bin/busybox "[..],
+        b"mkdir -p /proc\n",
+        b"/bin/busybox ",
+        b"mount -t proc ",
+        b"proc /proc\n",
+        b"echo cpus=$(",
+        b"/bin/busybox ",
+        b"grep -c ^proc",
+        b"essor /proc/",
+        b"cpuinfo)\n",
+    ]
+    .iter()
+    .map(|chunk| Step::Send {
+        data: chunk.to_vec(),
+    })
+    .collect();
+    steps.push(Step::Expect {
+        pattern: format!("cpus={cpus}"),
+        timeout: command,
+    });
+    steps
+}
+
+fn initrd_script(cpus: u32) -> Vec<Step> {
     let banner = banner_timeout();
     let command = Duration::from_secs(15);
-    vec![
-        Step::Expect {
-            pattern: "Linux version".to_string(),
-            timeout: banner,
-        },
-        Step::Expect {
-            pattern: "# ".to_string(),
-            timeout: banner,
-        },
+    let mut steps = vec![Step::Expect {
+        pattern: "Linux version".to_string(),
+        timeout: banner,
+    }];
+    steps.extend(smp_steps(cpus, banner));
+    steps.push(Step::Expect {
+        pattern: "# ".to_string(),
+        timeout: banner,
+    });
+    steps.extend(cpuinfo_steps(cpus, command));
+    steps.extend([
         Step::Send {
             data: b"/bin/busybox ".to_vec(),
         },
@@ -123,5 +167,6 @@ fn initrd_script() -> Vec<Step> {
         Step::Send {
             data: b"poweroff -f\n".to_vec(),
         },
-    ]
+    ]);
+    steps
 }

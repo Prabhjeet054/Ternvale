@@ -3,8 +3,9 @@
 use std::io::{self, Write};
 use std::path::Path;
 
-/// Where transmitted bytes are appended.
-pub trait ByteSink {
+/// Where transmitted bytes are appended. `Send` because the UART is shared by
+/// every vCPU thread.
+pub trait ByteSink: Send {
     /// Write guest TX bytes.
     fn write_all(&mut self, bytes: &[u8]) -> io::Result<()>;
 }

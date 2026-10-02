@@ -275,10 +275,7 @@ fn worker(
                 let Some(q) = queue.as_mut() else {
                     continue;
                 };
-                let mut mem = match memory.lock() {
-                    Ok(guard) => guard,
-                    Err(poison) => poison.into_inner(),
-                };
+                let mut mem = ternvale_vmm::lockwatch::lock(&memory, "guest-memory");
                 let mut completed = false;
                 let chains: Vec<_> = q.chains(&mem).collect();
                 for chain in chains {

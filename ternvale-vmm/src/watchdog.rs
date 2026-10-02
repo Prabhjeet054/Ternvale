@@ -74,7 +74,7 @@ impl Watchdog {
     }
 
     fn lock<'a, T>(&'a self, mutex: &'a Mutex<T>) -> std::sync::MutexGuard<'a, T> {
-        mutex.lock().unwrap_or_else(|poison| poison.into_inner())
+        crate::lockwatch::lock(mutex, "watchdog")
     }
 }
 

@@ -1,7 +1,6 @@
 //! Run the hello payload and deliver each `strb` to a mock device on the bus.
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::boot::{load, PAYLOAD_GPA};
 use crate::esr::{decode, ExitEvent};
@@ -17,7 +16,7 @@ const CPSR_EL1H: u64 = 0x3c5;
 const EXPECTED: &[u8] = b"Hello from Ternvale\n";
 
 struct Sink {
-    bytes: Rc<RefCell<Vec<u8>>>,
+    bytes: Arc<Mutex<Vec<u8>>>,
 }
 
 impl MmioDevice for Sink {
@@ -30,7 +29,7 @@ impl MmioDevice for Sink {
     }
 
     fn write(&mut self, _offset: u64, _size: u8, val: u64) {
-        self.bytes.borrow_mut().push(val as u8);
+        self.bytes.lock().expect("bytes").push(val as u8);
     }
 }
 
@@ -63,13 +62,13 @@ fn runs_hello_payload_through_the_bus() {
     vcpu.set_cpsr(CPSR_EL1H).expect("cpsr");
     load(&mut memory, &vcpu, &payload).expect("load");
 
-    let received = Rc::new(RefCell::new(Vec::new()));
+    let received = Arc::new(Mutex::new(Vec::new()));
     let mut bus = MmioBus::new();
     bus.register(
         UART,
         UART_SIZE,
         Box::new(Sink {
-            bytes: Rc::clone(&received),
+            bytes: Arc::clone(&received),
         }),
     )
     .expect("uart");
@@ -102,7 +101,7 @@ fn runs_hello_payload_through_the_bus() {
         }
     }
 
-    let bytes = received.borrow().clone();
+    let bytes = received.lock().expect("bytes").clone();
     tracing::info!(
         target: "ternvale::mmio",
         bytes = %String::from_utf8_lossy(&bytes),

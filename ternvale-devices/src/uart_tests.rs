@@ -1,20 +1,21 @@
 use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 use super::{Pl011, PL011_BASE, PL011_SIZE};
 use ternvale_vmm::{ExitEvent, GuestRegs, MmioBus, MmioError};
 
-fn uart(sink: Vec<u8>) -> (Pl011, std::rc::Rc<RefCell<Vec<u8>>>) {
-    let sink = std::rc::Rc::new(RefCell::new(sink));
-    let shared = std::rc::Rc::clone(&sink);
+fn uart(sink: Vec<u8>) -> (Pl011, Arc<Mutex<Vec<u8>>>) {
+    let sink = Arc::new(Mutex::new(sink));
+    let shared = Arc::clone(&sink);
     let device = Pl011::new(Box::new(Share(sink)));
     (device, shared)
 }
 
-struct Share(std::rc::Rc<RefCell<Vec<u8>>>);
+struct Share(Arc<Mutex<Vec<u8>>>);
 
 impl super::ByteSink for Share {
     fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        self.0.borrow_mut().extend_from_slice(bytes);
+        self.0.lock().expect("sink").extend_from_slice(bytes);
         Ok(())
     }
 }
@@ -37,7 +38,7 @@ fn tx_bytes_reach_the_sink_and_rx_flags_follow_the_queue() {
     let (mut uart, sink) = uart(Vec::new());
     uart.write(0, 1, u64::from(b'A'));
     uart.write(0, 1, u64::from(b'\n'));
-    assert_eq!(sink.borrow().as_slice(), b"A\n");
+    assert_eq!(sink.lock().expect("sink").as_slice(), b"A\n");
     let fr = uart.read(0x18, 4);
     assert_eq!(fr & (1 << 5), 0, "TXFF clear");
     assert_ne!(fr & (1 << 4), 0, "RXFE set");
@@ -91,7 +92,7 @@ fn bus_write_to_uartdr_delivers_the_byte() {
         },
     )
     .expect("dispatch");
-    assert_eq!(sink.borrow().as_slice(), b"H");
+    assert_eq!(sink.lock().expect("sink").as_slice(), b"H");
     assert_eq!(bus.access_count("pl011"), Some(1));
 }
 

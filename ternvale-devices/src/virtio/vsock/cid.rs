@@ -18,10 +18,7 @@ const CID_ANY: u32 = u32::MAX;
 static LEASED: Mutex<BTreeSet<u32>> = Mutex::new(BTreeSet::new());
 
 fn leased() -> MutexGuard<'static, BTreeSet<u32>> {
-    match LEASED.lock() {
-        Ok(guard) => guard,
-        Err(poison) => poison.into_inner(),
-    }
+    ternvale_vmm::lockwatch::lock(&LEASED, "vsock-cid-leases")
 }
 
 /// A CID reserved for one device. Dropping it frees the CID.

@@ -7,12 +7,14 @@ mod esr;
 mod fdt;
 mod gic_redist;
 mod linux;
+pub mod lockwatch;
 mod machine;
 mod memory;
 mod mmio;
 mod platform;
 mod psci;
 mod serial;
+mod smp;
 mod vcpu;
 mod watchdog;
 
@@ -33,9 +35,10 @@ pub use platform::{
     Layout, PlatformError, Region, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_MMIO_BASE,
     RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
-pub use psci::{call as psci_call, PsciAction, TRAP_PC_ADVANCE};
+pub use psci::{call as psci_call, PowerRequest, PsciAction, TRAP_PC_ADVANCE};
 pub use serial::SerialDevice;
-pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStop};
+pub use smp::{dt_cpu_reg, mpidr, CpuPower, MPIDR_AFFINITY_MASK, MPIDR_RES1};
+pub use vcpu::{ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStop};
 
 #[cfg(test)]
 #[path = "gic_hv_test.rs"]

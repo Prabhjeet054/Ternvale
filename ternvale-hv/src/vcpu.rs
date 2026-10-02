@@ -235,6 +235,34 @@ pub fn set_vtimer_mask(id: u64, masked: bool) -> Result<(), HvError> {
     finish(code, ())
 }
 
+/// Read the vCPU's virtual timer offset (`CNTVCT_EL0 = mach_absolute_time() - offset`).
+#[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all, fields(vcpu_id = id))]
+pub fn get_vtimer_offset(id: u64) -> Result<u64, HvError> {
+    let mut offset = 0u64;
+    // SAFETY: `id` is a live vCPU on this thread. `offset` is a writable local.
+    let raw = unsafe { crate::ffi::hv_vcpu_get_vtimer_offset(id, &mut offset) };
+    let code = ternvale_log::log_hv_call!(
+        "hv_vcpu_get_vtimer_offset",
+        format!("id={id:#x} offset={offset:#x}"),
+        raw
+    );
+    finish(code, offset)
+}
+
+/// Set the vCPU's virtual timer offset. Every vCPU of a VM should share one
+/// value so they read the same virtual counter.
+#[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all, fields(vcpu_id = id, offset = format!("{offset:#x}")))]
+pub fn set_vtimer_offset(id: u64, offset: u64) -> Result<(), HvError> {
+    // SAFETY: `id` is a live vCPU on this thread. The offset is copied by value.
+    let raw = unsafe { crate::ffi::hv_vcpu_set_vtimer_offset(id, offset) };
+    let code = ternvale_log::log_hv_call!(
+        "hv_vcpu_set_vtimer_offset",
+        format!("id={id:#x} offset={offset:#x}"),
+        raw
+    );
+    finish(code, ())
+}
+
 /// Ask the kernel to cancel `ids`. Safe to call from a thread that does not own them.
 #[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all, fields(count = ids.len()))]
 pub fn vcpus_exit(ids: &[u64]) -> Result<(), HvError> {

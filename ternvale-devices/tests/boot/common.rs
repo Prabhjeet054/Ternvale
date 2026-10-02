@@ -141,8 +141,22 @@ pub fn drive(
     }
 }
 
+/// `TERNVALE_BOOT_CPUS`, or `default` when unset (the config range is 1..=16).
+pub fn boot_cpus(default: u32) -> Result<u32, String> {
+    let cpus = match std::env::var("TERNVALE_BOOT_CPUS") {
+        Ok(text) => text
+            .parse::<u32>()
+            .map_err(|err| format!("TERNVALE_BOOT_CPUS={text}: {err}"))?,
+        Err(_) => default,
+    };
+    tracing::info!(target: "ternvale::boot", cpus, "boot harness cpu count");
+    Ok(cpus)
+}
+
+/// Logs at `TERNVALE_BOOT_LOG` (a `TERNVALE_LOG`-style filter), default `info`.
 pub fn init_logging(name: &str, log_dir: &Path) -> Result<ternvale_log::LogGuard, String> {
-    init_logging_at(name, log_dir, "info")
+    let level = std::env::var("TERNVALE_BOOT_LOG").unwrap_or_else(|_| "info".to_string());
+    init_logging_at(name, log_dir, &level)
 }
 
 /// Like [`init_logging`] with a `TERNVALE_LOG`-style filter, e.g. `info,ternvale::net=trace`.

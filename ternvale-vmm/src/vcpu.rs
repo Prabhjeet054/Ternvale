@@ -7,6 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::ThreadId;
+use std::time::Instant;
 
 use ternvale_hv::{
     Reg, SysReg, HV_EXIT_REASON_CANCELED, HV_EXIT_REASON_EXCEPTION, HV_EXIT_REASON_UNKNOWN,
@@ -28,8 +29,12 @@ pub enum ExitReason {
     },
     /// The virtual timer became pending. The PPI is already injected.
     VtimerActivated,
-    /// PSCI `CPU_OFF`. x0 is 0 and PC is past the call.
+    /// PSCI `CPU_OFF`. x0 is 0 and PC is past the call. The vCPU may be
+    /// started again by `CPU_ON`.
     CpuOff,
+    /// PSCI `CPU_ON` or `AFFINITY_INFO`. PC is past the call; the caller
+    /// writes the PSCI status to x0 and runs again.
+    Psci(crate::psci::PowerRequest),
     /// PSCI `SYSTEM_OFF`. The guest does not resume.
     SystemOff,
     /// PSCI `SYSTEM_RESET`. The guest does not resume.
@@ -64,46 +69,6 @@ pub enum VcpuError {
     },
 }
 
-/// Sends `hv_vcpus_exit` for one vCPU. This value is `Send`.
-#[derive(Debug, Clone)]
-pub struct VcpuStop {
-    id: u64,
-    stop: Arc<AtomicBool>,
-    pending: Arc<AtomicBool>,
-    wake: Arc<Condvar>,
-}
-
-impl VcpuStop {
-    /// Mark the vCPU stopped and ask the kernel to cancel it.
-    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
-    pub fn request(&self) -> Result<(), VcpuError> {
-        self.stop.store(true, Ordering::Release);
-        self.pending.store(true, Ordering::Release);
-        self.wake.notify_one();
-        tracing::info!(target: "ternvale::vcpu", vcpu_id = self.id, "stop requested");
-        ternvale_hv::vcpus_exit(&[self.id])?;
-        Ok(())
-    }
-
-    /// Cancel `hv_vcpu_run` without stopping the guest.
-    ///
-    /// The machine loop uses this to leave a hypervisor WFI and drain stdin.
-    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
-    pub fn nudge(&self) -> Result<(), VcpuError> {
-        self.pending.store(true, Ordering::Release);
-        self.wake.notify_one();
-        tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "vcpu nudge");
-        ternvale_hv::vcpus_exit(&[self.id])?;
-        Ok(())
-    }
-
-    /// Whether [`VcpuStop::request`] has run.
-    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
-    pub fn is_stopped(&self) -> bool {
-        self.stop.load(Ordering::Acquire)
-    }
-}
-
 /// A vCPU created and run on one thread.
 pub struct Vcpu {
     pub(super) id: u64,
@@ -117,9 +82,15 @@ pub struct Vcpu {
     pub(super) park: Arc<Mutex<()>>,
     /// Set after a VTIMER exit until `CNTV_CTL_EL0.ISTATUS` clears.
     pub(super) timer_masked: AtomicBool,
+    counters: stats::Counters,
 }
 
 mod exit;
+mod stats;
+mod stop;
+
+pub use stats::VcpuStats;
+pub use stop::VcpuStop;
 
 impl std::fmt::Debug for Vcpu {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -154,7 +125,14 @@ impl Vcpu {
             wake: Arc::new(Condvar::new()),
             park: Arc::new(Mutex::new(())),
             timer_masked: AtomicBool::new(false),
+            counters: stats::Counters::default(),
         })
+    }
+
+    /// Activity counters since this vCPU was created.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
+    pub fn stats(&self) -> VcpuStats {
+        self.counters.snapshot()
     }
 
     /// Kernel vCPU id.
@@ -234,6 +212,21 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Read the virtual timer offset.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
+    pub fn vtimer_offset(&self) -> Result<u64, VcpuError> {
+        self.on_owner_thread()?;
+        Ok(ternvale_hv::get_vtimer_offset(self.id)?)
+    }
+
+    /// Write the virtual timer offset.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id, offset = format!("{:#x}", offset)))]
+    pub fn set_vtimer_offset(&self, offset: u64) -> Result<(), VcpuError> {
+        self.on_owner_thread()?;
+        ternvale_hv::set_vtimer_offset(self.id, offset)?;
+        Ok(())
+    }
+
     /// Read a system register.
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id, reg = ?reg))]
     pub fn get_sys_reg(&self, reg: SysReg) -> Result<u64, VcpuError> {
@@ -264,7 +257,10 @@ impl Vcpu {
                 tracing::info!(target: "ternvale::vcpu", vcpu_id = self.id, "vcpu run stopped");
                 return Ok(ExitReason::Canceled);
             }
-            ternvale_hv::vcpu_run(self.id)?;
+            let entered = Instant::now();
+            let ran = ternvale_hv::vcpu_run(self.id);
+            self.counters.run(entered.elapsed());
+            ran?;
             let reason = self.read_exit();
             match self.dispatch(reason)? {
                 exit::Loop::Again => {}
@@ -312,7 +308,18 @@ impl Drop for Vcpu {
                 "hv_vcpu_destroy failed"
             );
         } else {
-            tracing::info!(target: "ternvale::vcpu", vcpu_id = self.id, "vCPU destroyed");
+            let stats = self.counters.snapshot();
+            tracing::info!(
+                target: "ternvale::vcpu",
+                vcpu_id = self.id,
+                thread_cpu_ms = stats::thread_cpu_ms(),
+                runs = stats.runs,
+                guest_ms = stats.guest_ms,
+                wfi_parks = stats.wfi_parks,
+                park_ms = stats.park_ms,
+                vtimer_exits = stats.vtimer_exits,
+                "vCPU destroyed"
+            );
         }
     }
 }

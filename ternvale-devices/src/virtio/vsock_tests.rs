@@ -188,7 +188,7 @@ fn mmio_reports_vsock_identity_and_guest_cid() {
     VirtioMmio::register(&mut bus, 1, Box::new(dev)).expect("register");
     let regs = Regs(RefCell::new([0; 31]));
     let base = ternvale_vmm::VIRTIO_MMIO_BASE + ternvale_vmm::VIRTIO_MMIO_SLOT_SIZE;
-    let mut read = |offset: u64| {
+    let read = |offset: u64| {
         bus.dispatch(
             &regs,
             ExitEvent::Mmio {

@@ -158,17 +158,27 @@ fn memory(w: &mut FdtWriter, fdt: &GuestFdt) -> FdtWriterResult<()> {
     w.end_node(node)
 }
 
+/// One cell of `reg` per CPU: MPIDR Aff2..Aff0, the value the vCPU's
+/// `MPIDR_EL1` carries and PSCI `CPU_ON` targets.
 fn cpus(w: &mut FdtWriter, count: u32) -> FdtWriterResult<()> {
     let node = w.begin_node("cpus")?;
     w.property_u32("#address-cells", 1)?;
     w.property_u32("#size-cells", 0)?;
     for id in 0..count {
-        let cpu = w.begin_node(&format!("cpu@{id}"))?;
+        let reg = crate::smp::dt_cpu_reg(id);
+        let cpu = w.begin_node(&format!("cpu@{reg:x}"))?;
         w.property_string("device_type", "cpu")?;
         w.property_string("compatible", "arm,armv8")?;
-        w.property_u32("reg", id)?;
+        w.property_u32("reg", reg)?;
         w.property_string("enable-method", "psci")?;
         w.end_node(cpu)?;
+        tracing::debug!(
+            target: "ternvale::boot",
+            cpu = id,
+            reg = format!("{reg:#x}"),
+            mpidr = format!("{:#x}", crate::smp::mpidr(id)),
+            "dtb cpu node"
+        );
     }
     w.end_node(node)
 }
