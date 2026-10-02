@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::logfmt::Level;
+
 /// Ternvale: an ARM64 VMM on Hypervisor.framework.
 #[derive(Debug, Parser)]
 #[command(name = "ternvale", version, about)]
@@ -78,5 +80,49 @@ pub enum Command {
         /// Print the raw JSON response.
         #[arg(long)]
         json: bool,
+    },
+    /// Check this Mac can run VMs: macOS version, hypervisor, entitlement,
+    /// GIC, disk space, and the log directory. Exits 1 if a check fails.
+    Doctor {
+        /// Print the checks as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Also check this VM config: kernel, initrd, disks, and cmdline.
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
+    /// Show a VM's newest host log, filtered by level and target.
+    Logs {
+        /// VM name (the config's `name`; `cli` for non-run commands).
+        name: String,
+        /// Keep printing new lines; switches to a newer log if the VM restarts.
+        #[arg(short, long)]
+        follow: bool,
+        /// Minimum level: trace, debug, info, warn, or error.
+        #[arg(long)]
+        level: Option<Level>,
+        /// Only these targets and their children, e.g. `ternvale::virtio`
+        /// or `virtio::blk`. Repeat for several.
+        #[arg(long = "target")]
+        targets: Vec<String>,
+        /// List the VM's log files instead of printing one.
+        #[arg(long)]
+        list: bool,
+        /// Read this log file instead of the newest one.
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
+    /// Zip host log, config, serial log, DTB, last MMIO events, and summary
+    /// for a bug report. Asks a running VM to dump its diagnostics first.
+    #[command(alias = "bundle")]
+    Report {
+        /// VM name.
+        name: String,
+        /// Output zip (default ./ternvale-report-<name>-<stamp>.zip).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// VM config to include when the run left no manifest.
+        #[arg(long)]
+        config: Option<PathBuf>,
     },
 }

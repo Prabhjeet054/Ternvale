@@ -21,7 +21,25 @@ pub fn guest_cmdline(cmdline: &str) -> String {
     fields(boot_disk)
 )]
 pub fn guest_cmdline_for(cmdline: &str, boot_disk: bool) -> String {
-    let resolved = if boot_disk {
+    let resolved = resolve_cmdline(cmdline, boot_disk);
+    tracing::info!(
+        target: "ternvale::boot",
+        cmdline = %resolved,
+        boot_disk,
+        "kernel cmdline"
+    );
+    resolved
+}
+
+/// The cmdline [`guest_cmdline_for`] would boot with, without logging it.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::boot",
+    skip_all,
+    fields(boot_disk)
+)]
+pub fn resolve_cmdline(cmdline: &str, boot_disk: bool) -> String {
+    if boot_disk {
         if cmdline.is_empty() {
             DISK_ROOT_CMDLINE.to_string()
         } else if has_root_arg(cmdline) {
@@ -33,14 +51,7 @@ pub fn guest_cmdline_for(cmdline: &str, boot_disk: bool) -> String {
         DEFAULT_CMDLINE.to_string()
     } else {
         cmdline.to_string()
-    };
-    tracing::info!(
-        target: "ternvale::boot",
-        cmdline = %resolved,
-        boot_disk,
-        "kernel cmdline"
-    );
-    resolved
+    }
 }
 
 fn has_root_arg(cmdline: &str) -> bool {

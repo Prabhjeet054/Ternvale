@@ -4,6 +4,7 @@
 
 mod boot;
 mod control;
+mod diag;
 mod esr;
 mod fdt;
 mod firmware;
@@ -25,6 +26,7 @@ pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo
 pub use control::{
     ControlError, ControlHooks, CpuStats, StopCause, VmControl, VmState, VmStats, VmStatus,
 };
+pub use diag::{DeviceCount, Diagnostics, MmioEvent, MmioTrace, MMIO_TRACE_LEN};
 pub use esr::{decode as decode_esr, ExitEvent};
 pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt, PL011_REG_SIZE, UART_SPI, VIRTIO_SPI0};
 pub use firmware::{FirmwareError, RomdWindow, VarsFlash};
@@ -32,6 +34,7 @@ pub use linux::{
     load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
     CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
 };
+pub use machine::cmdline::resolve_cmdline;
 pub use machine::{
     guest_cmdline, guest_cmdline_for, DeviceAttach, Machine, MachineError, DEFAULT_CMDLINE,
     DISK_ROOT_CMDLINE,

@@ -143,6 +143,12 @@ pub enum HvError {
     /// `sysctlbyname(kern.osproductversion)` failed or the string was not a version.
     #[error("could not read the macOS version")]
     OsVersion,
+    /// `sysctlbyname(name)` failed.
+    #[error("sysctl {name} is not available")]
+    Sysctl {
+        /// The sysctl name.
+        name: String,
+    },
     /// `getentropy(2)` failed.
     #[error("getentropy failed with errno {errno}")]
     Entropy {

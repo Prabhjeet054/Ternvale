@@ -10,9 +10,11 @@ build:
 test:
 	$(CARGO) test --workspace
 
-# Ignored tests are the ones marked needs-hv.
+# Ignored tests are the ones marked needs-hv. They must run one at a time:
+# Hypervisor.framework allows one VM per process, and the tests swap
+# TERNVALE_LOG and the thread's log subscriber.
 test-hv:
-	$(CARGO) test --workspace -- --ignored
+	$(CARGO) test --workspace -- --ignored --test-threads=1
 
 lint:
 	$(CARGO) fmt --check

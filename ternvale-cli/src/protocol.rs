@@ -2,8 +2,9 @@
 //!
 //! Requests: `{"cmd":"status"}`, `{"cmd":"pause","timeout_ms":5000}`,
 //! `{"cmd":"resume"}`, `{"cmd":"shutdown"}`, `{"cmd":"force-stop"}`,
-//! `{"cmd":"query-stats"}`. Every response has `ok`; success carries
-//! `status` (and `stats` for `query-stats`), failure carries `error`.
+//! `{"cmd":"query-stats"}`, `{"cmd":"dump-diagnostics"}`. Every response has
+//! `ok`; success carries `status` (and `stats` for `query-stats`, `files` for
+//! `dump-diagnostics`), failure carries `error`.
 //! `status.agent` describes the guest agent connection when the VM runs an
 //! agent server.
 
@@ -38,6 +39,8 @@ pub enum Request {
     ForceStop,
     /// State plus per-vCPU counters.
     QueryStats,
+    /// Write the guest DTB, MMIO events, and summary beside the host log.
+    DumpDiagnostics,
 }
 
 impl Request {
@@ -51,6 +54,7 @@ impl Request {
             Self::Shutdown => "shutdown",
             Self::ForceStop => "force-stop",
             Self::QueryStats => "query-stats",
+            Self::DumpDiagnostics => "dump-diagnostics",
         }
     }
 
@@ -59,6 +63,7 @@ impl Request {
     pub fn verb(&self) -> &'static str {
         match self {
             Self::Status | Self::QueryStats => "query",
+            Self::DumpDiagnostics => "dump diagnostics for",
             Self::Pause { .. } => "pause",
             Self::Resume => "resume",
             Self::Shutdown => "stop",
@@ -164,6 +169,9 @@ pub struct Response {
     pub status: Option<StatusJson>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stats: Option<StatsJson>,
+    /// Files written by `dump-diagnostics`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<String>>,
 }
 
 impl Response {
@@ -175,6 +183,16 @@ impl Response {
             error: None,
             status: Some(StatusJson::from(status)),
             stats: None,
+            files: None,
+        }
+    }
+
+    /// Success with a status and the files a dump wrote.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(files = files.len()))]
+    pub fn files(status: &VmStatus, files: Vec<String>) -> Self {
+        Self {
+            files: Some(files),
+            ..Self::status(status)
         }
     }
 
@@ -202,6 +220,7 @@ impl Response {
                 cpus,
                 process_cpu_ms: stats.process_cpu_ms,
             }),
+            files: None,
         }
     }
 
@@ -213,6 +232,7 @@ impl Response {
             error: Some(message.into()),
             status: None,
             stats: None,
+            files: None,
         }
     }
 }
@@ -254,6 +274,7 @@ mod tests {
             (r#"{"cmd":"shutdown"}"#, Request::Shutdown),
             (r#"{"cmd":"force-stop"}"#, Request::ForceStop),
             (r#"{"cmd":"query-stats"}"#, Request::QueryStats),
+            (r#"{"cmd":"dump-diagnostics"}"#, Request::DumpDiagnostics),
         ];
         for (line, want) in cases {
             let got: Request = serde_json::from_str(line).expect(line);

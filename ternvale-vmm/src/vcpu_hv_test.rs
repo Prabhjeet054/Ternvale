@@ -32,8 +32,15 @@ fn runs_hvc0_and_rejects_run_from_another_thread() {
     vcpu.set_cpsr(CPSR_EL1H).expect("cpsr");
     vcpu.set_pc(GUEST_PC).expect("pc");
 
-    let wrong =
-        std::thread::scope(|scope| scope.spawn(|| vcpu.run()).join().expect("other thread"));
+    // The scoped thread must log to this test's subscriber; the process-wide
+    // default may belong to an earlier test in the same binary.
+    let dispatch = tracing::dispatcher::get_default(Clone::clone);
+    let wrong = std::thread::scope(|scope| {
+        scope
+            .spawn(|| tracing::dispatcher::with_default(&dispatch, || vcpu.run()))
+            .join()
+            .expect("other thread")
+    });
     let error = wrong.expect_err("other thread should fail");
     assert!(matches!(error, VcpuError::WrongThread { .. }), "{error:?}");
     assert!(error.to_string().contains("belongs to thread"), "{error}");

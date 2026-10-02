@@ -8,8 +8,9 @@
 //! device sits behind its own mutex, so vCPUs only contend on the same device.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
+use crate::diag::MmioTrace;
 use crate::esr::ExitEvent;
 use crate::lockwatch::Guard;
 use crate::vcpu::{Vcpu, VcpuError};
@@ -36,6 +37,11 @@ pub trait GuestRegs {
 
     /// Write `Xn`.
     fn set_reg(&self, index: u8, value: u64) -> Result<(), MmioError>;
+
+    /// Kernel vCPU id, recorded with each access in the MMIO trace.
+    fn cpu_id(&self) -> Option<u64> {
+        None
+    }
 }
 
 impl GuestRegs for Vcpu {
@@ -45,6 +51,10 @@ impl GuestRegs for Vcpu {
 
     fn set_reg(&self, index: u8, value: u64) -> Result<(), MmioError> {
         self.set_x(index, value).map_err(MmioError::from)
+    }
+
+    fn cpu_id(&self) -> Option<u64> {
+        Some(self.id())
     }
 }
 
@@ -108,7 +118,8 @@ struct Slot {
     size: u64,
     name: String,
     device: Mutex<Box<dyn MmioDevice>>,
-    accesses: AtomicU64,
+    accesses: Arc<AtomicU64>,
+    trace_id: Option<u16>,
 }
 
 impl Slot {
@@ -120,6 +131,7 @@ impl Slot {
 /// Registered MMIO devices, dispatched from [`ExitEvent::Mmio`].
 pub struct MmioBus {
     devices: Vec<Slot>,
+    trace: Option<Arc<MmioTrace>>,
 }
 
 impl std::fmt::Debug for MmioBus {
@@ -143,6 +155,16 @@ impl MmioBus {
     pub fn new() -> Self {
         Self {
             devices: Vec::new(),
+            trace: None,
+        }
+    }
+
+    /// An empty bus that records every access in `trace`.
+    #[tracing::instrument(level = "debug", target = "ternvale::mmio", skip_all)]
+    pub fn with_trace(trace: Arc<MmioTrace>) -> Self {
+        Self {
+            devices: Vec::new(),
+            trace: Some(trace),
         }
     }
 
@@ -192,12 +214,18 @@ impl MmioBus {
             size = format!("{:#x}", size),
             "registered mmio device"
         );
+        let accesses = Arc::new(AtomicU64::new(0));
+        let trace_id = self
+            .trace
+            .as_ref()
+            .map(|trace| trace.add_window(device.name(), base, size, Arc::clone(&accesses)));
         self.devices.push(Slot {
             base,
             size,
             name: device.name().to_string(),
             device: Mutex::new(device),
-            accesses: AtomicU64::new(0),
+            accesses,
+            trace_id,
         });
         Ok(())
     }
@@ -272,6 +300,9 @@ impl MmioBus {
             value
         };
         slot.accesses.fetch_add(1, Ordering::Relaxed);
+        if let Some(trace) = &self.trace {
+            trace.record(slot.trace_id, regs.cpu_id(), write, gpa, size, value);
+        }
         tracing::trace!(
             target: "ternvale::mmio",
             device = %slot.name,
@@ -312,6 +343,9 @@ impl MmioBus {
             }
             0
         };
+        if let Some(trace) = &self.trace {
+            trace.record(None, regs.cpu_id(), write, gpa, size, value);
+        }
         tracing::trace!(
             target: "ternvale::mmio",
             device = "unmapped",

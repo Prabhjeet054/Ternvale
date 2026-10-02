@@ -1,0 +1,6 @@
+# cargo-audit policy. Keep in sync with [advisories] in deny.toml.
+[advisories]
+# time < 0.3.47 (RFC 2822 parse stack exhaustion): only tracing-appender uses
+# `time`, for its own fixed date formats. The fix needs rustc 1.88; the
+# project toolchain is 1.87. Drop this when it moves.
+ignore = ["RUSTSEC-2026-0009"]

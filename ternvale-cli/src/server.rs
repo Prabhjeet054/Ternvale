@@ -17,6 +17,7 @@ use anyhow::{bail, Context, Result};
 use ternvale_devices::AgentServer;
 use ternvale_vmm::VmControl;
 
+use crate::diag::DiagSink;
 use crate::protocol::{AgentJson, Request, Response, DEFAULT_PAUSE_MS, MAX_LINE, MAX_PAUSE_MS};
 
 const ACCEPT_POLL: Duration = Duration::from_millis(50);
@@ -44,6 +45,35 @@ impl ControlServer {
         control: Arc<VmControl>,
         agent: Option<Arc<AgentServer>>,
     ) -> Result<Self> {
+        Self::serve_vm(
+            path,
+            Served {
+                control,
+                agent,
+                diag: None,
+            },
+        )
+    }
+
+    /// [`Self::with_agent`], also answering `dump-diagnostics` through `diag`.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(path = %path.display(), vm = control.name(), agent = agent.is_some()))]
+    pub fn with_diag(
+        path: &Path,
+        control: Arc<VmControl>,
+        agent: Option<Arc<AgentServer>>,
+        diag: Arc<DiagSink>,
+    ) -> Result<Self> {
+        Self::serve_vm(
+            path,
+            Served {
+                control,
+                agent,
+                diag: Some(diag),
+            },
+        )
+    }
+
+    fn serve_vm(path: &Path, served: Served) -> Result<Self> {
         let dir = path.parent().with_context(|| {
             format!("control socket {} has no parent directory", path.display())
         })?;
@@ -63,7 +93,7 @@ impl ControlServer {
         let flag = Arc::clone(&stop);
         let thread = std::thread::Builder::new()
             .name("control".to_string())
-            .spawn(move || accept_loop(&listener, &control, agent.as_ref(), &flag))
+            .spawn(move || accept_loop(&listener, &served, &flag))
             .context("spawn control socket thread")?;
         tracing::info!(target: "ternvale::cli", path = %path.display(), "control socket listening");
         Ok(Self {
@@ -115,23 +145,25 @@ fn clear_stale(path: &Path) -> Result<()> {
         .with_context(|| format!("remove stale control socket {}", path.display()))
 }
 
-fn accept_loop(
-    listener: &UnixListener,
-    control: &Arc<VmControl>,
-    agent: Option<&Arc<AgentServer>>,
-    stop: &AtomicBool,
-) {
+/// What one control socket serves.
+#[derive(Clone)]
+struct Served {
+    control: Arc<VmControl>,
+    agent: Option<Arc<AgentServer>>,
+    diag: Option<Arc<DiagSink>>,
+}
+
+fn accept_loop(listener: &UnixListener, served: &Served, stop: &AtomicBool) {
     let mut next_id = 0u64;
     while !stop.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, _addr)) => {
                 next_id += 1;
                 let id = next_id;
-                let control = Arc::clone(control);
-                let agent = agent.cloned();
+                let served = served.clone();
                 let spawned = std::thread::Builder::new()
                     .name(format!("control-{id}"))
-                    .spawn(move || serve(stream, &control, agent.as_deref(), id));
+                    .spawn(move || serve(stream, &served, id));
                 if let Err(error) = spawned {
                     tracing::error!(target: "ternvale::cli", conn = id, error = %error, "could not spawn control connection thread");
                 }
@@ -148,16 +180,15 @@ fn accept_loop(
     tracing::debug!(target: "ternvale::cli", "control socket accept loop stopped");
 }
 
-fn serve(stream: UnixStream, control: &VmControl, agent: Option<&AgentServer>, id: u64) {
-    let span =
-        tracing::info_span!(target: "ternvale::cli", "control", vm = control.name(), conn = id);
+fn serve(stream: UnixStream, served: &Served, id: u64) {
+    let span = tracing::info_span!(target: "ternvale::cli", "control", vm = served.control.name(), conn = id);
     let _entered = span.enter();
-    if let Err(error) = serve_lines(stream, control, agent) {
+    if let Err(error) = serve_lines(stream, served) {
         tracing::warn!(target: "ternvale::cli", error = %format!("{error:#}"), "control connection ended with an error");
     }
 }
 
-fn serve_lines(stream: UnixStream, control: &VmControl, agent: Option<&AgentServer>) -> Result<()> {
+fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
     stream
         .set_nonblocking(false)
         .context("make control connection blocking")?;
@@ -181,7 +212,12 @@ fn serve_lines(stream: UnixStream, control: &VmControl, agent: Option<&AgentServ
             tracing::warn!(target: "ternvale::cli", bytes = line.len(), "control request too long");
             Response::error(format!("request longer than {MAX_LINE} bytes"))
         } else {
-            handle_line(line.trim_end(), control, agent)
+            handle_line_with(
+                line.trim_end(),
+                &served.control,
+                served.agent.as_deref(),
+                served.diag.as_deref(),
+            )
         };
         let mut out = serde_json::to_string(&response).context("encode control response")?;
         out.push('\n');
@@ -198,6 +234,17 @@ fn serve_lines(stream: UnixStream, control: &VmControl, agent: Option<&AgentServ
 /// response includes `agent`'s connection.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name()))]
 pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>) -> Response {
+    handle_line_with(line, control, agent, None)
+}
+
+/// [`handle_line`], with `diag` answering `dump-diagnostics` (an error without it).
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name(), diag = diag.is_some()))]
+pub fn handle_line_with(
+    line: &str,
+    control: &VmControl,
+    agent: Option<&AgentServer>,
+    diag: Option<&DiagSink>,
+) -> Response {
     let request: Request = match serde_json::from_str(line) {
         Ok(request) => request,
         Err(error) => {
@@ -222,6 +269,22 @@ pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>)
         Request::ForceStop => control
             .request_stop(true)
             .map(|status| Response::status(&status)),
+        Request::DumpDiagnostics => {
+            let Some(diag) = diag else {
+                tracing::warn!(target: "ternvale::cli", "dump-diagnostics on a server without diagnostics");
+                return Response::error("this vm does not record diagnostics");
+            };
+            return match diag.dump(None) {
+                Ok(files) => Response::files(
+                    &control.status(),
+                    files.iter().map(|f| f.display().to_string()).collect(),
+                ),
+                Err(error) => {
+                    tracing::warn!(target: "ternvale::cli", error = %format!("{error:#}"), "dump-diagnostics failed");
+                    Response::error(format!("dump diagnostics: {error:#}"))
+                }
+            };
+        }
     };
     match result {
         Ok(mut response) => {

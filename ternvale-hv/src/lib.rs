@@ -9,6 +9,7 @@ mod error;
 mod ffi;
 mod gic;
 mod gic_order;
+mod host;
 mod map;
 mod osver;
 mod vcpu;
@@ -21,9 +22,11 @@ pub use error::{
     HV_NO_DEVICE, HV_NO_RESOURCES, HV_SUCCESS, HV_UNSUPPORTED,
 };
 pub use gic::{raise_ppi, Gic, IccReg, VTIMER_PPI};
+pub use host::{hypervisor_supported, macos_version, MacosVersion};
 pub use map::{
     map_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX, HV_MEMORY_WRITE,
 };
+pub use osver::GIC_MIN_MACOS_MAJOR;
 pub use vcpu::{
     get_reg, get_sys_reg, get_vtimer_offset, set_reg, set_sys_reg, set_vtimer_mask,
     set_vtimer_offset, vcpu_create, vcpu_destroy, vcpu_run, vcpus_exit, Reg, SysReg, VcpuExit,

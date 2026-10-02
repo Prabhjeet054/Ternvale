@@ -3,12 +3,10 @@
 //! `hv_gic.h` in the macOS SDK marks `hv_gic_create` and the other GICv3 calls
 //! `API_AVAILABLE(macos(15.0))`. macOS 15 is the minimum.
 
-use std::ffi::c_void;
 #[cfg(test)]
 use std::sync::Mutex;
 
 use crate::error::HvError;
-use crate::ffi::sysctlbyname;
 
 /// Major version required by `API_AVAILABLE(macos(15.0))`.
 pub const GIC_MIN_MACOS_MAJOR: u32 = 15;
@@ -63,44 +61,17 @@ fn host_version() -> Result<(u32, u32), HvError> {
     if let Some(version) = *ternvale_log::lockwatch::lock(&OVERRIDE, "macos-version-override") {
         return Ok(version);
     }
-    let mut buf = [0u8; 32];
-    let mut len = buf.len();
-    let name = c"kern.osproductversion";
-    // SAFETY: `name` is a NUL-terminated literal. `buf` is writable for `len` bytes.
-    // `sysctlbyname` writes the version string and updates `len`.
-    let rc = unsafe {
-        sysctlbyname(
-            name.as_ptr(),
-            buf.as_mut_ptr().cast::<c_void>(),
-            &mut len,
-            std::ptr::null_mut(),
-            0,
-        )
-    };
-    if rc != 0 {
-        tracing::error!(target: "ternvale::gic", rc, "sysctlbyname kern.osproductversion failed");
-        return Err(HvError::OsVersion);
-    }
-    let text = std::str::from_utf8(&buf[..len]).unwrap_or("");
-    let text = text.trim_end_matches('\0').trim();
-    parse_version(text).ok_or_else(|| {
-        tracing::error!(target: "ternvale::gic", version = text, "unparsed macOS version");
+    let version = crate::host::macos_version().map_err(|error| {
+        tracing::error!(target: "ternvale::gic", error = %error, "could not read the macOS version");
         HvError::OsVersion
-    })
-}
-
-fn parse_version(text: &str) -> Option<(u32, u32)> {
-    let mut parts = text.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next().unwrap_or("0").parse().ok()?;
-    Some((major, minor))
+    })?;
+    Ok((version.major, version.minor))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ensure_gic_os, ensure_gic_os_version, parse_version, set_gic_os_version_override,
-        GIC_MIN_MACOS_MAJOR,
+        ensure_gic_os, ensure_gic_os_version, set_gic_os_version_override, GIC_MIN_MACOS_MAJOR,
     };
     use crate::HvError;
 
@@ -137,13 +108,5 @@ mod tests {
             }
         ));
         assert!(error.to_string().contains("15.0"), "{error}");
-    }
-
-    #[test]
-    fn parses_a_product_version() {
-        assert_eq!(parse_version("15.6.1"), Some((15, 6)));
-        assert_eq!(parse_version("27.0"), Some((27, 0)));
-        assert_eq!(parse_version("15"), Some((15, 0)));
-        assert_eq!(parse_version(""), None);
     }
 }

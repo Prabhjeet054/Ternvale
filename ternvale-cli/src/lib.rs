@@ -4,6 +4,8 @@
 //! control socket at `~/Library/Application Support/Ternvale/run/<name>.sock`
 //! (JSON lines, see [`protocol`]). `status`, `pause`, `resume`, and `stop`
 //! are clients of that socket. `validate` and `create-disk` work offline.
+//! `doctor` checks the host, `logs` reads host logs, and `report` zips a
+//! crash report (asking a running VM to `dump-diagnostics` first).
 //!
 //! This is the only crate that uses `anyhow`; every error carries context
 //! naming the operation. User-facing output uses `println!`/`eprintln!`;
@@ -12,11 +14,17 @@
 pub mod cli;
 pub mod client;
 pub mod commands;
+pub mod diag;
 pub mod disk;
+pub mod doctor;
+pub mod logfmt;
+pub mod logs;
 pub mod paths;
 pub mod protocol;
+pub mod report;
 pub mod run;
 pub mod server;
+pub mod summary;
 pub mod vsock;
 
 use std::process::ExitCode;
@@ -67,17 +75,33 @@ pub fn error_chain(error: &anyhow::Error) -> String {
 pub fn dispatch(command: Command) -> Result<ExitCode> {
     match command {
         Command::Run { config } => run::run(&config),
+        Command::Doctor { json, config } => {
+            // The log directory is one of the things doctor checks, so a
+            // broken one must not stop it.
+            let _guard = match cli_log() {
+                Ok(guard) => Some(guard),
+                Err(error) => {
+                    eprintln!("warning: no log file: {}", error_chain(&error));
+                    None
+                }
+            };
+            doctor::doctor(json, config.as_deref())
+        }
         other => {
-            let mut log = LogConfig::new(
-                CLI_LOG_NAME,
-                LogConfig::default_log_dir().context("find the log directory")?,
-            );
-            log.level = "warn".to_string();
-            let _guard = ternvale_log::init(log).context("initialize logging")?;
+            let _guard = cli_log()?;
             tracing::debug!(target: "ternvale::cli", command = ?other, "dispatch");
             non_run(other)
         }
     }
+}
+
+fn cli_log() -> Result<ternvale_log::LogGuard> {
+    let mut log = LogConfig::new(
+        CLI_LOG_NAME,
+        LogConfig::default_log_dir().context("find the log directory")?,
+    );
+    log.level = "warn".to_string();
+    ternvale_log::init(log).context("initialize logging")
 }
 
 fn non_run(command: Command) -> Result<ExitCode> {
@@ -98,6 +122,27 @@ fn non_run(command: Command) -> Result<ExitCode> {
             no_wait,
             json,
         } => commands::stop(&name, force, no_wait, json),
+        Command::Doctor { json, config } => doctor::doctor(json, config.as_deref()),
+        Command::Logs {
+            name,
+            follow,
+            level,
+            targets,
+            list,
+            file,
+        } => {
+            logs::check_targets(&targets)?;
+            logs::logs(&logs::LogsArgs {
+                name,
+                follow,
+                filter: logfmt::Filter { level, targets },
+                list,
+                file,
+            })
+        }
+        Command::Report { name, out, config } => {
+            report::report(&name, out.as_deref(), config.as_deref())
+        }
     }
 }
 

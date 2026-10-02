@@ -14,6 +14,11 @@ use crate::client::{self, Reach};
 use crate::protocol::{Request, Response, MAX_LINE};
 use crate::server::ControlServer;
 
+/// Held by tests that spawn a child process and by tests that need a dropped
+/// socket to be closed. macOS marks a new socket close-on-exec only after
+/// creating it, so a child spawned in between keeps the listener alive.
+pub(crate) static CHILD_PROCESS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// A short per-test directory under /tmp; `sun_path` is only 104 bytes.
 struct TempDir(PathBuf);
 
@@ -281,6 +286,9 @@ fn bad_lines_get_an_error_response_and_long_lines_close_the_connection() {
 
 #[test]
 fn stale_sockets_are_replaced_and_live_ones_are_not() {
+    let _no_children = CHILD_PROCESS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let dir = TempDir::new();
     let path = dir.socket();
     drop(UnixListener::bind(&path).expect("bind"));

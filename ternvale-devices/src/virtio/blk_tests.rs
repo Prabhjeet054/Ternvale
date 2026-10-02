@@ -1,6 +1,6 @@
 //! Unit tests for virtio-blk against a temp image and fake guest memory.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -24,10 +24,18 @@ struct Fixture {
     base: u64,
 }
 
+/// Gives every fixture its own directory; tests run in parallel and each one
+/// removes its directory when it finishes.
+static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
 impl Fixture {
     fn new(bytes: u64, read_only: bool) -> (Self, VirtioBlk) {
-        let dir =
-            std::env::temp_dir().join(format!("ternvale-blk-{}-{}", std::process::id(), bytes));
+        let dir = std::env::temp_dir().join(format!(
+            "ternvale-blk-{}-{}-{}",
+            std::process::id(),
+            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed),
+            bytes
+        ));
         std::fs::create_dir_all(&dir).expect("dir");
         let image = dir.join("disk.img");
         {

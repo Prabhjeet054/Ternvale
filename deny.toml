@@ -1,0 +1,35 @@
+# cargo-deny policy: `cargo deny check` (advisories, licenses, bans, sources).
+# Ternvale ships for aarch64-apple-darwin only.
+
+[graph]
+targets = ["aarch64-apple-darwin"]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # time < 0.3.47: stack exhaustion when parsing untrusted RFC 2822 input.
+    # Only tracing-appender uses `time`, and only to parse its own fixed
+    # `[year]-[month]-[day]` formats, never RFC 2822. The fix (0.3.47) needs
+    # rustc 1.88; the project toolchain is 1.87. Drop this when it moves.
+    { id = "RUSTSEC-2026-0009", reason = "RFC 2822 parsing is never reached; fix needs rustc 1.88" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "BSD-3-Clause"]
+
+[licenses.private]
+# Workspace crates are `publish = false` and carry no license field.
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

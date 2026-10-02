@@ -173,6 +173,16 @@ serial_log = "{serial}"
     }
 
     #[test]
+    fn parse_skips_validation_but_not_syntax() {
+        let text = "name = \"x\"\ncpus = 99\nram_mib = 256\nkernel = \"/no/such/Image\"\nserial_log = \"/no/dir/s.log\"\n";
+        let config = VmConfig::parse(text).expect("parse without validation");
+        assert_eq!(config.cpus, 99);
+        assert!(VmConfig::from_toml(text).is_err());
+        let error = VmConfig::parse("name = ").expect_err("bad toml");
+        assert!(matches!(error, ConfigError::Parse { .. }), "{error}");
+    }
+
+    #[test]
     fn accepts_boot_disk_with_a_disk() {
         let fix = Fixture::new();
         let text = format!(

@@ -29,6 +29,16 @@ ternvale-vmm = { path = "../ternvale-vmm" }
 ternvale-devices = { path = "../ternvale-devices" }
 # AGENT_PORT: where `run` puts the agent server's host socket.
 ternvale-agent-proto = { path = "../ternvale-agent-proto" }
+# `doctor`: macOS version, kern.hv_support, and a probe VM + GIC through the safe wrappers.
+ternvale-hv = { path = "../ternvale-hv" }
+# Run manifest start time and report file stamps (same features as ternvale-log; already in the tree).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# `doctor` disk-space check: safe statfs wrapper (already in the tree via ternvale-agent),
+# so no raw FFI outside ternvale-hv.
+nix = { version = "0.31", default-features = false, features = ["fs"] }
+# `report`: write the crash-report .zip. Deflate only (pure-Rust zlib-rs backend); no
+# bzip2/lzma/zstd/aes C code. MIT, actively maintained.
+zip = { version = "7.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [dev-dependencies]
 # Status tests connect the real agent loop to the agent server.

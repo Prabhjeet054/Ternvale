@@ -26,7 +26,7 @@ mod vcpu_thread;
 pub use attach::DeviceAttach;
 
 #[path = "boot_cmdline.rs"]
-mod cmdline;
+pub(crate) mod cmdline;
 pub use cmdline::{guest_cmdline, guest_cmdline_for, DEFAULT_CMDLINE, DISK_ROOT_CMDLINE};
 
 use crate::control::VmControl;
@@ -261,11 +261,12 @@ impl Machine {
             );
         }
         let dtb = inputs.dtb(&cmdline, config.cpus, ram_size)?;
+        control.diagnostics().set_dtb(&dtb);
         let serial: attach::SharedSerial = Arc::new(Mutex::new(serial));
         let irq_level = Arc::new(AtomicBool::new(false));
         attach::install_uart_irq(&serial, Arc::clone(&gic), Arc::clone(&irq_level));
         let redist = RedistMap::new(config.cpus);
-        let mut bus = MmioBus::new();
+        let mut bus = MmioBus::with_trace(Arc::clone(control.diagnostics().mmio()));
         bus.register(
             GIC_REDIST_BASE,
             GIC_REDIST_SIZE,

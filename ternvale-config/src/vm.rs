@@ -96,17 +96,24 @@ fn path_is_empty(path: &Path) -> bool {
 }
 
 impl VmConfig {
-    /// Parse `text` and validate it.
+    /// Parse `text` without validating it, for tools that report every problem
+    /// in a config rather than the first. Call [`VmConfig::validate`] before use.
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all)]
-    pub fn from_toml(text: &str) -> Result<Self, ConfigError> {
-        let config = toml::from_str::<Self>(text).map_err(|source| {
+    pub fn parse(text: &str) -> Result<Self, ConfigError> {
+        toml::from_str::<Self>(text).map_err(|source| {
             tracing::error!(
                 target: "ternvale::config",
                 error = %source,
                 "failed to parse VM config"
             );
             ConfigError::Parse { source }
-        })?;
+        })
+    }
+
+    /// Parse `text` and validate it.
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all)]
+    pub fn from_toml(text: &str) -> Result<Self, ConfigError> {
+        let config = Self::parse(text)?;
         config.validate()?;
         tracing::debug!(
             target: "ternvale::config",

@@ -18,9 +18,10 @@
 //! The `inner` mutex is a leaf: hooks are never called while it is held.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::diag::Diagnostics;
 use crate::lockwatch::Guard;
 use crate::vcpu::{ExitReason, VcpuStats, VcpuStatsSource};
 
@@ -215,6 +216,7 @@ pub struct VmControl {
     paused_ticks: AtomicU64,
     hooks: OnceLock<ControlHooks>,
     clock: fn() -> u64,
+    diag: Arc<Diagnostics>,
 }
 
 mod ops;
@@ -252,7 +254,14 @@ impl VmControl {
             paused_ticks: AtomicU64::new(0),
             hooks: OnceLock::new(),
             clock,
+            diag: Arc::new(Diagnostics::new()),
         }
+    }
+
+    /// DTB, MMIO trace, and device counts the machine records for crash reports.
+    #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(vm = %self.name))]
+    pub fn diagnostics(&self) -> &Arc<Diagnostics> {
+        &self.diag
     }
 
     /// VM name.
