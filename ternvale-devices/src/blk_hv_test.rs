@@ -65,6 +65,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         nics: Vec::new(),
         serial_log: serial_log.clone(),
         firmware: None,
+        nvram: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

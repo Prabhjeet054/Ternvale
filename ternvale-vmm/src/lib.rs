@@ -5,6 +5,7 @@
 mod boot;
 mod esr;
 mod fdt;
+mod firmware;
 mod gic_redist;
 mod linux;
 mod machine;
@@ -13,6 +14,7 @@ mod mmio;
 pub mod pci;
 mod platform;
 mod psci;
+mod rtc;
 mod serial;
 mod smp;
 mod vcpu;
@@ -21,6 +23,7 @@ mod watchdog;
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
 pub use esr::{decode as decode_esr, ExitEvent};
 pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt, PL011_REG_SIZE, UART_SPI, VIRTIO_SPI0};
+pub use firmware::{FirmwareError, RomdWindow, VarsFlash};
 pub use linux::{
     load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
     CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
@@ -32,11 +35,12 @@ pub use machine::{
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{
-    Layout, PlatformError, Region, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE,
-    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE,
-    VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
+    Layout, PlatformError, Region, FLASH_BANK_SIZE, FLASH_CODE_BASE, FLASH_VARS_BASE,
+    GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE, PCIE_MMIO_BASE, PCIE_MMIO_SIZE,
+    RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
 pub use psci::{call as psci_call, PowerRequest, PsciAction, TRAP_PC_ADVANCE};
+pub use rtc::{Pl031, PL031_REG_SIZE, RTC_SPI};
 pub use serial::SerialDevice;
 pub use smp::{dt_cpu_reg, mpidr, CpuPower, MPIDR_AFFINITY_MASK, MPIDR_RES1};
 /// The deadlock detector every mutex in this crate and `ternvale-devices` goes through.

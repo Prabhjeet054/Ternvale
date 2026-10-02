@@ -2,7 +2,7 @@
 //!
 //! Hypervisor.framework binds a vCPU to the thread that created it, so each
 //! thread creates, configures, runs, and destroys its own vCPU. CPU 0 loads
-//! Linux and starts once every vCPU exists. The others wait powered off until
+//! Linux (or enters the firmware) and starts once every vCPU exists. The others wait powered off until
 //! PSCI `CPU_ON`. Every thread runs inside a `vcpu` span carrying `vm`, `cpu`,
 //! `mpidr`, and `vcpu_id`.
 
@@ -10,6 +10,7 @@ use std::sync::{Mutex, OnceLock};
 
 use ternvale_hv::SysReg;
 
+use super::images::Boot;
 use super::{Images, MachineError};
 use crate::gic_redist::RedistMap;
 use crate::linux::{load_linux, CPSR_EL1H_MASKED};
@@ -165,15 +166,22 @@ fn setup(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<bool, MachineEr
     if index == 0 {
         let mut mem = crate::lockwatch::lock(shared.memory, "guest-memory");
         let images = shared.images;
-        load_linux(
-            &mut mem,
-            vcpu,
-            RAM_BASE,
-            images.ram_size,
-            images.kernel,
-            images.initrd,
-            images.dtb,
-        )?;
+        match images.boot {
+            Boot::Linux { kernel, initrd } => {
+                load_linux(
+                    &mut mem,
+                    vcpu,
+                    RAM_BASE,
+                    images.ram_size,
+                    kernel,
+                    initrd,
+                    images.dtb,
+                )?;
+            }
+            Boot::Firmware => {
+                crate::firmware::enter(&mut mem, vcpu, images.dtb, images.ram_size)?;
+            }
+        }
     }
     shared.power.mark_ready(index);
     tracing::info!(

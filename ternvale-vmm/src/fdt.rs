@@ -8,6 +8,8 @@ use std::process::Command;
 
 use vm_fdt::{FdtWriter, FdtWriterResult};
 
+#[path = "fdt_firmware.rs"]
+mod firmware_node;
 #[path = "fdt_pci.rs"]
 mod pci_node;
 
@@ -41,6 +43,9 @@ pub struct GuestFdt {
     pub initrd_end: u64,
     /// Number of CPU nodes. Each uses `enable-method = "psci"`.
     pub cpu_count: u32,
+    /// UEFI boot: add the `cfi-flash` node and leave `/chosen` to the firmware
+    /// (only `stdout-path`; no bootargs or initrd).
+    pub firmware: bool,
 }
 
 /// Building or installing the DTB failed.
@@ -98,12 +103,16 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     timer(&mut w)?;
     intc(&mut w, gic)?;
     uart(&mut w, clock)?;
+    firmware_node::rtc(&mut w, clock)?;
     apb_clock(&mut w, clock)?;
     virtio(&mut w)?;
     pci_node::pcie(&mut w, gic)?;
+    if fdt.firmware {
+        firmware_node::flash(&mut w)?;
+    }
     w.end_node(root)?;
     let blob = w.finish()?;
-    tracing::info!(target: "ternvale::boot", bytes = blob.len(), "built guest dtb");
+    tracing::info!(target: "ternvale::boot", bytes = blob.len(), firmware = fdt.firmware, "built guest dtb");
     Ok(blob)
 }
 
@@ -148,10 +157,14 @@ pub fn write_fdt(
 
 fn chosen(w: &mut FdtWriter, fdt: &GuestFdt) -> FdtWriterResult<()> {
     let node = w.begin_node("chosen")?;
-    w.property_string("bootargs", &fdt.bootargs)?;
+    if !fdt.firmware {
+        w.property_string("bootargs", &fdt.bootargs)?;
+    }
     w.property_string("stdout-path", "/pl011@9000000")?;
-    w.property_u64("linux,initrd-start", fdt.initrd_start)?;
-    w.property_u64("linux,initrd-end", fdt.initrd_end)?;
+    if !fdt.firmware {
+        w.property_u64("linux,initrd-start", fdt.initrd_start)?;
+        w.property_u64("linux,initrd-end", fdt.initrd_end)?;
+    }
     w.end_node(node)
 }
 

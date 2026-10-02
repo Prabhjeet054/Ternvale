@@ -13,11 +13,18 @@
 //! Set `TERNVALE_BOOT_SCENARIO=smp` to check `nproc`, `/proc/cpuinfo`, the host CPU cost of
 //! an idle guest, and a per-CPU `dd` workload on `TERNVALE_BOOT_CPUS` CPUs (default 4) with
 //! the initrd assets.
+//! Set `TERNVALE_BOOT_SCENARIO=firmware` to boot EDK2 (`./scripts/fetch-firmware.sh`) to the UEFI
+//! shell, open the front page and Boot Manager, and check that an NV variable survives a reboot.
+//! Set `TERNVALE_BOOT_SCENARIO=installer` to boot the Alpine arm64 ISO
+//! (`./scripts/fetch-installer-iso.sh`) from UEFI on a read-only virtio-blk disk and start
+//! `setup-alpine` (`TERNVALE_INSTALLER_TRANSPORT=pci` puts the disk on virtio-pci).
 
 mod common;
 mod devices;
+mod firmware;
 mod idle;
 mod initrd;
+mod installer;
 mod net;
 mod pci;
 mod rootfs;
@@ -45,8 +52,10 @@ fn run() -> Result<(), String> {
         "net" => net::run(),
         "devices" => devices::run(),
         "smp" => smp::run(),
+        "firmware" => firmware::run(),
+        "installer" => installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, or smp)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, smp, firmware, or installer)"
         )),
     }
 }

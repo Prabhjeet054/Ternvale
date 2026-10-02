@@ -13,7 +13,41 @@ fn sample() -> GuestFdt {
         initrd_start: RAM_BASE + 0x0200_0000,
         initrd_end: RAM_BASE + 0x0200_1000,
         cpu_count: 2,
+        firmware: false,
     }
+}
+
+#[test]
+fn every_boot_has_the_pl031_and_firmware_boots_add_cfi_flash() {
+    let direct = dtc_dts(&build_fdt(&sample()).expect("dtb"));
+    let start = direct.find("pl031@9010000 {").expect("rtc node");
+    let node = &direct[start..start + direct[start..].find("};").expect("node end")];
+    for needle in [
+        "compatible = \"arm,pl031\", \"arm,primecell\"",
+        "reg = <0x00 0x9010000 0x00 0x1000>",
+        "interrupts = <0x00 0x02 0x04>",
+        "clock-names = \"apb_pclk\"",
+    ] {
+        assert!(node.contains(needle), "missing {needle}:\n{node}");
+    }
+    assert!(!direct.contains("cfi-flash"), "{direct}");
+    assert!(direct.contains("bootargs"), "{direct}");
+
+    let mut fdt = sample();
+    fdt.firmware = true;
+    let uefi = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    let start = uefi.find("flash@0 {").expect("flash node");
+    let node = &uefi[start..start + uefi[start..].find("};").expect("node end")];
+    for needle in [
+        "compatible = \"cfi-flash\"",
+        "reg = <0x00 0x00 0x00 0x4000000 0x00 0x4000000 0x00 0x4000000>",
+        "bank-width = <0x04>",
+    ] {
+        assert!(node.contains(needle), "missing {needle}:\n{node}");
+    }
+    assert!(!uefi.contains("bootargs"), "firmware owns the command line");
+    assert!(!uefi.contains("linux,initrd"), "{uefi}");
+    assert!(uefi.contains("stdout-path = \"/pl011@9000000\""), "{uefi}");
 }
 
 #[test]

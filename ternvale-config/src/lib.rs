@@ -7,7 +7,7 @@ mod error;
 mod vm;
 
 pub use error::{ConfigError, TernvaleError};
-pub use vm::{Disk, Nic, VmConfig};
+pub use vm::{default_nvram_path, Disk, Nic, VmConfig};
 
 #[cfg(test)]
 mod tests {
@@ -193,6 +193,79 @@ read_only = false
         let config = VmConfig::from_toml(&text).expect("parse");
         assert!(config.boot_disk);
         assert_eq!(config.disks.len(), 1);
+    }
+
+    fn firmware_only(fix: &Fixture, extra: &str) -> String {
+        format!(
+            r#"
+name = "uefi"
+cpus = 1
+ram_mib = 256
+serial_log = "{serial}"
+firmware = "{firmware}"
+{extra}
+"#,
+            serial = toml_path(&fix.path("serial.log")),
+            firmware = toml_path(&fix.path("firmware.fd")),
+        )
+    }
+
+    #[test]
+    fn firmware_boot_does_not_need_a_kernel() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&firmware_only(&fix, "")).expect("parse");
+        assert!(config.kernel.as_os_str().is_empty());
+        let text = config.to_toml().expect("serialize");
+        assert!(!text.contains("kernel"), "{text}");
+        assert_eq!(VmConfig::from_toml(&text).expect("reparse"), config);
+    }
+
+    #[test]
+    fn direct_boot_still_needs_a_kernel() {
+        let fix = Fixture::new();
+        let text = firmware_only(&fix, "").replace(
+            &format!("firmware = \"{}\"", toml_path(&fix.path("firmware.fd"))),
+            "",
+        );
+        let error = VmConfig::from_toml(&text).expect_err("no kernel");
+        assert!(
+            matches!(&error, ConfigError::MissingFile { field, .. } if field == "kernel"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn nvram_defaults_per_vm_and_honours_an_explicit_path() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&firmware_only(&fix, "")).expect("parse");
+        let default = config.nvram_path().expect("path").expect("firmware set");
+        assert!(
+            default.ends_with("Library/Application Support/Ternvale/uefi/nvram.fd"),
+            "{}",
+            default.display()
+        );
+        let explicit = fix.path("vars.fd");
+        let text = firmware_only(&fix, &format!("nvram = \"{}\"", toml_path(&explicit)));
+        let config = VmConfig::from_toml(&text).expect("parse explicit");
+        assert_eq!(config.nvram_path().expect("path"), Some(explicit));
+        let direct = VmConfig::from_toml(&sample(&fix).replace(
+            &format!("firmware = \"{}\"", toml_path(&fix.path("firmware.fd"))),
+            "",
+        ))
+        .expect("direct");
+        assert_eq!(direct.nvram_path().expect("path"), None);
+    }
+
+    #[test]
+    fn rejects_nvram_in_a_missing_directory() {
+        let fix = Fixture::new();
+        let bad = fix.path("no-such-dir").join("vars.fd");
+        let text = firmware_only(&fix, &format!("nvram = \"{}\"", toml_path(&bad)));
+        let error = VmConfig::from_toml(&text).expect_err("bad nvram");
+        assert!(matches!(error, ConfigError::NvramPath { .. }), "{error}");
+        let text = firmware_only(&fix, &format!("nvram = \"{}\"", toml_path(&fix.dir)));
+        let error = VmConfig::from_toml(&text).expect_err("dir nvram");
+        assert!(matches!(error, ConfigError::NvramPath { .. }), "{error}");
     }
 
     #[test]

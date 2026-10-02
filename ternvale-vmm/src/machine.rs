@@ -1,9 +1,10 @@
 //! Boots a configured guest and runs it until PSCI powers it off.
 //!
-//! Order: config, guest RAM, GIC, attached devices (MMIO and PCI), UART and
-//! the PCI ECAM/BAR windows on the MMIO bus, DTB, then one host thread per
-//! vCPU (`machine_vcpu.rs`). CPU 0 loads Linux; the others start on
-//! PSCI `CPU_ON`. Host stdin goes straight into the shared UART, which raises
+//! Order: config, guest RAM (plus the firmware code bank), GIC, attached
+//! devices (MMIO and PCI), UART, PL031, variable flash, and the PCI ECAM/BAR
+//! windows on the MMIO bus, DTB, then one host thread per vCPU
+//! (`machine_vcpu.rs`). CPU 0 loads Linux or enters UEFI at GPA 0
+//! (`machine_images.rs`); the others start on PSCI `CPU_ON`. Host stdin goes straight into the shared UART, which raises
 //! GIC SPI 1. A watchdog warns if no exit arrives for 10 seconds. Any vCPU can
 //! end the VM; [`CpuPower`] then cancels every vCPU with one `hv_vcpus_exit`.
 
@@ -15,6 +16,8 @@ use std::time::Duration;
 mod attach;
 #[path = "machine_host.rs"]
 mod host;
+#[path = "machine_images.rs"]
+mod images;
 #[path = "machine_vcpu.rs"]
 mod vcpu_thread;
 
@@ -24,15 +27,19 @@ pub use attach::DeviceAttach;
 mod cmdline;
 pub use cmdline::{guest_cmdline, guest_cmdline_for, DEFAULT_CMDLINE, DISK_ROOT_CMDLINE};
 
-use crate::fdt::{build_fdt, GuestFdt, PL011_REG_SIZE};
+use crate::fdt::PL011_REG_SIZE;
 use crate::gic_redist::{RedistId, RedistMap};
-use crate::linux::{place, LinuxLayout};
 use crate::mmio::{MmioBus, MmioDevice};
-use crate::platform::{GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, RAM_BASE, UART_BASE};
+use crate::platform::{
+    FLASH_BANK_SIZE, FLASH_VARS_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, RAM_BASE,
+    RTC_BASE, UART_BASE,
+};
+use crate::rtc::{Pl031, PL031_REG_SIZE};
 use crate::serial::SerialDevice;
 use crate::smp::CpuPower;
 use crate::vcpu::ExitReason;
 use crate::watchdog::Watchdog;
+use images::{Images, Inputs};
 
 const HANG: Duration = Duration::from_secs(10);
 
@@ -103,6 +110,9 @@ pub enum MachineError {
     /// Adding a PCI function or mapping the PCI windows failed.
     #[error("vm pci: {0}")]
     Pci(#[from] crate::pci::PciError),
+    /// Loading the UEFI firmware or opening its variable store failed.
+    #[error("vm firmware: {0}")]
+    Firmware(#[from] crate::firmware::FirmwareError),
 }
 
 /// One guest. [`Machine::run`] owns the hypervisor VM until the guest stops.
@@ -161,11 +171,8 @@ impl Machine {
                 "nics are not attached"
             );
         }
-        let kernel = read_file("kernel", &config.kernel)?;
-        let initrd = match &config.initrd {
-            Some(path) => read_file("initrd", path)?,
-            None => Vec::new(),
-        };
+        let inputs = Inputs::read(config)?;
+        let nvram = config.nvram_path()?;
         let ram_size = config.ram_mib << 20;
         let vm = ternvale_hv::Vm::create()?;
         let gic = Arc::new(vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE)?);
@@ -173,6 +180,7 @@ impl Machine {
         {
             let mut mem = crate::lockwatch::lock(&memory, "guest-memory");
             mem.map(&vm, RAM_BASE, ram_size)?;
+            inputs.map(&mut mem, &vm)?;
         }
         let spi_levels = Arc::new(Mutex::new(Vec::new()));
         let attached = DeviceAttach::new(
@@ -188,13 +196,7 @@ impl Machine {
                 "config disks were not attached through DeviceAttach"
             );
         }
-        let (dtb, layout) = boot_images(&cmdline, config.cpus, ram_size, &kernel, &initrd)?;
-        tracing::debug!(
-            target: "ternvale::boot",
-            kernel = format!("{:#x}", layout.kernel),
-            dtb = format!("{:#x}", layout.dtb),
-            "boot images placed"
-        );
+        let dtb = inputs.dtb(&cmdline, config.cpus, ram_size)?;
         let serial: attach::SharedSerial = Arc::new(Mutex::new(serial));
         let irq_level = Arc::new(AtomicBool::new(false));
         attach::install_uart_irq(&serial, Arc::clone(&gic), Arc::clone(&irq_level));
@@ -210,6 +212,14 @@ impl Machine {
             PL011_REG_SIZE,
             Box::new(attach::SharedUart(Arc::clone(&serial))),
         )?;
+        bus.register(RTC_BASE, PL031_REG_SIZE, Box::new(Pl031::new()))?;
+        if let Some(path) = &nvram {
+            bus.register(
+                FLASH_VARS_BASE,
+                FLASH_BANK_SIZE,
+                Box::new(images::vars_flash(path)?),
+            )?;
+        }
         for (base, size, device) in devices {
             bus.register(base, size, device)?;
         }
@@ -239,12 +249,7 @@ impl Machine {
             cancel: Arc::clone(&cancel),
         };
         let poll = std::thread::spawn(move || host::poll_loop(poll));
-        let images = Images {
-            kernel: &kernel,
-            initrd: &initrd,
-            dtb: &dtb,
-            ram_size,
-        };
+        let images: Images<'_> = inputs.images(&dtb, ram_size);
         let vtimer_offset = OnceLock::new();
         let shared = vcpu_thread::Shared {
             name: &config.name,
@@ -284,57 +289,6 @@ impl Machine {
         drop(vm);
         Ok(exit)
     }
-}
-
-fn boot_images(
-    cmdline: &str,
-    cpus: u32,
-    ram_size: u64,
-    kernel: &[u8],
-    initrd: &[u8],
-) -> Result<(Vec<u8>, LinuxLayout), MachineError> {
-    let header = crate::linux::parse_header(kernel)?;
-    let mut dtb;
-    let mut layout = None;
-    for _ in 0..3 {
-        let guess = layout.unwrap_or(LinuxLayout {
-            kernel: 0,
-            kernel_bytes: 0,
-            initrd: 0,
-            initrd_bytes: initrd.len() as u64,
-            dtb: 0,
-            dtb_bytes: 0,
-        });
-        dtb = build_fdt(&GuestFdt {
-            bootargs: cmdline.to_string(),
-            ram_base: RAM_BASE,
-            ram_size,
-            initrd_start: guess.initrd,
-            initrd_end: guess.initrd.saturating_add(initrd.len() as u64),
-            cpu_count: cpus,
-        })?;
-        let next = place(
-            RAM_BASE,
-            ram_size,
-            &header,
-            kernel.len() as u64,
-            initrd.len() as u64,
-            dtb.len() as u64,
-        )?;
-        if layout == Some(next) {
-            return Ok((dtb, next));
-        }
-        layout = Some(next);
-    }
-    tracing::error!(target: "ternvale::boot", "dtb placement did not settle");
-    Err(MachineError::Placement)
-}
-
-struct Images<'a> {
-    kernel: &'a [u8],
-    initrd: &'a [u8],
-    dtb: &'a [u8],
-    ram_size: u64,
 }
 
 /// One scoped host thread per guest CPU, named `vcpu<N>`. Returns the first

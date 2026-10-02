@@ -6,11 +6,13 @@
 
 mod error;
 mod host;
+mod pages;
 
 use std::ptr::NonNull;
 
 pub use error::MemoryError;
 pub use host::HOST_PAGE_SIZE;
+pub use pages::HostPages;
 
 use host::{host_page_size, mmap_anonymous, munmap_region};
 
@@ -170,12 +172,28 @@ impl GuestMemory {
         fields(gpa = format!("{:#x}", gpa), size = format!("{:#x}", size))
     )]
     pub fn map(&mut self, vm: &ternvale_hv::Vm, gpa: u64, size: u64) -> Result<(), MemoryError> {
+        self.map_flags(vm, gpa, size, ternvale_hv::HV_MEMORY_RWX)
+    }
+
+    /// [`GuestMemory::map`] with explicit `HV_MEMORY_*` permissions, for
+    /// example read and execute for firmware code. The VMM can still write.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::mem",
+        skip_all,
+        fields(gpa = format!("{:#x}", gpa), size = format!("{:#x}", size), flags)
+    )]
+    pub fn map_flags(
+        &mut self,
+        vm: &ternvale_hv::Vm,
+        gpa: u64,
+        size: u64,
+        flags: u64,
+    ) -> Result<(), MemoryError> {
         tracing::debug!(target: "ternvale::mem", vm = ?vm, "mapping region into the guest");
         let mut region = self.alloc_region(gpa, size)?;
         let bytes = region.size;
-        if let Err(source) =
-            ternvale_hv::map_memory(region.host, gpa, bytes, ternvale_hv::HV_MEMORY_RWX)
-        {
+        if let Err(source) = ternvale_hv::map_memory(region.host, gpa, bytes, flags) {
             let error = MemoryError::Map { gpa, size, source };
             tracing::error!(target: "ternvale::mem", error = %error, "hv_vm_map failed");
             return Err(error);
@@ -188,7 +206,7 @@ impl GuestMemory {
             gpa = format!("{:#x}", gpa),
             size = format!("{:#x}", size),
             host = format!("{:#x}", host),
-            flags = format!("{:#x}", ternvale_hv::HV_MEMORY_RWX),
+            flags = format!("{flags:#x}"),
             "mapped guest region"
         );
         Ok(())

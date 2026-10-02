@@ -16,6 +16,13 @@
 #                       (needs ./scripts/make-devices-initramfs.sh)
 #   smp               — nproc, /proc/cpuinfo, and one dd per CPU checked in /proc/stat
 #                       and top, on TERNVALE_BOOT_CPUS CPUs (default 4)
+#   firmware          — EDK2 UEFI (needs ./scripts/fetch-firmware.sh): UEFI shell, front
+#                       page, Boot Manager, and an NV variable that survives a second boot
+#                       on the same nvram.fd
+#   installer         — EDK2 boots the Alpine arm64 ISO (needs ./scripts/fetch-installer-iso.sh)
+#                       from a read-only virtio-blk disk to a root login and setup-alpine;
+#                       TERNVALE_INSTALLER_TRANSPORT=pci puts the disk on virtio-pci.
+#                       ./scripts/qemu-compare.sh runs the same steps under QEMU/HVF
 # scripts/boot-stress.sh repeats this script N times and summarizes the runs.
 set -euo pipefail
 

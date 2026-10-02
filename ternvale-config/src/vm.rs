@@ -41,7 +41,9 @@ pub struct VmConfig {
     pub cpus: u32,
     /// Guest RAM in MiB. Must be a positive multiple of 16.
     pub ram_mib: u64,
-    /// Linux kernel (or other boot image) on the host.
+    /// Linux kernel (or other boot image) on the host. Required unless `firmware`
+    /// is set; with firmware the guest boots UEFI and the kernel is ignored.
+    #[serde(default, skip_serializing_if = "path_is_empty")]
     pub kernel: PathBuf,
     /// Optional initrd. Omitted when the guest boots from the kernel alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -64,6 +66,29 @@ pub struct VmConfig {
     /// Optional firmware image, such as UEFI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub firmware: Option<PathBuf>,
+    /// UEFI variable store backing file. Created on first boot if missing. Only
+    /// used with `firmware`; defaults to [`default_nvram_path`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nvram: Option<PathBuf>,
+}
+
+/// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
+#[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name))]
+pub fn default_nvram_path(name: &str) -> Result<PathBuf, ConfigError> {
+    let Some(home) = std::env::var_os("HOME").filter(|home| !home.is_empty()) else {
+        tracing::error!(target: "ternvale::config", "HOME is unset; cannot place the NVRAM file");
+        return Err(ConfigError::NoHome);
+    };
+    let path = PathBuf::from(home)
+        .join("Library/Application Support/Ternvale")
+        .join(name)
+        .join("nvram.fd");
+    tracing::debug!(target: "ternvale::config", path = %path.display(), "default nvram path");
+    Ok(path)
+}
+
+fn path_is_empty(path: &Path) -> bool {
+    path.as_os_str().is_empty()
 }
 
 impl VmConfig {
@@ -143,7 +168,7 @@ impl VmConfig {
         validate_name(&self.name)?;
         validate_cpus(self.cpus)?;
         validate_ram(self.ram_mib)?;
-        require_file("kernel", &self.kernel)?;
+        self.validate_boot_source()?;
         if let Some(initrd) = &self.initrd {
             require_file("initrd", initrd)?;
         } else {
@@ -190,14 +215,65 @@ impl VmConfig {
             );
         }
         validate_serial_log(&self.serial_log)?;
-        if let Some(firmware) = &self.firmware {
-            require_file("firmware", firmware)?;
-        } else {
-            tracing::debug!(target: "ternvale::config", "firmware omitted");
-        }
         tracing::debug!(target: "ternvale::config", name = %self.name, "VM config is valid");
         Ok(())
     }
+
+    /// The NVRAM file for a firmware boot: `nvram`, else [`default_nvram_path`].
+    /// `None` without `firmware`.
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
+    pub fn nvram_path(&self) -> Result<Option<PathBuf>, ConfigError> {
+        if self.firmware.is_none() {
+            return Ok(None);
+        }
+        match &self.nvram {
+            Some(path) => Ok(Some(path.clone())),
+            None => default_nvram_path(&self.name).map(Some),
+        }
+    }
+
+    /// Firmware boot needs `firmware`; a direct boot needs `kernel`.
+    fn validate_boot_source(&self) -> Result<(), ConfigError> {
+        let Some(firmware) = &self.firmware else {
+            tracing::debug!(target: "ternvale::config", "firmware omitted; direct kernel boot");
+            require_file("kernel", &self.kernel)?;
+            if let Some(nvram) = &self.nvram {
+                tracing::warn!(
+                    target: "ternvale::config",
+                    path = %nvram.display(),
+                    "nvram is ignored without firmware"
+                );
+            }
+            return Ok(());
+        };
+        require_file("firmware", firmware)?;
+        if !self.kernel.as_os_str().is_empty() {
+            require_file("kernel", &self.kernel)?;
+            tracing::warn!(
+                target: "ternvale::config",
+                kernel = %self.kernel.display(),
+                "kernel is ignored when firmware is set; UEFI picks the boot loader"
+            );
+        }
+        if let Some(nvram) = &self.nvram {
+            validate_nvram(nvram)?;
+        }
+        Ok(())
+    }
+}
+
+fn validate_nvram(path: &Path) -> Result<(), ConfigError> {
+    let parent_ok = path
+        .parent()
+        .is_none_or(|parent| parent.as_os_str().is_empty() || parent.is_dir());
+    if path.as_os_str().is_empty() || path.is_dir() || !parent_ok {
+        tracing::error!(target: "ternvale::config", path = %path.display(), "rejected nvram path");
+        return Err(ConfigError::NvramPath {
+            path: path.to_path_buf(),
+        });
+    }
+    tracing::debug!(target: "ternvale::config", path = %path.display(), "accepted nvram path");
+    Ok(())
 }
 
 fn validate_name(name: &str) -> Result<(), ConfigError> {

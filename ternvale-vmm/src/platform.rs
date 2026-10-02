@@ -11,6 +11,13 @@ pub const RAM_BASE: u64 = 0x4000_0000;
 pub const FLASH_BASE: u64 = 0;
 /// Size of the firmware flash window.
 pub const FLASH_SIZE: u64 = 0x0800_0000;
+/// One flash bank. QEMU `virt` splits `VIRT_FLASH` into two 64 MiB pflash devices.
+pub const FLASH_BANK_SIZE: u64 = FLASH_SIZE / 2;
+/// Bank 0, QEMU `pflash0`: the firmware code, executed in place from GPA 0.
+pub const FLASH_CODE_BASE: u64 = FLASH_BASE;
+/// Bank 1, QEMU `pflash1`: the UEFI variable store. EDK2 ArmVirtQemu builds
+/// with `PcdFlashNvStorageVariableBase = 0x04000000` (`VarStore.fdf.inc`).
+pub const FLASH_VARS_BASE: u64 = FLASH_BASE + FLASH_BANK_SIZE;
 /// GICv3 distributor. QEMU `VIRT_GIC_DIST`.
 pub const GIC_DIST_BASE: u64 = 0x0800_0000;
 /// Distributor window. QEMU uses 64 KiB.

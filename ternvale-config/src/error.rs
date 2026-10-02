@@ -75,6 +75,17 @@ pub enum ConfigError {
     /// `boot_disk` was set but `disks` is empty.
     #[error("boot_disk requires at least one disk")]
     BootDiskWithoutDisks,
+
+    /// `nvram` is a directory, or its parent directory is missing.
+    #[error("nvram must be a file path in an existing directory: {}", path.display())]
+    NvramPath {
+        /// The `nvram` path from the config.
+        path: PathBuf,
+    },
+
+    /// `HOME` is unset, so the default NVRAM path cannot be built.
+    #[error("HOME is unset; set nvram explicitly")]
+    NoHome,
 }
 
 /// Error type other Ternvale crates can return without depending on each other.
