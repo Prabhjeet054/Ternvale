@@ -8,6 +8,8 @@
 #                       then a host `fsck.ext4 -fn` of the image via scripts/fsck-rootfs.sh
 #   net               — virtio-net loopback ping (needs ./scripts/make-net-initramfs.sh),
 #                       then tshark filters over net.pcap via scripts/check-pcap.sh
+#   devices           — virtio-rng /dev/hwrng samples and a vsock ping/pong on port 5000
+#                       (needs ./scripts/make-devices-initramfs.sh)
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)

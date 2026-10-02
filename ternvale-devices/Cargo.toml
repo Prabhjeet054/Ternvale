@@ -24,13 +24,13 @@ thiserror = "2"
 tracing = "0.1"
 # MmioDevice so the PL011 can be registered on the guest MMIO bus.
 ternvale-vmm = { path = "../ternvale-vmm" }
+# fill_entropy (safe getentropy wrapper) for virtio-rng; raw FFI stays in ternvale-hv.
+ternvale-hv = { path = "../ternvale-hv" }
 
 [dev-dependencies]
 # Capture stdout while the hello payload writes through the real PL011.
 libc = "0.2"
 # Log file checks in unit tests.
 ternvale-log = { path = "../ternvale-log" }
-# Create a VM for the hello-payload UART run.
-ternvale-hv = { path = "../ternvale-hv" }
 # VmConfig for the Linux boot test.
 ternvale-config = { path = "../ternvale-config" }

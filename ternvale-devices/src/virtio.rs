@@ -9,6 +9,8 @@ mod irq;
 mod mmio;
 mod net;
 mod queue;
+mod rng;
+mod vsock;
 
 pub use attach_disks::attach_disks;
 pub use blk::{
@@ -26,6 +28,12 @@ pub use net::{
 #[cfg(feature = "vmnet")]
 pub use net::{VmnetBackend, VMNET_SHARED_MODE};
 pub use queue::{Buffer, Chain, SplitQueue};
+pub use rng::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
+pub use vsock::{
+    guest_socket_path, host_socket_path, op_name as vsock_op_name, AttachedVsock, CidLease,
+    VirtioVsock, VsockConfig, VsockCounters, VsockError, VsockHeader, VsockStats, FIRST_GUEST_CID,
+    HOST_CID, VIRTIO_VSOCK_F_STREAM, VIRTIO_VSOCK_ID, VSOCK_HDR_LEN,
+};
 
 /// `VIRTIO_F_VERSION_1`. Required before `FEATURES_OK`.
 pub const VIRTIO_F_VERSION_1: u64 = 1 << 32;

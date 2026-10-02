@@ -142,12 +142,21 @@ pub fn drive(
 }
 
 pub fn init_logging(name: &str, log_dir: &Path) -> Result<ternvale_log::LogGuard, String> {
+    init_logging_at(name, log_dir, "info")
+}
+
+/// Like [`init_logging`] with a `TERNVALE_LOG`-style filter, e.g. `info,ternvale::net=trace`.
+pub fn init_logging_at(
+    name: &str,
+    log_dir: &Path,
+    level: &str,
+) -> Result<ternvale_log::LogGuard, String> {
     std::fs::create_dir_all(log_dir)
         .map_err(|err| format!("create {}: {err}", log_dir.display()))?;
     // SAFETY: this process owns the environment. The harness sets the log filter for its run.
-    unsafe { std::env::set_var("TERNVALE_LOG", "info") };
+    unsafe { std::env::set_var("TERNVALE_LOG", level) };
     let mut config = ternvale_log::LogConfig::new(name, log_dir.to_path_buf());
-    config.level = "info".to_string();
+    config.level = level.to_string();
     ternvale_log::init(config).map_err(|err| err.to_string())
 }
 

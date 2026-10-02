@@ -3,6 +3,7 @@
 //! Raw FFI stays in this crate. Callers use [`Vm`], which owns the single
 //! process-wide VM from `hv_vm_create` until `hv_vm_destroy`.
 
+mod entropy;
 mod error;
 mod ffi;
 mod gic;
@@ -12,6 +13,7 @@ mod osver;
 mod vcpu;
 mod vm;
 
+pub use entropy::{fill_entropy, GETENTROPY_MAX};
 pub use error::{
     HvError, HV_BAD_ARGUMENT, HV_BUSY, HV_DENIED, HV_ERROR, HV_EXISTS, HV_ILLEGAL_GUEST_STATE,
     HV_NO_DEVICE, HV_NO_RESOURCES, HV_SUCCESS, HV_UNSUPPORTED,

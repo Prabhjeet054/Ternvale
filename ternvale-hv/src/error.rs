@@ -143,6 +143,12 @@ pub enum HvError {
     /// `sysctlbyname(kern.osproductversion)` failed or the string was not a version.
     #[error("could not read the macOS version")]
     OsVersion,
+    /// `getentropy(2)` failed.
+    #[error("getentropy failed with errno {errno}")]
+    Entropy {
+        /// `errno` after the call.
+        errno: i32,
+    },
 }
 
 impl HvError {

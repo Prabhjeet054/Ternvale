@@ -45,6 +45,8 @@ unsafe extern "C" {
         newp: *mut c_void,
         newlen: usize,
     ) -> i32;
+    /// `<sys/random.h>`: at most 256 bytes per call; returns 0 or -1 with `errno`.
+    pub(crate) fn getentropy(buf: *mut c_void, buflen: usize) -> i32;
 }
 
 /// `hv_vcpu_exit_t` from `hv_vcpu_types.h`. `reason` is at 0; `exception` is at 8.

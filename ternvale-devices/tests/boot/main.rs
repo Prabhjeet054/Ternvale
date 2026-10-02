@@ -5,8 +5,11 @@
 //! (requires `./scripts/make-rootfs.sh` assets under `test-assets/virtio-root/`).
 //! Set `TERNVALE_BOOT_SCENARIO=net` to ping the loopback gateway over virtio-net
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
+//! Set `TERNVALE_BOOT_SCENARIO=devices` to read /dev/hwrng and ping/pong over vsock
+//! (requires `./scripts/make-devices-initramfs.sh` assets under `test-assets/virtio-devices/`).
 
 mod common;
+mod devices;
 mod initrd;
 mod net;
 mod rootfs;
@@ -30,8 +33,9 @@ fn run() -> Result<(), String> {
         "initrd" | "" => initrd::run(),
         "rootfs" => rootfs::run(),
         "net" => net::run(),
+        "devices" => devices::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, or net)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, net, or devices)"
         )),
     }
 }
