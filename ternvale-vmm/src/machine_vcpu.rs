@@ -12,6 +12,7 @@ use ternvale_hv::SysReg;
 
 use super::images::Boot;
 use super::{Images, MachineError};
+use crate::control::VmControl;
 use crate::gic_redist::RedistMap;
 use crate::linux::{load_linux, CPSR_EL1H_MASKED};
 use crate::memory::GuestMemory;
@@ -38,6 +39,8 @@ pub(super) struct Shared<'a> {
     /// CPU 0's vtimer offset. Each secondary copies it before its first entry
     /// so every CPU reads the same `CNTVCT_EL0`.
     pub vtimer_offset: &'a OnceLock<u64>,
+    /// Lifecycle and pause gate around every `hv_vcpu_run`.
+    pub control: &'a VmControl,
 }
 
 enum Leave {
@@ -97,6 +100,7 @@ fn own_vcpu(index: u32, shared: &Shared<'_>) -> Result<(), MachineError> {
     let created = Vcpu::create(shared.vm);
     shared.power.mark_created(index);
     let vcpu = created.map_err(op(index, "create vcpu"))?;
+    shared.control.attach_cpu_stats(index, vcpu.stats_source());
     // A nested span rather than a late `record`: with the stderr and file
     // layers both formatting, a recorded field is printed twice.
     let _id = tracing::info_span!(target: "ternvale::vcpu", "run", vcpu_id = vcpu.id()).entered();
@@ -202,7 +206,9 @@ fn setup(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<bool, MachineEr
 }
 
 /// PSCI `CPU_ON` state: PC = entry, x0 = context, EL1h with DAIF masked, MMU
-/// and data cache off (they may still be on from before a `CPU_OFF`).
+/// and data cache off (they may still be on from before a `CPU_OFF`). The
+/// vtimer offset goes back to CPU 0's boot value; [`run_loop`] then adds the
+/// time the VM has spent paused.
 fn enter_at(
     index: u32,
     vcpu: &Vcpu,
@@ -210,13 +216,11 @@ fn enter_at(
     entry: u64,
     context: u64,
 ) -> Result<(), MachineError> {
-    if index != 0 {
-        if let Some(&offset) = shared.vtimer_offset.get() {
-            vcpu.set_vtimer_offset(offset)
-                .map_err(op(index, "set vtimer offset"))?;
-        } else {
-            tracing::warn!(target: "ternvale::vcpu", cpu = index, "boot vtimer offset unknown; keeping this vcpu's own");
-        }
+    if let Some(&offset) = shared.vtimer_offset.get() {
+        vcpu.set_vtimer_offset(offset)
+            .map_err(op(index, "set vtimer offset"))?;
+    } else {
+        tracing::warn!(target: "ternvale::vcpu", cpu = index, "boot vtimer offset unknown; keeping this vcpu's own");
     }
     let sctlr = vcpu
         .get_sys_reg(SysReg::SctlrEl1)
@@ -242,11 +246,20 @@ fn enter_at(
     Ok(())
 }
 
+/// Entered with the vtimer offset at its boot value, so no paused time has
+/// been applied yet.
 fn run_loop(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<Leave, MachineError> {
+    let mut applied = 0u64;
     loop {
         let pc = vcpu.get_pc().map_err(op(index, "read pc"))?;
         shared.watchdog.note_exit(pc);
-        let reason = vcpu.run().map_err(op(index, "run"))?;
+        if !shared.control.enter_guest(index) {
+            tracing::debug!(target: "ternvale::vcpu", cpu = index, "vm stopping; the next run returns at once");
+        }
+        let ran = hide_pauses(index, vcpu, shared, &mut applied)
+            .and_then(|()| vcpu.run().map_err(op(index, "run")));
+        shared.control.leave_guest(index);
+        let reason = ran?;
         let pc = vcpu.get_pc().map_err(op(index, "read pc"))?;
         shared.watchdog.note_exit(pc);
         match reason {
@@ -286,6 +299,36 @@ fn run_loop(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<Leave, Machi
             }
         }
     }
+}
+
+/// Add host ticks the VM spent paused since this CPU last checked to its
+/// vtimer offset, so `CNTVCT_EL0` resumes where the pause left it.
+fn hide_pauses(
+    index: u32,
+    vcpu: &Vcpu,
+    shared: &Shared<'_>,
+    applied: &mut u64,
+) -> Result<(), MachineError> {
+    let total = shared.control.paused_ticks();
+    let delta = total.saturating_sub(*applied);
+    if delta == 0 {
+        return Ok(());
+    }
+    let offset = vcpu
+        .vtimer_offset()
+        .map_err(op(index, "read vtimer offset"))?;
+    let advanced = offset.wrapping_add(delta);
+    vcpu.set_vtimer_offset(advanced)
+        .map_err(op(index, "advance vtimer offset past a pause"))?;
+    *applied = total;
+    tracing::info!(
+        target: "ternvale::vcpu",
+        cpu = index,
+        paused_ticks = delta,
+        offset = format!("{advanced:#x}"),
+        "vtimer offset advanced past a pause"
+    );
+    Ok(())
 }
 
 /// `false` when the exit is not MMIO or a sysreg trap and the VM should stop.

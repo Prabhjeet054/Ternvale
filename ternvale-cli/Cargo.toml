@@ -4,3 +4,26 @@ description = "Command-line interface for the Ternvale VMM."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[[bin]]
+name = "ternvale"
+path = "src/main.rs"
+
+[dependencies]
+# Error context for every CLI failure. The only crate allowed to use anyhow.
+anyhow = "1"
+# `ternvale run|validate|create-disk|status|pause|resume|stop` argument parsing.
+clap = { version = "4.5", features = ["derive"] }
+# Control socket JSON-lines requests and responses.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Required project-wide logging facade (target ternvale::cli).
+tracing = "0.1"
+# Log files, panic hook, and the stderr layer.
+ternvale-log = { path = "../ternvale-log" }
+# VmConfig loading and validation.
+ternvale-config = { path = "../ternvale-config" }
+# Machine, VmControl (lifecycle state machine and pause/resume).
+ternvale-vmm = { path = "../ternvale-vmm" }
+# PL011 serial, virtio-blk and virtio-net attachment for `run`.
+ternvale-devices = { path = "../ternvale-devices" }

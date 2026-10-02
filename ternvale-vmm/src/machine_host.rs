@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::attach::{lock_serial, SharedSerial, SpiLevels};
+use crate::control::{ControlHooks, VmControl, VmState};
 use crate::smp::CpuPower;
 use crate::vcpu::ExitReason;
 use crate::watchdog::Watchdog;
@@ -15,9 +16,28 @@ use crate::watchdog::Watchdog;
 /// and SPI re-pulses wake that vCPU.
 const IRQ_CPU: u32 = 0;
 
-pub(super) fn watch_loop(watchdog: Arc<Watchdog>, shutdown: Arc<AtomicBool>) {
+/// [`ControlHooks`] that act through `power`: kick is one `hv_vcpus_exit`
+/// nudge on every vCPU, stop is [`CpuPower::request_stop`].
+pub(super) fn control_hooks(power: &Arc<CpuPower>) -> ControlHooks {
+    let (kick, stop, stopping) = (Arc::clone(power), Arc::clone(power), Arc::clone(power));
+    ControlHooks {
+        kick: Box::new(move || kick.nudge_all()),
+        stop: Box::new(move || stop.request_stop(ExitReason::Canceled)),
+        stopping: Box::new(move || stopping.stop_reason().is_some()),
+    }
+}
+
+pub(super) fn watch_loop(
+    watchdog: Arc<Watchdog>,
+    shutdown: Arc<AtomicBool>,
+    control: Arc<VmControl>,
+) {
     while !shutdown.load(Ordering::Acquire) {
         std::thread::sleep(Duration::from_secs(1));
+        if control.state() == VmState::Paused {
+            watchdog.hold();
+            continue;
+        }
         if watchdog.poll().is_some() {
             tracing::debug!(target: "ternvale::vcpu", "hang watchdog fired");
         }

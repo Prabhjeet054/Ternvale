@@ -260,6 +260,18 @@ impl CpuPower {
         }
     }
 
+    /// Leave `hv_vcpu_run` on every registered vCPU without stopping any,
+    /// with one `hv_vcpus_exit`. Held under the table lock for the same
+    /// reason as a stop: no vCPU is destroyed between collecting ids and the call.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all)]
+    pub fn nudge_all(&self) {
+        let table = self.lock();
+        let stops: Vec<VcpuStop> = table.stops.iter().flatten().cloned().collect();
+        if let Err(error) = VcpuStop::nudge_all(&stops) {
+            tracing::error!(target: "ternvale::vcpu", error = %error, "hv_vcpus_exit nudge on all vcpus failed");
+        }
+    }
+
     /// Why the VM is stopping, once [`CpuPower::request_stop`] has run.
     #[tracing::instrument(level = "debug", target = "ternvale::psci", skip_all)]
     pub fn stop_reason(&self) -> Option<ExitReason> {

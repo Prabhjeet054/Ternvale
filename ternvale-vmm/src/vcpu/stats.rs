@@ -21,6 +21,34 @@ pub struct VcpuStats {
     pub vtimer_exits: u64,
 }
 
+/// Read-only view of one vCPU's counters that outlives the vCPU, for
+/// `query-stats` from a thread that does not own it.
+#[derive(Clone)]
+pub struct VcpuStatsSource(pub(super) std::sync::Arc<Counters>);
+
+impl std::fmt::Debug for VcpuStatsSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("VcpuStatsSource")
+            .field(&self.0.snapshot())
+            .finish()
+    }
+}
+
+impl VcpuStatsSource {
+    /// Current counter values.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all)]
+    pub fn snapshot(&self) -> VcpuStats {
+        self.0.snapshot()
+    }
+
+    /// A source with no vCPU behind it, for tests.
+    #[cfg(test)]
+    pub(crate) fn detached() -> Self {
+        Self(std::sync::Arc::new(Counters::default()))
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Counters {
     runs: AtomicU64,

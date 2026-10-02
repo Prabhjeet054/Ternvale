@@ -3,6 +3,7 @@
 //! [`GuestMemory`] allocates host RAM and maps it into the guest.
 
 mod boot;
+mod control;
 mod esr;
 mod fdt;
 mod firmware;
@@ -21,6 +22,9 @@ mod vcpu;
 mod watchdog;
 
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
+pub use control::{
+    ControlError, ControlHooks, CpuStats, StopCause, VmControl, VmState, VmStats, VmStatus,
+};
 pub use esr::{decode as decode_esr, ExitEvent};
 pub use fdt::{build_fdt, write_fdt, FdtError, GuestFdt, PL011_REG_SIZE, UART_SPI, VIRTIO_SPI0};
 pub use firmware::{FirmwareError, RomdWindow, VarsFlash};
@@ -45,7 +49,7 @@ pub use serial::SerialDevice;
 pub use smp::{dt_cpu_reg, mpidr, CpuPower, MPIDR_AFFINITY_MASK, MPIDR_RES1};
 /// The deadlock detector every mutex in this crate and `ternvale-devices` goes through.
 pub use ternvale_log::lockwatch;
-pub use vcpu::{process_cpu_ms, ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStop};
+pub use vcpu::{process_cpu_ms, ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStatsSource, VcpuStop};
 
 #[cfg(test)]
 #[path = "gic_hv_test.rs"]

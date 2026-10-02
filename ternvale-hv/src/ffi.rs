@@ -50,6 +50,8 @@ unsafe extern "C" {
     ) -> i32;
     /// `<sys/random.h>`: at most 256 bytes per call; returns 0 or -1 with `errno`.
     pub(crate) fn getentropy(buf: *mut c_void, buflen: usize) -> i32;
+    /// `<mach/mach_time.h>`: the host counter the vtimer offset is relative to.
+    pub(crate) fn mach_absolute_time() -> u64;
 }
 
 /// `hv_vcpu_exit_t` from `hv_vcpu_types.h`. `reason` is at 0; `exception` is at 8.

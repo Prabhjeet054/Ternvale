@@ -41,6 +41,13 @@ impl Watchdog {
         *self.lock(&self.reported) = false;
     }
 
+    /// Restart the idle clock without recording an exit. Called while the VM
+    /// is paused, when no exit is expected.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all)]
+    pub fn hold(&self) {
+        *self.lock(&self.last) = Instant::now();
+    }
+
     /// Remember one MMIO access. Only the last 20 are kept.
     #[tracing::instrument(level = "debug", target = "ternvale::mmio", skip_all)]
     pub fn note_mmio(&self, line: String) {
@@ -99,5 +106,13 @@ mod tests {
         *dog.lock(&dog.last) = Instant::now() - Duration::from_secs(11);
         let again = dog.poll().expect("rearmed");
         assert!(again.contains("pc=0x40002000"), "{again}");
+    }
+
+    #[test]
+    fn hold_restarts_the_idle_clock() {
+        let dog = Watchdog::new(Duration::from_secs(10));
+        *dog.lock(&dog.last) = Instant::now() - Duration::from_secs(11);
+        dog.hold();
+        assert!(dog.poll().is_none(), "a held watchdog must not warn");
     }
 }

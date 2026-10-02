@@ -38,6 +38,24 @@ impl VcpuStop {
         Ok(())
     }
 
+    /// [`VcpuStop::nudge`] every vCPU in `stops` with one `hv_vcpus_exit` call.
+    /// The guest keeps running; pause uses this to get every vCPU back to the
+    /// host loop.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(count = stops.len()))]
+    pub fn nudge_all(stops: &[VcpuStop]) -> Result<(), VcpuError> {
+        if stops.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<u64> = stops.iter().map(|stop| stop.id).collect();
+        for stop in stops {
+            stop.pending.store(true, Ordering::Release);
+            stop.wake.notify_one();
+        }
+        tracing::debug!(target: "ternvale::vcpu", vcpu_ids = ?ids, "nudging every vcpu");
+        ternvale_hv::vcpus_exit(&ids)?;
+        Ok(())
+    }
+
     /// Whether [`VcpuStop::request`] has run.
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
     pub fn is_stopped(&self) -> bool {

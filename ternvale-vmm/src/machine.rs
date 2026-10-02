@@ -7,6 +7,8 @@
 //! (`machine_images.rs`); the others start on PSCI `CPU_ON`. Host stdin goes straight into the shared UART, which raises
 //! GIC SPI 1. A watchdog warns if no exit arrives for 10 seconds. Any vCPU can
 //! end the VM; [`CpuPower`] then cancels every vCPU with one `hv_vcpus_exit`.
+//! A [`VmControl`] follows the lifecycle (`Created → Running ⇄ Paused →
+//! Stopping → Stopped | Failed`) and pauses vCPUs between runs.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -27,6 +29,7 @@ pub use attach::DeviceAttach;
 mod cmdline;
 pub use cmdline::{guest_cmdline, guest_cmdline_for, DEFAULT_CMDLINE, DISK_ROOT_CMDLINE};
 
+use crate::control::VmControl;
 use crate::fdt::PL011_REG_SIZE;
 use crate::gic_redist::{RedistId, RedistMap};
 use crate::mmio::{MmioBus, MmioDevice};
@@ -113,6 +116,9 @@ pub enum MachineError {
     /// Loading the UEFI firmware or opening its variable store failed.
     #[error("vm firmware: {0}")]
     Firmware(#[from] crate::firmware::FirmwareError),
+    /// The lifecycle controller does not match the config.
+    #[error("vm control: {0}")]
+    Control(String),
 }
 
 /// One guest. [`Machine::run`] owns the hypervisor VM until the guest stops.
@@ -155,6 +161,67 @@ impl Machine {
         F: FnOnce(&DeviceAttach) -> Result<Vec<(u64, u64, Box<dyn MmioDevice>)>, MachineError>,
     {
         config.validate()?;
+        let control = Arc::new(VmControl::new(&config.name, config.cpus));
+        Self::run_tracked(config, serial, cancel, &control, attach)
+    }
+
+    /// [`Machine::run_with`] driven by `control`: its state follows the run,
+    /// and its pause, resume, and stop requests act on the vCPUs. `control`
+    /// must track `config.cpus` CPUs.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::boot",
+        skip_all,
+        fields(name = %config.name)
+    )]
+    pub fn run_controlled<F>(
+        config: &ternvale_config::VmConfig,
+        serial: Box<dyn SerialDevice>,
+        control: &Arc<VmControl>,
+        attach: F,
+    ) -> Result<ExitReason, MachineError>
+    where
+        F: FnOnce(&DeviceAttach) -> Result<Vec<(u64, u64, Box<dyn MmioDevice>)>, MachineError>,
+    {
+        if control.cpus() != config.cpus {
+            let error = MachineError::Control(format!(
+                "controller tracks {} cpus, config has {}",
+                control.cpus(),
+                config.cpus
+            ));
+            control.finish(Err(error.to_string()));
+            return Err(error);
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        Self::run_tracked(config, serial, cancel, control, attach)
+    }
+
+    fn run_tracked<F>(
+        config: &ternvale_config::VmConfig,
+        serial: Box<dyn SerialDevice>,
+        cancel: Arc<AtomicBool>,
+        control: &Arc<VmControl>,
+        attach: F,
+    ) -> Result<ExitReason, MachineError>
+    where
+        F: FnOnce(&DeviceAttach) -> Result<Vec<(u64, u64, Box<dyn MmioDevice>)>, MachineError>,
+    {
+        let result = Self::run_inner(config, serial, cancel, control, attach);
+        control.finish(result.as_ref().map(|exit| *exit).map_err(|e| e.to_string()));
+        result
+    }
+
+    fn run_inner<F>(
+        config: &ternvale_config::VmConfig,
+        serial: Box<dyn SerialDevice>,
+        cancel: Arc<AtomicBool>,
+        control: &Arc<VmControl>,
+        attach: F,
+    ) -> Result<ExitReason, MachineError>
+    where
+        F: FnOnce(&DeviceAttach) -> Result<Vec<(u64, u64, Box<dyn MmioDevice>)>, MachineError>,
+    {
+        config.validate()?;
         let cmdline = guest_cmdline_for(&config.cmdline, config.boot_disk);
         tracing::info!(
             target: "ternvale::boot",
@@ -164,13 +231,6 @@ impl Machine {
             boot_disk = config.boot_disk,
             "starting vm"
         );
-        if !config.nics.is_empty() {
-            tracing::warn!(
-                target: "ternvale::boot",
-                nics = config.nics.len(),
-                "nics are not attached"
-            );
-        }
         let inputs = Inputs::read(config)?;
         let nvram = config.nvram_path()?;
         let ram_size = config.ram_mib << 20;
@@ -189,11 +249,15 @@ impl Machine {
             Arc::clone(&spi_levels),
         );
         let devices = attach(&attached)?;
-        if !config.disks.is_empty() && devices.is_empty() && attached.pci.function_count() <= 1 {
+        // The PCI count includes the host bridge.
+        let present = devices.len() + attached.pci.function_count().saturating_sub(1);
+        if present < config.disks.len() + config.nics.len() {
             tracing::warn!(
                 target: "ternvale::boot",
                 disks = config.disks.len(),
-                "config disks were not attached through DeviceAttach"
+                nics = config.nics.len(),
+                attached = present,
+                "some config disks or nics were not attached through DeviceAttach"
             );
         }
         let dtb = inputs.dtb(&cmdline, config.cpus, ram_size)?;
@@ -227,11 +291,13 @@ impl Machine {
         // PCI functions (and their guest-memory handles) must die with the bus, before the VM.
         drop(attached);
         let power = Arc::new(CpuPower::new(config.cpus, RAM_BASE, ram_size));
+        control.bind(host::control_hooks(&power));
         let shutdown = Arc::new(AtomicBool::new(false));
         let watchdog = Arc::new(Watchdog::new(HANG));
         let stop_watch = Arc::clone(&shutdown);
         let dog = Arc::clone(&watchdog);
-        let _watch = std::thread::spawn(move || host::watch_loop(dog, stop_watch));
+        let watch_control = Arc::clone(control);
+        let _watch = std::thread::spawn(move || host::watch_loop(dog, stop_watch, watch_control));
         let stdin = {
             let (serial, shutdown, power) = (
                 Arc::clone(&serial),
@@ -262,8 +328,10 @@ impl Machine {
             watchdog: &watchdog,
             images: &images,
             vtimer_offset: &vtimer_offset,
+            control,
         };
         let outcome = run_vcpus(config.cpus, &shared);
+        control.mark_stopping(power.stop_reason().unwrap_or(ExitReason::Canceled));
         shutdown.store(true, Ordering::Release);
         for (what, handle) in [("stdin", stdin), ("poll", poll)] {
             if handle.join().is_err() {
@@ -312,6 +380,9 @@ fn run_vcpus(cpus: u32, shared: &vcpu_thread::Shared<'_>) -> Result<(), MachineE
             }
         }
         tracing::info!(target: "ternvale::boot", threads = handles.len(), "vcpu threads started");
+        if first_error.is_none() {
+            shared.control.mark_running();
+        }
         for (index, handle) in handles {
             let result = handle
                 .join()

@@ -82,14 +82,14 @@ pub struct Vcpu {
     pub(super) park: Arc<Mutex<()>>,
     /// Set after a VTIMER exit until `CNTV_CTL_EL0.ISTATUS` clears.
     pub(super) timer_masked: AtomicBool,
-    counters: stats::Counters,
+    counters: Arc<stats::Counters>,
 }
 
 mod exit;
 mod stats;
 mod stop;
 
-pub use stats::{process_cpu_ms, VcpuStats};
+pub use stats::{process_cpu_ms, VcpuStats, VcpuStatsSource};
 pub use stop::VcpuStop;
 
 impl std::fmt::Debug for Vcpu {
@@ -125,7 +125,7 @@ impl Vcpu {
             wake: Arc::new(Condvar::new()),
             park: Arc::new(Mutex::new(())),
             timer_masked: AtomicBool::new(false),
-            counters: stats::Counters::default(),
+            counters: Arc::new(stats::Counters::default()),
         })
     }
 
@@ -133,6 +133,13 @@ impl Vcpu {
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
     pub fn stats(&self) -> VcpuStats {
         self.counters.snapshot()
+    }
+
+    /// Handle another thread can read these counters through, even after
+    /// the vCPU is destroyed.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
+    pub fn stats_source(&self) -> VcpuStatsSource {
+        VcpuStatsSource(Arc::clone(&self.counters))
     }
 
     /// Kernel vCPU id.
