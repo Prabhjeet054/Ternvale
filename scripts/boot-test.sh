@@ -31,6 +31,17 @@
 #   uefi-linux        — the test kernel and initramfs booted through EDK2 (firmware_tables =
 #                       "fdt") from a FAT16 disk; initrd checks plus /sys/firmware/{efi,fdt}
 #                       present and /sys/firmware/acpi absent, then poweroff
+#   uefi-linux-acpi   — the ./scripts/make-rootfs.sh kernel and initramfs (it loads
+#                       virtio_blk) with firmware_tables = "acpi" from an MBR disk on
+#                       virtio-pci: earlycon must show \_SB.PCI0, its _CRS window, the disk
+#                       found by enumeration and " vda: vda1"; the host log must show the
+#                       disk's INTx (SPI 4) handled. No console (no UART in the DSDT), so
+#                       the VM is cancelled after the checks
+#   uefi-lspci        — fdt vs acpi cross-check (also needs ./scripts/make-pci-assets.sh):
+#                       the rootfs kernel boots twice through EDK2 with the same three
+#                       virtio-pci disks; a replaced /init logs the rootfs's `lspci -nnk`
+#                       to /dev/kmsg and powers off. Both lists and the kernel's PCI probe
+#                       lines must match, and the DSDT Linux loaded must be the builder's
 #   TERNVALE_FIRMWARE=<QEMU_EFI.fd> replaces the EDK2 image in the UEFI scenarios.
 #   installer         — EDK2 boots the Alpine arm64 ISO (needs ./scripts/fetch-installer-iso.sh)
 #                       from a read-only virtio-blk disk to a root login and setup-alpine;

@@ -22,7 +22,7 @@ const DT_PPI: u32 = 1;
 /// DT interrupt specifier flags: level-high.
 const DT_LEVEL_HIGH: u32 = 4;
 
-fn written(cpus: u32) -> (GuestMemory, Vec<DumpedTable>) {
+pub(super) fn written(cpus: u32) -> (GuestMemory, Vec<DumpedTable>) {
     let mut memory = GuestMemory::new().expect("memory");
     memory.add_region(ACPI_BASE, ACPI_SIZE).expect("region");
     write_tables(&mut memory, cpus).expect("write");
@@ -30,14 +30,14 @@ fn written(cpus: u32) -> (GuestMemory, Vec<DumpedTable>) {
     (memory, tables)
 }
 
-fn table<'a>(tables: &'a [DumpedTable], signature: &str) -> &'a DumpedTable {
+pub(super) fn table<'a>(tables: &'a [DumpedTable], signature: &str) -> &'a DumpedTable {
     tables
         .iter()
         .find(|t| t.signature == signature)
         .unwrap_or_else(|| panic!("no {signature}"))
 }
 
-fn dtb(cpus: u32) -> Vec<Node> {
+pub(super) fn dtb(cpus: u32) -> Vec<Node> {
     let fdt = GuestFdt {
         bootargs: String::new(),
         ram_base: RAM_BASE,

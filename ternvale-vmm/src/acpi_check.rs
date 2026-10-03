@@ -11,17 +11,26 @@
 //! disagrees with the [`Layout::virt`] regions.
 
 use ternvale_acpi::{
-    AcpiConfig, AcpiError, DumpedTable, EcamConfig, GicConfig, PsciConduit, TimerConfig, UartConfig,
+    AcpiConfig, AcpiError, DumpedTable, EcamConfig, GicConfig, PciConfig, PsciConduit, TimerConfig,
+    UartConfig,
 };
 
 use crate::fdt::{PL011_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI};
 use crate::gic_redist::REDIST_STRIDE;
 use crate::machine::MachineError;
-use crate::pci::ECAM_BUSES;
+use crate::pci::{ECAM_BUSES, PCI_INTX_SPI0};
 use crate::platform::{
     Layout, ACPI_BASE, ACPI_SIZE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, PCIE_ECAM_BASE,
-    UART_BASE,
+    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, UART_BASE,
 };
+
+/// DTB SPI of each swizzled INTx line, as `fdt_pci` writes them.
+const INTX_SPIS: [u32; 4] = [
+    PCI_INTX_SPI0,
+    PCI_INTX_SPI0 + 1,
+    PCI_INTX_SPI0 + 2,
+    PCI_INTX_SPI0 + 3,
+];
 use crate::smp::MPIDR_AFFINITY_MASK;
 
 /// ECAM bytes per bus (PCIe Base Specification §7.2.2: 32 devices × 8
@@ -51,6 +60,11 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
             base: PCIE_ECAM_BASE,
             start_bus: 0,
             end_bus: ECAM_BUSES - 1,
+        },
+        pci: PciConfig {
+            mmio_base: PCIE_MMIO_BASE,
+            mmio_len: PCIE_MMIO_SIZE,
+            intx_spis: INTX_SPIS,
         },
         uart: UartConfig {
             base: UART_BASE,
@@ -112,6 +126,13 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
         ),
         region_problem(
             layout,
+            "DSDT PCI0 _CRS",
+            "pcie-mmio",
+            |base, size| base == config.pci.mmio_base && size == config.pci.mmio_len,
+            format!("{:#x}+{:#x}", config.pci.mmio_base, config.pci.mmio_len),
+        ),
+        region_problem(
+            layout,
             "SPCR/DBG2 UART",
             "uart",
             |base, size| uart.base >= base && uart_end <= base.saturating_add(size),
@@ -134,6 +155,12 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
         problems.push(format!(
             "GTDT: tables use timer PPIs {:?} always-on {}, DTB timer node uses {:?} always-on {}",
             config.timer.ppis, config.timer.always_on, dtb_timer.0, dtb_timer.1
+        ));
+    }
+    if config.pci.intx_spis != INTX_SPIS {
+        problems.push(format!(
+            "DSDT PCI0 _PRT: tables route INTx to SPIs {:?}, DTB pcie interrupt-map uses {:?}",
+            config.pci.intx_spis, INTX_SPIS
         ));
     }
     if config.uart.spi != UART_SPI || u64::from(config.uart.len) != PL011_REG_SIZE {
@@ -194,3 +221,7 @@ mod tests;
 #[cfg(test)]
 #[path = "acpi_dtb_tests.rs"]
 mod dtb_tests;
+
+#[cfg(test)]
+#[path = "acpi_pci_tests.rs"]
+mod pci_tests;

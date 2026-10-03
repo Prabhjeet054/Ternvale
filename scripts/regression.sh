@@ -7,9 +7,11 @@
 # Scenarios default to: initrd (direct kernel), rootfs (virtio-blk root), net
 # (ping), smp (TERNVALE_BOOT_CPUS, default 4; the other scenarios keep their own
 # CPU count), agent (vsock guest agent), firmware (UEFI banner, DTB),
-# firmware-acpi (UEFI with ACPI over fw_cfg) and uefi-linux (test kernel through
-# UEFI with the DTB). firmware-debug (debug EDK2 log check) is opt-in: it needs
-# ./scripts/fetch-debug-firmware.sh. Each step's output goes to
+# firmware-acpi (UEFI with ACPI over fw_cfg), uefi-linux (test kernel through
+# UEFI with the DTB) and uefi-linux-acpi (the same kernel with ACPI, disk found
+# through \_SB.PCI0 and PCI enumeration). Opt-in: firmware-debug (debug EDK2 log
+# check; needs ./scripts/fetch-debug-firmware.sh) and uefi-lspci (fdt vs acpi
+# lspci; needs ./scripts/make-pci-assets.sh). Each step's output goes to
 # target/regression/<stamp>/<step>.txt. results.md is a markdown table of
 # result, wall seconds, and the boot artifact directory. Every step runs even
 # after a failure. Exits 1 if any step failed.
@@ -19,7 +21,7 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "${script_dir}/.." && pwd)
 cd "$root"
 
-scenarios="${TERNVALE_REGRESSION_SCENARIOS:-initrd rootfs net smp agent firmware firmware-acpi uefi-linux}"
+scenarios="${TERNVALE_REGRESSION_SCENARIOS:-initrd rootfs net smp agent firmware firmware-acpi uefi-linux uefi-linux-acpi}"
 smp_cpus="${TERNVALE_BOOT_CPUS:-4}"
 unset TERNVALE_BOOT_CPUS
 out_dir="${root}/target/regression/$(date +%Y%m%d-%H%M%S)"
@@ -39,6 +41,8 @@ describe() {
         firmware-acpi) printf 'UEFI installs ACPI from fw_cfg' ;;
         firmware-debug) printf 'debug EDK2 log: ACPI from fw_cfg, no DT fallback' ;;
         uefi-linux) printf 'test kernel through UEFI, DTB only' ;;
+        uefi-linux-acpi) printf 'test kernel through UEFI with ACPI, virtio-pci disk via PCI0' ;;
+        uefi-lspci) printf 'lspci -nnk identical under fdt and acpi' ;;
         *) printf '%s' "$1" ;;
     esac
 }

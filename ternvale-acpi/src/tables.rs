@@ -92,7 +92,7 @@ impl AcpiTables {
             ("SPCR", spcr(&config.uart)?),
             ("DBG2", dbg2(&config.uart)?),
         ];
-        let dsdt = dsdt()?;
+        let dsdt = dsdt(config)?;
         let overflow = || {
             tracing::warn!(target: "ternvale::acpi", base = %format!("{base:#x}"), "acpi layout overflows");
             AcpiError::AddressOverflow { base }

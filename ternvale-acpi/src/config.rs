@@ -1,4 +1,5 @@
-//! What the tables describe: CPUs, GIC, timer, ECAM, and UART.
+//! What the tables describe: CPUs, GIC, timer, ECAM, the PCIe root bridge's
+//! windows and INTx routing, and UART.
 //!
 //! The VMM fills this from its platform map (`ternvale-vmm` `platform.rs`,
 //! `smp::mpidr`, the DTB's interrupt numbers), so this crate holds no
@@ -37,8 +38,23 @@ pub struct AcpiConfig {
     pub timer: TimerConfig,
     /// PCIe ECAM window.
     pub ecam: EcamConfig,
+    /// PCIe root bridge resources behind the ECAM (DSDT `\_SB.PCI0`).
+    pub pci: PciConfig,
     /// PL011 console and debug UART.
     pub uart: UartConfig,
+}
+
+/// The root bridge's 32-bit MMIO window and INTx lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PciConfig {
+    /// Non-prefetchable memory window base, identity mapped (CPU address =
+    /// PCI address). Must end at or below 4 GiB.
+    pub mmio_base: u64,
+    /// Window length.
+    pub mmio_len: u64,
+    /// DTB SPI index of each swizzled INTx line: pin `p` (0 = INTA) of
+    /// device `d` raises line `(d + p) % 4`.
+    pub intx_spis: [u32; 4],
 }
 
 /// GICv3 windows (MADT GICD and GICR structures).
@@ -135,6 +151,25 @@ impl AcpiConfig {
         if self.gic.redist_len == 0 || self.uart.len == 0 {
             return fail("zero-length redistributor or uart window".to_string());
         }
+        let pci = self.pci;
+        let mmio_end = pci.mmio_base.checked_add(pci.mmio_len);
+        if pci.mmio_len == 0 || mmio_end.is_none_or(|end| end > 1 << 32) {
+            return fail(format!(
+                "pci mmio window {:#x}+{:#x} is empty or passes 4 GiB",
+                pci.mmio_base, pci.mmio_len
+            ));
+        }
+        let buses = u64::from(self.ecam.end_bus) - u64::from(self.ecam.start_bus) + 1;
+        let ecam_end = self.ecam.base.saturating_add(buses << 20);
+        if mmio_end.is_some_and(|end| pci.mmio_base < ecam_end && self.ecam.base < end) {
+            return fail(format!(
+                "pci mmio window {:#x}+{:#x} overlaps the ecam window",
+                pci.mmio_base, pci.mmio_len
+            ));
+        }
+        if let Some(spi) = pci.intx_spis.iter().find(|spi| spi_gsiv(**spi) > SPI_LAST) {
+            return fail(format!("pci INTx SPI {spi} is past INTID {SPI_LAST}"));
+        }
         Ok(())
     }
 }
@@ -163,6 +198,11 @@ pub(crate) mod tests {
                 base: 0x3f00_0000,
                 start_bus: 0,
                 end_bus: 15,
+            },
+            pci: PciConfig {
+                mmio_base: 0x1000_0000,
+                mmio_len: 0x2f00_0000,
+                intx_spis: [3, 4, 5, 6],
             },
             uart: UartConfig {
                 base: 0x0900_0000,
@@ -206,5 +246,17 @@ pub(crate) mod tests {
         let mut zero = sample(1);
         zero.gic.redist_len = 0;
         reject(zero, "zero-length");
+        let mut empty = sample(1);
+        empty.pci.mmio_len = 0;
+        reject(empty, "is empty or passes 4 GiB");
+        let mut high = sample(1);
+        high.pci.mmio_base = 0xffff_0000;
+        reject(high, "is empty or passes 4 GiB");
+        let mut over = sample(1);
+        over.pci.mmio_len = 0x3000_0000;
+        reject(over, "overlaps the ecam window");
+        let mut intx = sample(1);
+        intx.pci.intx_spis[3] = 988;
+        reject(intx, "pci INTx SPI 988");
     }
 }

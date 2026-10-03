@@ -1,7 +1,8 @@
-//! A minimal FAT16 image without a partition table (a "superfloppy") holding
-//! a few files in the root directory, for UEFI to load from a virtio-blk
-//! disk. EDK2's FAT driver (`FatPkg/EnhancedFatDxe`) mounts an unpartitioned
-//! disk.
+//! A minimal FAT16 image holding a few files in the root directory, for UEFI
+//! to load from a virtio-blk disk: either without a partition table (a
+//! "superfloppy", which EDK2's `FatPkg/EnhancedFatDxe` mounts directly) or
+//! as the one partition of an MBR disk. Linux prints ` vda: vda1` only for the
+//! partitioned form, after reading the MBR, which needs a completed request.
 //!
 //! Layout per Microsoft "FAT: General Overview of On-Disk Format" v1.03
 //! (fatgen103): BPB in sector 0, two FATs, a 512-entry root directory, then
@@ -25,9 +26,51 @@ const DATE: u16 = ((2026 - 1980) << 9) | (1 << 5) | 1;
 const ATTR_VOLUME_ID: u8 = 0x08;
 const ATTR_ARCHIVE: u8 = 0x20;
 const END_OF_CHAIN: u16 = 0xffff;
+/// First sector of the partition in the MBR form (1 MiB, the usual alignment).
+const PARTITION_LBA: usize = 2048;
+/// MBR partition type: FAT16 with LBA addressing.
+const MBR_FAT16_LBA: u8 = 0x0e;
 
-/// Write `files` (`8.3` name, contents) as a FAT16 image at `path`.
+/// Write `files` (`8.3` name, contents) as an unpartitioned FAT16 image at `path`.
 pub fn write_fat16(path: &Path, files: &[(&str, &[u8])]) -> Result<(), String> {
+    let image = volume(files, 0)?;
+    write(path, &image, files, false)
+}
+
+/// Write `files` as a FAT16 partition starting at sector 2048 of an MBR disk.
+pub fn write_fat16_mbr(path: &Path, files: &[(&str, &[u8])]) -> Result<(), String> {
+    let volume = volume(files, PARTITION_LBA)?;
+    let sectors = u32::try_from(volume.len() / SECTOR).map_err(|_| "volume too large")?;
+    let mut image = vec![0u8; PARTITION_LBA * SECTOR];
+    // Classic MBR: disk signature at 440, four 16-byte entries from 446, 55 AA.
+    image[440..444].copy_from_slice(&0x5445_524eu32.to_le_bytes());
+    let entry = &mut image[446..462];
+    entry[1..4].copy_from_slice(&[0xfe, 0xff, 0xff]);
+    entry[4] = MBR_FAT16_LBA;
+    entry[5..8].copy_from_slice(&[0xfe, 0xff, 0xff]);
+    entry[8..12].copy_from_slice(&(PARTITION_LBA as u32).to_le_bytes());
+    entry[12..16].copy_from_slice(&sectors.to_le_bytes());
+    image[510] = 0x55;
+    image[511] = 0xaa;
+    image.extend_from_slice(&volume);
+    write(path, &image, files, true)
+}
+
+fn write(path: &Path, image: &[u8], files: &[(&str, &[u8])], mbr: bool) -> Result<(), String> {
+    std::fs::write(path, image).map_err(|err| format!("write {}: {err}", path.display()))?;
+    tracing::info!(
+        target: "ternvale::boot",
+        path = %path.display(),
+        bytes = image.len(),
+        mbr,
+        files = %files.iter().map(|(name, bytes)| format!("{name}={}", bytes.len())).collect::<Vec<_>>().join(","),
+        "fat16 esp image written"
+    );
+    Ok(())
+}
+
+/// The FAT16 volume; `hidden` is its first sector on the disk (BPB_HiddSec).
+fn volume(files: &[(&str, &[u8])], hidden: usize) -> Result<Vec<u8>, String> {
     if files.len() + 1 > ROOT_ENTRIES {
         return Err(format!(
             "{} files do not fit the root directory",
@@ -47,7 +90,7 @@ pub fn write_fat16(path: &Path, files: &[(&str, &[u8])]) -> Result<(), String> {
     let data_start = RESERVED_SECTORS + FATS * fat_sectors + root_sectors;
     let total_sectors = data_start + clusters * SECTORS_PER_CLUSTER;
     let mut image = vec![0u8; total_sectors * SECTOR];
-    boot_sector(&mut image[..SECTOR], total_sectors, fat_sectors)?;
+    boot_sector(&mut image[..SECTOR], total_sectors, fat_sectors, hidden)?;
 
     let mut fat = vec![0u16; clusters + 2];
     fat[0] = 0xfff8;
@@ -85,21 +128,20 @@ pub fn write_fat16(path: &Path, files: &[(&str, &[u8])]) -> Result<(), String> {
     }
     let root_start = (RESERVED_SECTORS + FATS * fat_sectors) * SECTOR;
     image[root_start..root_start + root.len()].copy_from_slice(&root);
-    std::fs::write(path, &image).map_err(|err| format!("write {}: {err}", path.display()))?;
-    tracing::info!(
-        target: "ternvale::boot",
-        path = %path.display(),
-        bytes = image.len(),
-        clusters,
-        files = %files.iter().map(|(name, bytes)| format!("{name}={}", bytes.len())).collect::<Vec<_>>().join(","),
-        "fat16 esp image written"
-    );
-    Ok(())
+    tracing::debug!(target: "ternvale::boot", clusters, hidden, "fat16 volume built");
+    Ok(image)
 }
 
 /// The BIOS parameter block and FAT16 extended boot record (fatgen103 §3).
-fn boot_sector(sector: &mut [u8], total_sectors: usize, fat_sectors: usize) -> Result<(), String> {
+fn boot_sector(
+    sector: &mut [u8],
+    total_sectors: usize,
+    fat_sectors: usize,
+    hidden: usize,
+) -> Result<(), String> {
     let fat_sectors = u16::try_from(fat_sectors).map_err(|_| "FAT too large".to_string())?;
+    let hidden = u32::try_from(hidden).map_err(|_| "partition offset too large".to_string())?;
+    sector[28..32].copy_from_slice(&hidden.to_le_bytes());
     sector[..3].copy_from_slice(&[0xeb, 0x3c, 0x90]);
     sector[3..11].copy_from_slice(b"TERNVALE");
     sector[11..13].copy_from_slice(&(SECTOR as u16).to_le_bytes());

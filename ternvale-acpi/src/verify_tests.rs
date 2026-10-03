@@ -87,6 +87,32 @@ fn config_changes_are_drift_too() {
 }
 
 #[test]
+fn dsdt_aml_or_pci_config_changes_are_drift() {
+    let config = sample(1);
+    let mut tables = dumped(&config);
+    verify(&tables, &config).expect("no drift");
+    let mut moved = config.clone();
+    moved.pci.mmio_len = 0x1f00_0000;
+    let text = problems(&tables, &moved).join("\n");
+    assert!(
+        text.contains("DSDT: AML differs from the builder's"),
+        "{text}"
+    );
+    let mut routed = config.clone();
+    routed.pci.intx_spis = [3, 4, 5, 7];
+    assert!(problems(&tables, &routed)
+        .join("\n")
+        .contains("DSDT: AML differs"));
+
+    let dsdt = tables.iter().find(|t| t.signature == "DSDT").expect("dsdt");
+    let last = dsdt.bytes.len() - 1;
+    let byte = dsdt.bytes[last];
+    tamper(&mut tables, "DSDT", last, &[byte ^ 1]);
+    let text = problems(&tables, &config).join("\n");
+    assert!(text.contains(&format!("at byte {last:#x}")), "{text}");
+}
+
+#[test]
 fn missing_tables_and_bad_checksums_are_drift() {
     let config = sample(1);
     let mut tables = dumped(&config);

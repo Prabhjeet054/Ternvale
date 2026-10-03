@@ -2,9 +2,7 @@
 //!
 //! `iasl -d` disassembles each table; any `Warning` or `Error` line fails the
 //! test (iasl exits 0 even for a bad checksum, so the exit code alone is not
-//! enough). The DSDT disassembly is then recompiled with optimizations off
-//! (`-oa`) and its AML must match ours byte for byte, because `iasl -d` alone
-//! accepts some malformed AML (a PkgLength past the end of the table).
+//! enough). The DSDT checks are in `iasl_dsdt_tests.rs`.
 //!
 //! Skipped when `iasl` is not on PATH; set `TERNVALE_REQUIRE_IASL=1` to make
 //! that a failure instead (`brew install acpica`). `TERNVALE_IASL` names a
@@ -21,7 +19,7 @@ use crate::{dsdt, AcpiTables};
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
 
 /// False (skip) when iasl is missing and not required.
-fn have_iasl() -> bool {
+pub(crate) fn have_iasl() -> bool {
     if Command::new(iasl_bin()).arg("-v").output().is_ok() {
         return true;
     }
@@ -38,7 +36,7 @@ fn iasl_bin() -> String {
     std::env::var("TERNVALE_IASL").unwrap_or_else(|_| "iasl".to_string())
 }
 
-fn scratch(name: &str) -> PathBuf {
+pub(crate) fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "ternvale-acpi-iasl-{}-{}-{name}",
         std::process::id(),
@@ -49,7 +47,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// Run iasl in `dir`; returns (exit ok, stdout + stderr).
-fn iasl(dir: &Path, args: &[&str]) -> (bool, String) {
+pub(crate) fn iasl(dir: &Path, args: &[&str]) -> (bool, String) {
     let output = Command::new(iasl_bin())
         .args(args)
         .current_dir(dir)
@@ -61,7 +59,7 @@ fn iasl(dir: &Path, args: &[&str]) -> (bool, String) {
 }
 
 /// Lines where iasl reports a problem.
-fn problems(text: &str) -> Vec<&str> {
+pub(crate) fn problems(text: &str) -> Vec<&str> {
     text.lines()
         .filter(|line| !line.starts_with("Compilation successful"))
         .filter(|line| {
@@ -73,7 +71,7 @@ fn problems(text: &str) -> Vec<&str> {
 
 /// Write `bytes` to `<dir>/<stem>.dat`, run `iasl -d`, and return the
 /// disassembly and iasl's output.
-fn disassemble(dir: &Path, stem: &str, bytes: &[u8]) -> (String, String) {
+pub(crate) fn disassemble(dir: &Path, stem: &str, bytes: &[u8]) -> (String, String) {
     let input = format!("{stem}.dat");
     std::fs::write(dir.join(&input), bytes).expect("write table");
     let (ok, text) = iasl(dir, &["-d", &input]);
@@ -88,7 +86,7 @@ fn disassemble(dir: &Path, stem: &str, bytes: &[u8]) -> (String, String) {
 }
 
 /// Recompile `<stem>.dsl` without optimizations; returns the AML and iasl's output.
-fn recompile(dir: &Path, stem: &str) -> (Vec<u8>, String) {
+pub(crate) fn recompile(dir: &Path, stem: &str) -> (Vec<u8>, String) {
     let (ok, text) = iasl(dir, &["-oa", "-p", "roundtrip", &format!("{stem}.dsl")]);
     assert!(ok, "iasl -oa {stem}.dsl failed:\n{text}");
     let aml = std::fs::read(dir.join("roundtrip.aml")).expect("read roundtrip.aml");
@@ -96,36 +94,13 @@ fn recompile(dir: &Path, stem: &str) -> (Vec<u8>, String) {
 }
 
 fn dsdt_with_body(body: &[u8]) -> Vec<u8> {
-    let mut table = dsdt().expect("dsdt")[..SDT_HEADER_LEN].to_vec();
+    let mut table = dsdt(&sample(1)).expect("dsdt")[..SDT_HEADER_LEN].to_vec();
     table.extend_from_slice(body);
     let len = table.len() as u32;
     table[4..8].copy_from_slice(&len.to_le_bytes());
     table[SDT_CHECKSUM_OFFSET] = 0;
     table[SDT_CHECKSUM_OFFSET] = checksum(&table);
     table
-}
-
-#[test]
-fn dsdt_disassembles_cleanly_and_recompiles_to_the_same_aml() {
-    if !have_iasl() {
-        return;
-    }
-    let dir = scratch("dsdt");
-    let ours = dsdt().expect("dsdt");
-    let (dsl, text) = disassemble(&dir, "dsdt", &ours);
-    assert_eq!(problems(&text), Vec::<&str>::new(), "{text}");
-    assert!(
-        dsl.contains("DefinitionBlock (\"\", \"DSDT\", 2, \"TERNVL\", \"TERNDSDT\", 0x00000001)"),
-        "{dsl}"
-    );
-    assert!(dsl.contains("Scope (\\_SB)"), "{dsl}");
-
-    let (aml, text) = recompile(&dir, "dsdt");
-    assert_eq!(problems(&text), Vec::<&str>::new(), "{text}");
-    assert!(text.contains("0 Errors, 0 Warnings"), "{text}");
-    assert_eq!(&aml[SDT_HEADER_LEN..], &ours[SDT_HEADER_LEN..], "AML body");
-    assert_eq!(&aml[..9], &ours[..9], "signature, length, revision");
-    std::fs::remove_dir_all(&dir).expect("remove scratch");
 }
 
 /// iasl 20260408 decodes every SPCR with its revision 4 template, so a
@@ -272,7 +247,7 @@ fn data_tables_disassemble_cleanly_with_the_expected_fields() {
 }
 
 /// Collapse runs of spaces so field lines compare without iasl's column padding.
-fn squeeze(text: &str) -> String {
+pub(crate) fn squeeze(text: &str) -> String {
     text.lines()
         .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
         .collect::<Vec<_>>()
@@ -285,7 +260,7 @@ fn the_iasl_checks_catch_broken_tables() {
         return;
     }
     let dir = scratch("broken");
-    let mut bad_sum = dsdt().expect("dsdt");
+    let mut bad_sum = dsdt(&sample(1)).expect("dsdt");
     bad_sum[SDT_CHECKSUM_OFFSET] ^= 0x55;
     let (_, text) = disassemble(&dir, "badsum", &bad_sum);
     assert!(

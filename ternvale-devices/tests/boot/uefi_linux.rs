@@ -26,8 +26,8 @@ use crate::common::{
 };
 use crate::firmware::{check_banner, expect, send, to_shell};
 
-const KERNEL: &str = "IMAGE.EFI";
-const INITRD: &str = "INITRD";
+pub const KERNEL: &str = "IMAGE.EFI";
+pub const INITRD: &str = "INITRD";
 
 pub fn run() -> Result<(), String> {
     let log_dir = log_dir();
@@ -114,7 +114,7 @@ fn boot(
 }
 
 /// `text` in 16-byte chunks (the PL011 RX FIFO), then `end`.
-fn line(text: &str, end: &[u8]) -> Vec<Step> {
+pub fn line(text: &str, end: &[u8]) -> Vec<Step> {
     let mut chunks: Vec<&[u8]> = text.as_bytes().chunks(16).collect();
     chunks.push(end);
     send(&chunks)

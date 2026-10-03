@@ -1,7 +1,9 @@
-//! A minimal AML encoder: package lengths, name strings, and `Scope`.
+//! A minimal AML encoder: package lengths, name strings, `Scope`, `Device`,
+//! and `Name`.
 //!
 //! ACPI 6.5 §20 (ACPI Machine Language Specification). Only the terms the
-//! DSDT needs today are here; devices, methods, and resources come later.
+//! DSDT needs are here. Data objects are in [`crate::aml_data`], resource
+//! descriptors in [`crate::aml_resource`]; there are no methods.
 //!
 //! - NameSeg (§20.2.2): four characters, the first `A-Z` or `_`, the rest
 //!   `A-Z`, `0-9`, or `_`. Shorter ASL names are padded with `_`.
@@ -11,11 +13,20 @@
 //! - PkgLength (§20.2.4): counts its own bytes plus everything after it in the
 //!   package, but not the opcode before it.
 //! - DefScope (§20.2.5.1): `ScopeOp PkgLength NameString TermList`.
+//! - DefDevice (§20.2.5.2): `DeviceOp PkgLength NameString TermList`, where
+//!   `DeviceOp` is `ExtOpPrefix 0x82`.
+//! - DefName (§20.2.5.1): `NameOp NameString DataRefObject`.
 
 use crate::AcpiError;
 
 /// `ScopeOp`.
 pub const SCOPE_OP: u8 = 0x10;
+/// `NameOp`.
+pub const NAME_OP: u8 = 0x08;
+/// `ExtOpPrefix`.
+pub const EXT_OP_PREFIX: u8 = 0x5b;
+/// Second byte of `DeviceOp` (`ExtOpPrefix 0x82`).
+pub const DEVICE_OP: u8 = 0x82;
 /// `RootChar` (`\`).
 pub const ROOT_CHAR: u8 = 0x5c;
 /// `ParentPrefixChar` (`^`).
@@ -135,10 +146,43 @@ pub fn name_string(path: &str) -> Result<Vec<u8>, AcpiError> {
     fields(path = %path, body = body.len())
 )]
 pub fn scope(path: &str, body: &[u8]) -> Result<Vec<u8>, AcpiError> {
+    named_package(&[SCOPE_OP], path, body)
+}
+
+/// `Device (path) { body }`, where `body` is already-encoded AML terms.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::acpi",
+    skip_all,
+    fields(path = %path, body = body.len())
+)]
+pub fn device(path: &str, body: &[u8]) -> Result<Vec<u8>, AcpiError> {
+    named_package(&[EXT_OP_PREFIX, DEVICE_OP], path, body)
+}
+
+/// `Name (path, value)`, where `value` is an encoded data object
+/// ([`crate::aml_data`]).
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::acpi",
+    skip_all,
+    fields(path = %path, value = value.len())
+)]
+pub fn name(path: &str, value: &[u8]) -> Result<Vec<u8>, AcpiError> {
+    let name = name_string(path)?;
+    let mut out = Vec::with_capacity(1 + name.len() + value.len());
+    out.push(NAME_OP);
+    out.extend_from_slice(&name);
+    out.extend_from_slice(value);
+    Ok(out)
+}
+
+/// `opcode PkgLength NameString body`.
+fn named_package(opcode: &[u8], path: &str, body: &[u8]) -> Result<Vec<u8>, AcpiError> {
     let name = name_string(path)?;
     let length = pkg_length(name.len() + body.len())?;
-    let mut out = Vec::with_capacity(1 + length.len() + name.len() + body.len());
-    out.push(SCOPE_OP);
+    let mut out = Vec::with_capacity(opcode.len() + length.len() + name.len() + body.len());
+    out.extend_from_slice(opcode);
     out.extend_from_slice(&length);
     out.extend_from_slice(&name);
     out.extend_from_slice(body);

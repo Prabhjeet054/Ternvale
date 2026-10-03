@@ -6,9 +6,11 @@
 use crate::config::{ppi_gsiv, spi_gsiv, AcpiConfig};
 use crate::dbg2::{PORT_SERIAL, SUBTYPE_PL011};
 use crate::decode::{decode_dbg2, decode_gtdt, decode_madt, decode_mcfg, decode_spcr};
+use crate::dsdt::dsdt;
 use crate::dump::DumpedTable;
 use crate::gas::Gas;
 use crate::madt::{GICC_ENABLED, GIC_VERSION_3};
+use crate::sdt::SDT_HEADER_LEN;
 use crate::spcr::{INTERFACE_PL011, INTERRUPT_TYPE_GIC};
 use crate::tables::SIGNATURES;
 use crate::AcpiError;
@@ -117,6 +119,24 @@ pub fn verify(tables: &[DumpedTable], expected: &AcpiConfig) -> Result<(), AcpiE
             found,
         );
     }
+    if let Some(found) = bytes("DSDT") {
+        // The DSDT holds no addresses of other tables, so the AML built from
+        // the config must come back byte for byte.
+        if let Some(want) = p.decoded("DSDT", dsdt(expected)) {
+            // Any AML edit also changes the checksum, so look at the body first.
+            let body = |t: &[u8]| t.get(SDT_HEADER_LEN..).unwrap_or_default().to_vec();
+            let at = first_difference(&body(&want), &body(found))
+                .map(|at| SDT_HEADER_LEN + at)
+                .or_else(|| first_difference(&want, found));
+            if let Some(at) = at {
+                p.0.push(format!(
+                    "DSDT: AML differs from the builder's {} bytes at byte {at:#x} (found {} bytes)",
+                    want.len(),
+                    found.len()
+                ));
+            }
+        }
+    }
     let uart = Gas::mmio32(expected.uart.base);
     if let Some(spcr) = bytes("SPCR").and_then(|b| p.decoded("SPCR", decode_spcr(b))) {
         p.expect("SPCR interface type", INTERFACE_PL011, spcr.interface_type);
@@ -148,6 +168,15 @@ pub fn verify(tables: &[DumpedTable], expected: &AcpiConfig) -> Result<(), AcpiE
         tracing::error!(target: "ternvale::acpi", problem = %problem, "acpi table drift");
     }
     Err(AcpiError::Drift { problems: p.0 })
+}
+
+/// Offset of the first differing byte, or the shorter length if one is a
+/// prefix of the other.
+fn first_difference(a: &[u8], b: &[u8]) -> Option<usize> {
+    a.iter()
+        .zip(b)
+        .position(|(x, y)| x != y)
+        .or_else(|| (a.len() != b.len()).then(|| a.len().min(b.len())))
 }
 
 #[cfg(test)]

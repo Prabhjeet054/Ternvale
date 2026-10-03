@@ -25,6 +25,11 @@
 //! (`./scripts/fetch-debug-firmware.sh`) with `acpi` and check EDK2's own log for the ACPI install.
 //! Set `TERNVALE_BOOT_SCENARIO=uefi-linux` to boot the test kernel and initrd through UEFI
 //! (`firmware_tables = "fdt"`) from a FAT16 disk and run the initrd checks.
+//! Set `TERNVALE_BOOT_SCENARIO=uefi-linux-acpi` to boot the same kernel with `acpi` from a
+//! virtio-pci disk and check it finds `\_SB.PCI0` and the disk by PCI enumeration alone.
+//! Set `TERNVALE_BOOT_SCENARIO=uefi-lspci` to boot the rootfs kernel twice through UEFI with
+//! the same virtio-pci disks, `fdt` then `acpi`, and compare `lspci -nnk` (needs
+//! `./scripts/make-rootfs.sh` and `./scripts/make-pci-assets.sh`).
 //! `TERNVALE_FIRMWARE` replaces the EDK2 image in every UEFI scenario.
 //! Set `TERNVALE_BOOT_SCENARIO=installer` to boot the Alpine arm64 ISO
 //! (`./scripts/fetch-installer-iso.sh`) from UEFI on a read-only virtio-blk disk and start
@@ -32,6 +37,7 @@
 
 mod agent;
 mod common;
+mod cpio;
 mod devices;
 mod fat;
 mod firmware;
@@ -46,6 +52,8 @@ mod rootfs;
 mod smp;
 mod uefi_dmem;
 mod uefi_linux;
+mod uefi_linux_acpi;
+mod uefi_lspci;
 
 fn main() {
     let code = match run() {
@@ -74,9 +82,11 @@ fn run() -> Result<(), String> {
         "firmware-acpi" => firmware_acpi::run(),
         "firmware-debug" => firmware_debug::run(),
         "uefi-linux" => uefi_linux::run(),
+        "uefi-linux-acpi" => uefi_linux_acpi::run(),
+        "uefi-lspci" => uefi_lspci::run(),
         "installer" => installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, uefi-linux, or installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, uefi-linux, uefi-linux-acpi, uefi-lspci, or installer)"
         )),
     }
 }

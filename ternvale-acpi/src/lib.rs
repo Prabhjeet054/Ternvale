@@ -1,8 +1,9 @@
 //! ACPI tables for ARM64 guests (ACPI 6.5).
 //!
 //! [`AcpiTables::build`] lays out an RSDP, XSDT, hardware-reduced FADT, MADT
-//! (GICv3), GTDT, MCFG, SPCR, DBG2, and a DSDT holding an empty `\_SB` scope
-//! at a base guest physical address, with every pointer resolved, from an
+//! (GICv3), GTDT, MCFG, SPCR, DBG2, and a DSDT whose `\_SB` holds the PCIe
+//! root bridge `PCI0` at a base guest physical address, with every pointer
+//! resolved, from an
 //! [`AcpiConfig`] the VMM fills from its platform map. [`AcpiTables::write`]
 //! hands each table to a guest-memory callback and logs its signature, length,
 //! and checksum at INFO on `ternvale::acpi`. [`walk`] reads a table set back
@@ -14,6 +15,8 @@
 //! writer.
 
 pub mod aml;
+pub mod aml_data;
+pub mod aml_resource;
 mod compare;
 mod config;
 mod dbg2;
@@ -28,6 +31,7 @@ mod loader;
 mod loader_command;
 mod madt;
 mod mcfg;
+mod pci_root;
 mod rsdp;
 mod sdt;
 mod spcr;
@@ -37,7 +41,8 @@ mod xsdt;
 
 pub use compare::{compare, render_markdown, signature_diff, Row};
 pub use config::{
-    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GicConfig, TimerConfig, UartConfig, MAX_CPUS,
+    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GicConfig, PciConfig, TimerConfig, UartConfig,
+    MAX_CPUS,
 };
 pub use dbg2::{dbg2, DBG2_REVISION, DBG2_SIGNATURE, PORT_SERIAL, SUBTYPE_PL011};
 pub use decode::{
@@ -60,6 +65,10 @@ pub use madt::{
     madt, GICC_ENABLED, GICC_LEN, GICD_LEN, GICR_LEN, GIC_VERSION_3, MADT_REVISION, MADT_SIGNATURE,
 };
 pub use mcfg::{mcfg, MCFG_REVISION, MCFG_SIGNATURE};
+pub use pci_root::{
+    pci_root, prt_routes, PrtRoute, INTX_PINS, MOTHERBOARD_HID, PCIE_ROOT_HID, PCI_ROOT_CID,
+    ROOT_BUS_DEVICES,
+};
 pub use rsdp::{
     rsdp, rsdp_checksums_ok, RSDP_LEN, RSDP_REVISION, RSDP_SIGNATURE, RSDP_XSDT_OFFSET,
 };
@@ -78,6 +87,10 @@ mod checksum_tests;
 #[cfg(test)]
 #[path = "iasl_tests.rs"]
 mod iasl_tests;
+
+#[cfg(test)]
+#[path = "iasl_dsdt_tests.rs"]
+mod iasl_dsdt_tests;
 
 #[cfg(test)]
 mod tests {
