@@ -70,7 +70,8 @@ pub use pci_root::{
     ROOT_BUS_DEVICES,
 };
 pub use rsdp::{
-    rsdp, rsdp_checksums_ok, RSDP_LEN, RSDP_REVISION, RSDP_SIGNATURE, RSDP_XSDT_OFFSET,
+    rsdp, rsdp_checksums_ok, RSDP_CHECKSUM_OFFSET, RSDP_LEN, RSDP_REVISION, RSDP_SIGNATURE,
+    RSDP_XSDT_OFFSET,
 };
 pub use sdt::{byte_sum, checksum, table, SdtHeader, SDT_CHECKSUM_OFFSET, SDT_HEADER_LEN};
 pub use spcr::{

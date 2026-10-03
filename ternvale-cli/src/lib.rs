@@ -14,6 +14,7 @@
 //! everything else logs on `ternvale::cli`.
 
 pub mod acpi;
+pub mod acpi_fault;
 pub mod cli;
 pub mod client;
 pub mod commands;
@@ -151,7 +152,8 @@ fn non_run(command: Command) -> Result<ExitCode> {
             qemu_ram,
             ram_base,
             cpus,
-        } => acpi::acpi_dump(&out, qemu_ram.as_deref(), ram_base, cpus),
+            offline,
+        } => acpi::acpi_dump(&out, qemu_ram.as_deref(), ram_base, cpus, offline),
     }
 }
 

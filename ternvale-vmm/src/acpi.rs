@@ -129,6 +129,41 @@ pub fn dump_guest_acpi(cpus: u32) -> Result<Vec<DumpedTable>, MachineError> {
     Ok(tables)
 }
 
+/// Like [`dump_guest_acpi`] without a VM: write the tables for `cpus` vCPUs
+/// into a host buffer standing in for the ACPI window, walk them back from
+/// the RSDP at [`ACPI_BASE`], and run the same platform check. Same bytes and
+/// addresses, no hypervisor entitlement; `scripts/acpi-check.sh` uses it.
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(cpus))]
+pub fn build_acpi_offline(cpus: u32) -> Result<Vec<DumpedTable>, MachineError> {
+    let config = crate::acpi_check::acpi_config(cpus);
+    let built = ternvale_acpi::AcpiTables::build(ACPI_BASE, ACPI_SIZE, &config)?;
+    let mut window = vec![0u8; ACPI_SIZE as usize];
+    let span = |gpa: u64, len: usize| {
+        let start = usize::try_from(gpa.checked_sub(ACPI_BASE)?).ok()?;
+        let end = start.checked_add(len)?;
+        (end <= ACPI_SIZE as usize).then_some(start..end)
+    };
+    built.write(|gpa, bytes| {
+        let range = span(gpa, bytes.len()).ok_or("outside the acpi window")?;
+        window[range].copy_from_slice(bytes);
+        Ok::<(), &str>(())
+    })?;
+    let tables = ternvale_acpi::walk(ACPI_BASE, |gpa, len| {
+        span(gpa, len)
+            .map(|range| window[range].to_vec())
+            .ok_or("outside the acpi window")
+    })?;
+    crate::acpi_check::check(&tables, cpus)?;
+    tracing::info!(
+        target: "ternvale::acpi",
+        cpus,
+        tables = tables.len(),
+        signatures = %tables.iter().map(|t| t.signature.trim_end()).collect::<Vec<_>>().join(","),
+        "acpi tables built offline and read back"
+    );
+    Ok(tables)
+}
+
 #[cfg(test)]
 #[path = "acpi_hv_test.rs"]
 mod hv_test;
@@ -213,6 +248,19 @@ mod tests {
                 ternvale_acpi::LOADER_FILE
             ]
         );
+    }
+
+    #[test]
+    fn offline_build_matches_the_guest_memory_read_back() {
+        for cpus in [1, 4, 123] {
+            let mut memory = GuestMemory::new().expect("memory");
+            memory.add_region(ACPI_BASE, ACPI_SIZE).expect("region");
+            write_tables(&mut memory, cpus).expect("write");
+            let guest = dump_tables(&memory).expect("dump");
+            let offline = build_acpi_offline(cpus).expect("offline");
+            assert_eq!(offline, guest, "cpus={cpus}");
+        }
+        assert!(build_acpi_offline(0).is_err());
     }
 
     #[test]

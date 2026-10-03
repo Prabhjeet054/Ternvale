@@ -9,6 +9,11 @@ publish.workspace = true
 name = "ternvale"
 path = "src/main.rs"
 
+[features]
+# Test builds only: lets TERNVALE_ACPI_CORRUPT=<SIG> corrupt one table's checksum in
+# `acpi-dump` (src/acpi_fault.rs), so scripts/acpi-check.sh can be shown to catch it.
+acpi-fault-injection = []
+
 [dependencies]
 # Error context for every CLI failure. The only crate allowed to use anyhow.
 anyhow = "1"

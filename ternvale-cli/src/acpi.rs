@@ -2,7 +2,11 @@
 //! guest memory into `<out>/ternvale/`. With `--qemu-ram`, also walk the
 //! tables in a RAM image saved from QEMU `-M virt` (`pmemsave`) into
 //! `<out>/qemu/` and write `<out>/compare.md`, a by-signature diff of the two
-//! sets. `scripts/acpi-compare.sh` drives QEMU and this command.
+//! sets. `scripts/acpi-compare.sh` drives QEMU and this command. With
+//! `--offline` the tables are built and walked in host memory
+//! (`ternvale_vmm::build_acpi_offline`), so no VM or entitlement is needed;
+//! `scripts/acpi-check.sh` uses that. Builds with the `acpi-fault-injection`
+//! feature can corrupt one table's checksum first ([`crate::acpi_fault`]).
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -17,16 +21,33 @@ use ternvale_acpi::DumpedTable;
     level = "debug",
     target = "ternvale::cli",
     skip_all,
-    fields(out = %out.display(), qemu_ram = ?qemu_ram, ram_base = %format!("{ram_base:#x}"), cpus)
+    fields(out = %out.display(), qemu_ram = ?qemu_ram, ram_base = %format!("{ram_base:#x}"), cpus, offline)
 )]
 pub fn acpi_dump(
     out: &Path,
     qemu_ram: Option<&Path>,
     ram_base: u64,
     cpus: u32,
+    offline: bool,
 ) -> Result<ExitCode> {
-    let ours = ternvale_vmm::dump_guest_acpi(cpus)
-        .context("read ternvale's acpi tables back from guest memory")?;
+    let mut ours = if offline {
+        ternvale_vmm::build_acpi_offline(cpus)
+            .context("build ternvale's acpi tables in host memory")?
+    } else {
+        ternvale_vmm::dump_guest_acpi(cpus)
+            .context("read ternvale's acpi tables back from guest memory")?
+    };
+    if let Some(hit) = crate::acpi_fault::apply_from_env(&mut ours)
+        .context("inject the requested acpi checksum fault")?
+    {
+        eprintln!(
+            "fault injection: {} checksum byte at offset {} changed {:#04x} -> {:#04x}",
+            hit.signature.trim_end(),
+            hit.offset,
+            hit.was,
+            hit.now
+        );
+    }
     let ours_dir = out.join("ternvale");
     write_set(&ours_dir, &ours)?;
     println!("ternvale tables ({}):", ours_dir.display());

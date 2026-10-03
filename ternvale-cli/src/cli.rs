@@ -127,6 +127,7 @@ pub enum Command {
     },
     /// Build a probe VM's ACPI window, read the tables back from guest memory
     /// into <out>/ternvale, and optionally diff them against a QEMU RAM image.
+    /// With --offline the window is a host buffer: same tables, no VM.
     AcpiDump {
         /// Output directory.
         #[arg(long)]
@@ -140,6 +141,10 @@ pub enum Command {
         /// vCPUs the probe VM's tables describe (one MADT GICC each).
         #[arg(long, default_value_t = 1)]
         cpus: u32,
+        /// Build and walk the tables in host memory instead of a VM; needs no
+        /// hypervisor entitlement (scripts/acpi-check.sh).
+        #[arg(long)]
+        offline: bool,
     },
 }
 

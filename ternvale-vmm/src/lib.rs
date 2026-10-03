@@ -25,7 +25,7 @@ mod smp;
 mod vcpu;
 mod watchdog;
 
-pub use acpi::dump_guest_acpi;
+pub use acpi::{build_acpi_offline, dump_guest_acpi};
 pub use acpi_check::acpi_config;
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
 pub use control::{

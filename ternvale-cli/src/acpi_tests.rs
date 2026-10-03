@@ -80,6 +80,26 @@ fn image_without_tables_names_the_file() {
 }
 
 #[test]
+fn offline_dump_writes_every_table_with_good_checksums() {
+    let dir = scratch("offline");
+    let code = acpi_dump(&dir, None, RAM_BASE, 2, true).expect("offline dump");
+    assert_eq!(code, ExitCode::SUCCESS);
+    let set = dir.join("ternvale");
+    for signature in ternvale_acpi::SIGNATURES {
+        let name = DumpedTable {
+            signature: signature.to_string(),
+            gpa: 0,
+            bytes: Vec::new(),
+        }
+        .file_name();
+        assert!(set.join(&name).is_file(), "{name}");
+    }
+    let listing = std::fs::read_to_string(set.join("tables.txt")).expect("tables.txt");
+    assert_eq!(listing.lines().count(), ternvale_acpi::SIGNATURES.len());
+    assert!(!listing.contains("BAD"), "{listing}");
+}
+
+#[test]
 fn acpi_dump_parses_hex_and_decimal_ram_bases() {
     use crate::cli::{Cli, Command};
     use clap::Parser;
@@ -91,11 +111,16 @@ fn acpi_dump_parses_hex_and_decimal_ram_bases() {
             qemu_ram: None,
             ram_base: 0x4000_0000,
             cpus: 1,
+            offline: false,
         }
     );
     assert!(matches!(
         parse(&["ternvale", "acpi-dump", "--out", "d", "--cpus", "4"]),
         Ok(Command::AcpiDump { cpus: 4, .. })
+    ));
+    assert!(matches!(
+        parse(&["ternvale", "acpi-dump", "--out", "d", "--offline"]),
+        Ok(Command::AcpiDump { offline: true, .. })
     ));
     let command = parse(&[
         "ternvale",

@@ -16,9 +16,13 @@ test:
 test-hv:
 	$(CARGO) test --workspace -- --ignored --test-threads=1
 
+# acpi-check.sh always checks table headers, checksums and pointers. Its iasl
+# step is skipped (with a SKIP line, exit 0) when iasl is not installed, and
+# fails lint when iasl is installed and reports a problem.
 lint:
 	$(CARGO) fmt --check
 	$(CARGO) clippy --workspace -- -D warnings
+	./scripts/acpi-check.sh
 
 # Ad-hoc sign Mach-O binaries already built under target/debug.
 sign:
