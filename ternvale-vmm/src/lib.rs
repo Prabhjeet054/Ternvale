@@ -2,6 +2,7 @@
 //!
 //! [`GuestMemory`] allocates host RAM and maps it into the guest.
 
+mod acpi;
 mod boot;
 mod control;
 mod diag;
@@ -22,6 +23,7 @@ mod smp;
 mod vcpu;
 mod watchdog;
 
+pub use acpi::dump_guest_acpi;
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
 pub use control::{
     ControlError, ControlHooks, CpuStats, StopCause, VmControl, VmState, VmStats, VmStatus,
@@ -42,9 +44,10 @@ pub use machine::{
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{
-    Layout, PlatformError, Region, FLASH_BANK_SIZE, FLASH_CODE_BASE, FLASH_VARS_BASE,
-    GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE, PCIE_MMIO_BASE, PCIE_MMIO_SIZE,
-    RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
+    Layout, PlatformError, Region, ACPI_BASE, ACPI_SIZE, FLASH_BANK_SIZE, FLASH_CODE_BASE,
+    FLASH_VARS_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE,
+    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE,
+    VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
 pub use psci::{call as psci_call, PowerRequest, PsciAction, TRAP_PC_ADVANCE};
 pub use rtc::{Pl031, PL031_REG_SIZE, RTC_SPI};

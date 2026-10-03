@@ -25,6 +25,8 @@ ternvale-log = { path = "../ternvale-log" }
 ternvale-config = { path = "../ternvale-config" }
 # Machine, VmControl (lifecycle state machine and pause/resume).
 ternvale-vmm = { path = "../ternvale-vmm" }
+# `acpi-dump`: walk a QEMU RAM image and diff table sets (DumpedTable, compare).
+ternvale-acpi = { path = "../ternvale-acpi" }
 # PL011 serial, virtio-blk/net/vsock attachment and the agent server for `run`.
 ternvale-devices = { path = "../ternvale-devices" }
 # AGENT_PORT: where `run` puts the agent server's host socket.

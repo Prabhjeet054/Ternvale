@@ -1,6 +1,6 @@
 //! Boots a configured guest and runs it until PSCI powers it off.
 //!
-//! Order: config, guest RAM (plus the firmware code bank), GIC, attached
+//! Order: config, guest RAM (plus the firmware code bank and ACPI tables), GIC, attached
 //! devices (MMIO and PCI), UART, PL031, variable flash, and the PCI ECAM/BAR
 //! windows on the MMIO bus, DTB, then one host thread per vCPU
 //! (`machine_vcpu.rs`). CPU 0 loads Linux or enters UEFI at GPA 0
@@ -116,6 +116,9 @@ pub enum MachineError {
     /// Loading the UEFI firmware or opening its variable store failed.
     #[error("vm firmware: {0}")]
     Firmware(#[from] crate::firmware::FirmwareError),
+    /// The ACPI tables could not be built or written.
+    #[error("vm acpi: {0}")]
+    Acpi(#[from] ternvale_acpi::AcpiError),
     /// The lifecycle controller does not match the config.
     #[error("vm control: {0}")]
     Control(String),
@@ -241,6 +244,7 @@ impl Machine {
             let mut mem = crate::lockwatch::lock(&memory, "guest-memory");
             mem.map(&vm, RAM_BASE, ram_size)?;
             inputs.map(&mut mem, &vm)?;
+            crate::acpi::install(&mut mem, &vm)?;
         }
         let spi_levels = Arc::new(Mutex::new(Vec::new()));
         let attached = DeviceAttach::new(

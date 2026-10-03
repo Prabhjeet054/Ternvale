@@ -6,11 +6,14 @@
 //! are clients of that socket. `validate` and `create-disk` work offline.
 //! `doctor` checks the host, `logs` reads host logs, and `report` zips a
 //! crash report (asking a running VM to `dump-diagnostics` first).
+//! `acpi-dump` reads the ACPI tables back from a probe VM and can diff them
+//! against QEMU's.
 //!
 //! This is the only crate that uses `anyhow`; every error carries context
 //! naming the operation. User-facing output uses `println!`/`eprintln!`;
 //! everything else logs on `ternvale::cli`.
 
+pub mod acpi;
 pub mod cli;
 pub mod client;
 pub mod commands;
@@ -143,6 +146,11 @@ fn non_run(command: Command) -> Result<ExitCode> {
         Command::Report { name, out, config } => {
             report::report(&name, out.as_deref(), config.as_deref())
         }
+        Command::AcpiDump {
+            out,
+            qemu_ram,
+            ram_base,
+        } => acpi::acpi_dump(&out, qemu_ram.as_deref(), ram_base),
     }
 }
 

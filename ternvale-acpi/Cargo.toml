@@ -1,0 +1,17 @@
+[package]
+name = "ternvale-acpi"
+description = "ACPI table builders (RSDP, XSDT, FADT, DSDT) for ARM64 guests."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed AcpiError (library crates use thiserror).
+thiserror = "2"
+# Per-table INFO logs and per-function spans on ternvale::acpi.
+tracing = "0.1"
+
+[dev-dependencies]
+# Scoped subscriber that captures the per-table INFO lines in unit tests.
+# Already built for ternvale-log.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }

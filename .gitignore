@@ -8,3 +8,5 @@ guest-tests/*.bin
 .cursor/
 docs/
 test-assets/
+ternvale-cursor-prompts.md
+ternvale-cursor-prompts-part2.md

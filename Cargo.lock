@@ -643,6 +643,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ternvale-acpi"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ternvale-agent"
 version = "0.1.0"
 dependencies = [
@@ -674,6 +683,7 @@ dependencies = [
  "nix",
  "serde",
  "serde_json",
+ "ternvale-acpi",
  "ternvale-agent",
  "ternvale-agent-proto",
  "ternvale-config",
@@ -736,6 +746,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "sha2",
+ "ternvale-acpi",
  "ternvale-config",
  "ternvale-hv",
  "ternvale-log",

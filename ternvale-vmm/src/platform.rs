@@ -34,6 +34,12 @@ pub const UART_SIZE: u64 = HOST_PAGE_SIZE;
 pub const RTC_BASE: u64 = 0x0901_0000;
 /// RTC window. QEMU's device is 4 KiB; this reservation is one host page.
 pub const RTC_SIZE: u64 = HOST_PAGE_SIZE;
+/// ACPI tables (RSDP first), mapped read-only. Not in QEMU, which hands its
+/// tables to firmware over fw_cfg; this sits past QEMU's last low device
+/// (`VIRT_SECURE_GPIO` at `0x090b0000`) and below the virtio-mmio window.
+pub const ACPI_BASE: u64 = 0x0910_0000;
+/// ACPI window: 128 KiB.
+pub const ACPI_SIZE: u64 = 0x0002_0000;
 /// First virtio-mmio slot. QEMU `VIRT_MMIO`.
 pub const VIRTIO_MMIO_BASE: u64 = 0x0a00_0000;
 /// Slots in the virtio-mmio window.
@@ -118,6 +124,7 @@ impl Layout {
             region("gic-redist", GIC_REDIST_BASE, GIC_REDIST_SIZE),
             region("uart", UART_BASE, UART_SIZE),
             region("rtc", RTC_BASE, RTC_SIZE),
+            region("acpi", ACPI_BASE, ACPI_SIZE),
             region("virtio-mmio", VIRTIO_MMIO_BASE, VIRTIO_MMIO_SIZE),
             region("pcie-mmio", PCIE_MMIO_BASE, PCIE_MMIO_SIZE),
             region("pcie-ecam", PCIE_ECAM_BASE, PCIE_ECAM_SIZE),

@@ -12,7 +12,11 @@ fn default_layout_is_aligned_and_does_not_overlap() {
         assert_eq!(region.base % 0x4000, 0, "{}", region.name);
         assert_eq!(region.size % 0x4000, 0, "{}", region.name);
     }
-    assert_eq!(layout.regions().len(), 9);
+    assert_eq!(layout.regions().len(), 10);
+    assert!(layout
+        .regions()
+        .iter()
+        .any(|region| region.name == "acpi" && region.base == super::ACPI_BASE));
     assert!(layout
         .regions()
         .iter()
@@ -91,6 +95,7 @@ fn dump_logs_every_region() {
         "gic-redist",
         "uart",
         "rtc",
+        "acpi",
         "virtio-mmio",
         "pcie-mmio",
         "pcie-ecam",

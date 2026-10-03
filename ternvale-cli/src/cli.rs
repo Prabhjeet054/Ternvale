@@ -125,4 +125,26 @@ pub enum Command {
         #[arg(long)]
         config: Option<PathBuf>,
     },
+    /// Build a probe VM's ACPI window, read the tables back from guest memory
+    /// into <out>/ternvale, and optionally diff them against a QEMU RAM image.
+    AcpiDump {
+        /// Output directory.
+        #[arg(long)]
+        out: PathBuf,
+        /// RAM saved from QEMU `-M virt` with `pmemsave` (see scripts/acpi-compare.sh).
+        #[arg(long)]
+        qemu_ram: Option<PathBuf>,
+        /// Guest physical address of the image's first byte.
+        #[arg(long, default_value = "0x40000000", value_parser = parse_u64)]
+        ram_base: u64,
+    },
+}
+
+/// A decimal or `0x` hexadecimal u64.
+fn parse_u64(text: &str) -> Result<u64, String> {
+    let parsed = match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+        Some(hex) => u64::from_str_radix(hex, 16),
+        None => text.parse(),
+    };
+    parsed.map_err(|error| format!("{text:?} is not a u64: {error}"))
 }
