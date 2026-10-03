@@ -64,6 +64,18 @@ pub enum AcpiError {
         /// What is wrong with it.
         reason: &'static str,
     },
+    /// The platform description cannot be encoded.
+    #[error("acpi config: {reason}")]
+    BadConfig {
+        /// What is wrong.
+        reason: String,
+    },
+    /// Tables read back from guest memory disagree with the platform map.
+    #[error("acpi tables drifted from the platform map: {}", problems.join("; "))]
+    Drift {
+        /// One line per disagreeing field.
+        problems: Vec<String>,
+    },
     /// The caller's guest-memory reader failed.
     #[error("read {what} at {gpa:#x}: {reason}")]
     Read {

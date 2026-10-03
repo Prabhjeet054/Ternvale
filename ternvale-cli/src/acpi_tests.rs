@@ -1,5 +1,6 @@
 use super::*;
-use ternvale_acpi::{AcpiTables, PsciConduit};
+use ternvale_acpi::AcpiTables;
+use ternvale_vmm::acpi_config;
 
 const RAM_BASE: u64 = 0x4000_0000;
 
@@ -11,7 +12,7 @@ fn scratch(name: &str) -> std::path::PathBuf {
 
 /// A fake QEMU RAM image: Ternvale-built tables at an offset inside RAM.
 fn ram_image(dir: &Path) -> (std::path::PathBuf, AcpiTables) {
-    let tables = AcpiTables::build(RAM_BASE + 0x2000, 0x1000, PsciConduit::Hvc).expect("build");
+    let tables = AcpiTables::build(RAM_BASE + 0x2000, 0x1000, &acpi_config(1)).expect("build");
     let mut image = vec![0u8; 0x4000];
     for table in tables.tables() {
         let at = (table.gpa - RAM_BASE) as usize;
@@ -29,7 +30,18 @@ fn qemu_image_is_walked_and_written_per_signature() {
     let found = qemu_tables(&ram, RAM_BASE).expect("walk image");
     assert_eq!(found.len(), tables.tables().len());
     write_set(&dir.join("qemu"), &found).expect("write set");
-    for name in ["RSDP.dat", "XSDT.dat", "FACP.dat", "DSDT.dat", "tables.txt"] {
+    for name in [
+        "RSDP.dat",
+        "XSDT.dat",
+        "FACP.dat",
+        "DSDT.dat",
+        "APIC.dat",
+        "GTDT.dat",
+        "MCFG.dat",
+        "SPCR.dat",
+        "DBG2.dat",
+        "tables.txt",
+    ] {
         assert!(dir.join("qemu").join(name).exists(), "{name}");
     }
     let fadt = std::fs::read(dir.join("qemu/FACP.dat")).expect("read FACP");
@@ -78,8 +90,13 @@ fn acpi_dump_parses_hex_and_decimal_ram_bases() {
             out: "d".into(),
             qemu_ram: None,
             ram_base: 0x4000_0000,
+            cpus: 1,
         }
     );
+    assert!(matches!(
+        parse(&["ternvale", "acpi-dump", "--out", "d", "--cpus", "4"]),
+        Ok(Command::AcpiDump { cpus: 4, .. })
+    ));
     let command = parse(&[
         "ternvale",
         "acpi-dump",
@@ -100,7 +117,7 @@ fn acpi_dump_parses_hex_and_decimal_ram_bases() {
 
 #[test]
 fn comparison_lists_one_sided_signatures() {
-    let built = AcpiTables::build(0x0910_0000, 0x2_0000, PsciConduit::Hvc).expect("build");
+    let built = AcpiTables::build(0x0910_0000, 0x2_0000, &acpi_config(1)).expect("build");
     let ours: Vec<DumpedTable> = built
         .tables()
         .iter()
@@ -112,14 +129,14 @@ fn comparison_lists_one_sided_signatures() {
         .collect();
     let mut theirs = ours.clone();
     theirs.retain(|t| t.signature != "DSDT");
-    let mut apic = ours[1].clone();
-    apic.signature = "APIC".to_string();
-    theirs.push(apic);
+    let mut pptt = ours[1].clone();
+    pptt.signature = "PPTT".to_string();
+    theirs.push(pptt);
     let text = comparison(&ours, &theirs);
     assert!(
         text.contains("| Signature | Ternvale | QEMU -M virt |"),
         "{text}"
     );
     assert!(text.contains("Only in Ternvale: DSDT"), "{text}");
-    assert!(text.contains("Only in QEMU: APIC"), "{text}");
+    assert!(text.contains("Only in QEMU: PPTT"), "{text}");
 }

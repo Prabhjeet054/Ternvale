@@ -1,14 +1,14 @@
 use super::*;
-use crate::fadt::PsciConduit;
+use crate::config::tests::sample;
 use crate::sdt::{checksum, SDT_CHECKSUM_OFFSET};
-use crate::tables::AcpiTables;
+use crate::tables::{AcpiTables, SIGNATURES};
 
 const BASE: u64 = 0x4000_0000;
 const LEN: usize = 0x4000;
 
 /// A RAM image from `BASE` with Ternvale's tables at `BASE + 0x1000`.
 fn image() -> (Vec<u8>, AcpiTables) {
-    let tables = AcpiTables::build(BASE + 0x1000, 0x1000, PsciConduit::Hvc).expect("build");
+    let tables = AcpiTables::build(BASE + 0x1000, 0x1000, &sample(1)).expect("build");
     let mut image = vec![0u8; LEN];
     for table in tables.tables() {
         let at = (table.gpa - BASE) as usize;
@@ -41,7 +41,8 @@ fn walk_returns_what_build_wrote() {
     let (image, tables) = image();
     let dumped = walk(rsdp_gpa(&tables), reader(&image)).expect("walk");
     let names: Vec<_> = dumped.iter().map(|t| t.signature.as_str()).collect();
-    assert_eq!(names, ["RSD PTR ", "XSDT", "FACP", "DSDT"]);
+    assert_eq!(names, SIGNATURES);
+    assert_eq!(dumped.len(), tables.tables().len());
     for (dumped, built) in dumped.iter().zip(tables.tables()) {
         assert_eq!(dumped.gpa, built.gpa);
         assert_eq!(dumped.bytes, built.bytes);
@@ -64,7 +65,7 @@ fn image_scan_finds_an_unaligned_rsdp_and_skips_bad_candidates() {
     image[0x203..0x203 + rsdp.len()].copy_from_slice(&rsdp);
     assert_eq!(find_rsdp(&image, BASE), [BASE + 0x203, rsdp_gpa(&tables)]);
     let dumped = walk_image(&image, BASE).expect("walk image");
-    assert_eq!(dumped.len(), 4);
+    assert_eq!(dumped.len(), SIGNATURES.len());
     assert_eq!(dumped[0].gpa, BASE + 0x203);
     assert_eq!(dumped[1].gpa, tables.tables()[1].gpa);
 }

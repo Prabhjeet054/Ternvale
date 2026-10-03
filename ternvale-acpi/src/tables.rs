@@ -1,18 +1,33 @@
 //! Lays out the ACPI tables in one guest region and writes them.
 //!
-//! Order from the region base, each table 8-byte aligned: RSDP, XSDT, FADT,
-//! DSDT. The XSDT lists the FADT; the FADT's `X_DSDT` points at the DSDT.
-//! Every address is computed before any table is encoded, so each table is
-//! built once with its final pointers.
+//! Order from the region base, each table 8-byte aligned: RSDP, XSDT, FACP,
+//! DSDT, APIC, GTDT, MCFG, SPCR, DBG2 (the order [`crate::walk`] reads them
+//! back in). The XSDT lists FACP, APIC, GTDT, MCFG, SPCR, and DBG2; the
+//! FADT's `X_DSDT` points at the DSDT. Tables without pointers are encoded
+//! first, then every address is laid out, then the FADT, XSDT, and RSDP are
+//! built once with their final pointers.
 
 use std::fmt::Display;
 
+use crate::config::AcpiConfig;
+use crate::dbg2::dbg2;
 use crate::dsdt::dsdt;
-use crate::fadt::{fadt, PsciConduit, FADT_LEN};
+use crate::fadt::{fadt, FADT_LEN};
+use crate::gtdt::gtdt;
+use crate::madt::madt;
+use crate::mcfg::mcfg;
 use crate::rsdp::{rsdp, RSDP_CHECKSUM_OFFSET, RSDP_LEN};
 use crate::sdt::{byte_sum, SDT_CHECKSUM_OFFSET};
+use crate::spcr::spcr;
 use crate::xsdt::{xsdt, xsdt_len};
 use crate::AcpiError;
+
+/// Signatures in address order.
+pub const SIGNATURES: [&str; 9] = [
+    "RSD PTR ", "XSDT", "FACP", "DSDT", "APIC", "GTDT", "MCFG", "SPCR", "DBG2",
+];
+/// Tables the XSDT lists.
+const XSDT_ENTRIES: usize = 6;
 
 /// Alignment of every table after the RSDP.
 pub const TABLE_ALIGN: u64 = 8;
@@ -22,7 +37,7 @@ pub const BASE_ALIGN: u64 = 16;
 /// One encoded table at its guest physical address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Table {
-    /// `RSD PTR `, `XSDT`, `FACP`, or `DSDT`.
+    /// One of [`SIGNATURES`].
     pub signature: &'static str,
     /// Guest physical address of the first byte.
     pub gpa: u64,
@@ -51,19 +66,32 @@ pub struct AcpiTables {
 }
 
 impl AcpiTables {
-    /// Lay out RSDP, XSDT, FADT, and DSDT from `base`, failing if they do not
-    /// fit in `size` bytes.
+    /// Lay out every table describing `config` from `base`, failing if they
+    /// do not fit in `size` bytes.
     #[tracing::instrument(
         level = "debug",
         target = "ternvale::acpi",
         skip_all,
-        fields(base = %format!("{base:#x}"), size = %format!("{size:#x}"), conduit = ?conduit)
+        fields(
+            base = %format!("{base:#x}"),
+            size = %format!("{size:#x}"),
+            conduit = ?config.conduit,
+            cpus = config.mpidrs.len()
+        )
     )]
-    pub fn build(base: u64, size: u64, conduit: PsciConduit) -> Result<Self, AcpiError> {
+    pub fn build(base: u64, size: u64, config: &AcpiConfig) -> Result<Self, AcpiError> {
         if base % BASE_ALIGN != 0 {
             tracing::warn!(target: "ternvale::acpi", base = %format!("{base:#x}"), "acpi region misaligned");
             return Err(AcpiError::Misaligned { base });
         }
+        config.validate()?;
+        let leaves: [(&'static str, Vec<u8>); 5] = [
+            ("APIC", madt(config)?),
+            ("GTDT", gtdt(&config.timer)?),
+            ("MCFG", mcfg(&config.ecam)?),
+            ("SPCR", spcr(&config.uart)?),
+            ("DBG2", dbg2(&config.uart)?),
+        ];
         let dsdt = dsdt()?;
         let overflow = || {
             tracing::warn!(target: "ternvale::acpi", base = %format!("{base:#x}"), "acpi layout overflows");
@@ -75,11 +103,17 @@ impl AcpiTables {
                 .ok_or_else(overflow)
         };
         let xsdt_gpa = after(base, RSDP_LEN)?;
-        let fadt_gpa = after(xsdt_gpa, xsdt_len(1))?;
+        let fadt_gpa = after(xsdt_gpa, xsdt_len(XSDT_ENTRIES))?;
         let dsdt_gpa = after(fadt_gpa, FADT_LEN)?;
-        let end = dsdt_gpa
-            .checked_add(dsdt.len() as u64)
-            .ok_or_else(overflow)?;
+        let mut next = dsdt_gpa;
+        let mut len = dsdt.len();
+        let mut leaf_gpas = Vec::with_capacity(leaves.len());
+        for (_, bytes) in &leaves {
+            next = after(next, len)?;
+            leaf_gpas.push(next);
+            len = bytes.len();
+        }
+        let end = next.checked_add(len as u64).ok_or_else(overflow)?;
         let need = end - base;
         if need > size {
             let error = AcpiError::RegionTooSmall {
@@ -90,7 +124,9 @@ impl AcpiTables {
             tracing::warn!(target: "ternvale::acpi", error = %error, "acpi tables do not fit");
             return Err(error);
         }
-        let tables = vec![
+        let mut listed = vec![fadt_gpa];
+        listed.extend_from_slice(&leaf_gpas);
+        let mut tables = vec![
             Table {
                 signature: "RSD PTR ",
                 gpa: base,
@@ -99,12 +135,12 @@ impl AcpiTables {
             Table {
                 signature: "XSDT",
                 gpa: xsdt_gpa,
-                bytes: xsdt(&[fadt_gpa])?,
+                bytes: xsdt(&listed)?,
             },
             Table {
                 signature: "FACP",
                 gpa: fadt_gpa,
-                bytes: fadt(dsdt_gpa, conduit)?,
+                bytes: fadt(dsdt_gpa, config.conduit)?,
             },
             Table {
                 signature: "DSDT",
@@ -112,6 +148,13 @@ impl AcpiTables {
                 bytes: dsdt,
             },
         ];
+        for ((signature, bytes), gpa) in leaves.into_iter().zip(leaf_gpas) {
+            tables.push(Table {
+                signature,
+                gpa,
+                bytes,
+            });
+        }
         tracing::debug!(
             target: "ternvale::acpi",
             tables = tables.len(),

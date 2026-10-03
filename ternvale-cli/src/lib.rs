@@ -150,7 +150,8 @@ fn non_run(command: Command) -> Result<ExitCode> {
             out,
             qemu_ram,
             ram_base,
-        } => acpi::acpi_dump(&out, qemu_ram.as_deref(), ram_base),
+            cpus,
+        } => acpi::acpi_dump(&out, qemu_ram.as_deref(), ram_base, cpus),
     }
 }
 

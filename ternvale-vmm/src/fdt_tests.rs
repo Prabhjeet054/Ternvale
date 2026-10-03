@@ -115,7 +115,7 @@ fn dumps_a_decompiled_dtb_when_asked() {
     std::fs::remove_dir_all(&dir).expect("remove");
 }
 
-fn dtc_dts(blob: &[u8]) -> String {
+pub(crate) fn dtc_dts(blob: &[u8]) -> String {
     // Tests run in parallel and may decompile identical blobs.
     static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

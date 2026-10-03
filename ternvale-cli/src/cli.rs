@@ -137,6 +137,9 @@ pub enum Command {
         /// Guest physical address of the image's first byte.
         #[arg(long, default_value = "0x40000000", value_parser = parse_u64)]
         ram_base: u64,
+        /// vCPUs the probe VM's tables describe (one MADT GICC each).
+        #[arg(long, default_value_t = 1)]
+        cpus: u32,
     },
 }
 

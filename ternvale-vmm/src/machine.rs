@@ -244,7 +244,7 @@ impl Machine {
             let mut mem = crate::lockwatch::lock(&memory, "guest-memory");
             mem.map(&vm, RAM_BASE, ram_size)?;
             inputs.map(&mut mem, &vm)?;
-            crate::acpi::install(&mut mem, &vm)?;
+            crate::acpi::install(&mut mem, &vm, config.cpus)?;
         }
         let spi_levels = Arc::new(Mutex::new(Vec::new()));
         let attached = DeviceAttach::new(

@@ -3,19 +3,22 @@
 #
 #   ./scripts/acpi-compare.sh
 #
-# 1. QEMU (-M virt, -cpu max, 256 MiB, TCG, its bundled EDK2) boots to the UEFI
-#    shell. By then EDK2 has installed QEMU's tables in RAM; the monitor saves all
-#    of RAM with pmemsave.
+# 1. QEMU (-M virt,gic-version=3 like Ternvale, -cpu max, 256 MiB, TCG, its
+#    bundled EDK2) boots to the UEFI shell. By then EDK2 has installed QEMU's
+#    tables in RAM; the monitor saves all of RAM with pmemsave.
 # 2. `ternvale acpi-dump` builds a probe VM's ACPI window exactly as a boot does,
 #    reads the tables back from guest memory into ternvale/, walks the QEMU image
 #    into qemu/, and writes compare.md.
 # 3. signatures.diff is `diff -u` of the two signature lists. With iasl on PATH,
 #    every dumped table except the RSDP (iasl cannot read a standalone RSDP) is
-#    disassembled; iasl.txt keeps its problem lines.
+#    disassembled; iasl.txt keeps its problem lines, including a table that ends
+#    mid-structure. iasl 20260408 reads every SPCR with its revision 4 template,
+#    so the revision 2 SPCR both VMMs emit (80 bytes) is expected to "terminate"
+#    at offset 0x50; that one case is not a problem.
 # Output: target/acpi-compare/<stamp>/ (the RAM image is deleted unless
 # KEEP_RAM=1). Exits 1 if a step fails or iasl reports a
-# problem in Ternvale's tables. Signature differences are expected (Ternvale has
-# four tables so far) and do not fail the run.
+# problem in Ternvale's tables. Signature differences are expected (QEMU also
+# has PPTT and IORT) and do not fail the run.
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
@@ -46,7 +49,7 @@ codesign --sign - --force --entitlements entitlements/ternvale.entitlements "$te
 serial="${out_dir}/qemu-serial.log"
 monitor="${out_dir}/qemu-monitor.sock"
 ram="${out_dir}/qemu-ram.bin"
-"$QEMU" -M virt -cpu max -m 256M -accel tcg -bios "$FIRMWARE" -display none -nic none \
+"$QEMU" -M virt,gic-version=3 -cpu max -m 256M -accel tcg -bios "$FIRMWARE" -display none -nic none \
     -serial "file:${serial}" -monitor "unix:${monitor},server,nowait" -no-reboot &
 qemu_pid=$!
 trap 'kill "$qemu_pid" 2>/dev/null || true' EXIT
@@ -96,6 +99,11 @@ if command -v iasl >/dev/null; then
                 continue
             }
             problems=$(grep -iE 'warning|error|incorrect' <<<"$log" || true)
+            ends=$(grep -A1 'terminates in the middle' "${table%.dat}.dsl" 2>/dev/null | tr '\n' ' ' || true)
+            if [[ -n "$ends" ]] && ! [[ "$(basename "$table")" == SPCR.dat &&
+                "$ends" == *'CurrentOffset: 50, TableLength: 50'* ]]; then
+                problems="${problems:+${problems}$'\n'}${ends}"
+            fi
             if [[ -n "$problems" ]]; then
                 printf '%s:\n%s\n' "${side}/$(basename "$table")" "$problems" >>"${out_dir}/iasl.txt"
                 [[ $side == ternvale ]] && status=1

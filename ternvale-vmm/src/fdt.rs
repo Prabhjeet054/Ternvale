@@ -27,6 +27,14 @@ const APB_HZ: u32 = 24_000_000;
 pub const VIRTIO_SPI0: u32 = 0x10;
 /// GIC SPI, level-high. QEMU's PL011 interrupt.
 pub const UART_SPI: u32 = 1;
+/// Architected timer PPIs, level-high, in `arm,armv8-timer` order: secure
+/// physical, non-secure physical, virtual, hypervisor. Same cells as QEMU virt
+/// `gic-version=3`. The ACPI GTDT is built from these too.
+pub const TIMER_PPIS: [u32; 4] = [13, 14, 11, 10];
+/// The timer node's `always-on` property (GTDT always-on flag).
+pub const TIMER_ALWAYS_ON: bool = true;
+/// DT interrupt specifier flag: level-high.
+const IRQ_LEVEL_HIGH: u32 = 4;
 
 /// Inputs for one guest DTB.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,9 +228,14 @@ fn timer(w: &mut FdtWriter) -> FdtWriterResult<()> {
         "compatible",
         vec!["arm,armv8-timer".to_string(), "arm,armv7-timer".to_string()],
     )?;
-    // PPI 13, 14, 11, 10, level-high. Same cells as QEMU virt `gic-version=3`.
-    w.property_array_u32("interrupts", &[1, 13, 4, 1, 14, 4, 1, 11, 4, 1, 10, 4])?;
-    w.property_null("always-on")?;
+    let cells: Vec<u32> = TIMER_PPIS
+        .iter()
+        .flat_map(|ppi| [1, *ppi, IRQ_LEVEL_HIGH])
+        .collect();
+    w.property_array_u32("interrupts", &cells)?;
+    if TIMER_ALWAYS_ON {
+        w.property_null("always-on")?;
+    }
     w.end_node(node)
 }
 
@@ -249,7 +262,7 @@ fn uart(w: &mut FdtWriter, clock: u32) -> FdtWriterResult<()> {
         vec!["arm,pl011".to_string(), "arm,primecell".to_string()],
     )?;
     w.property_array_u32("reg", &reg(UART_BASE, PL011_REG_SIZE))?;
-    w.property_array_u32("interrupts", &[0, UART_SPI, 4])?;
+    w.property_array_u32("interrupts", &[0, UART_SPI, IRQ_LEVEL_HIGH])?;
     w.property_array_u32("clocks", &[clock, clock])?;
     w.property_string_list(
         "clock-names",
@@ -336,4 +349,8 @@ fn dump_dtb(dir: &Path, blob: &[u8]) -> Result<(), FdtError> {
 
 #[cfg(test)]
 #[path = "fdt_tests.rs"]
-mod tests;
+pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "fdt_read.rs"]
+pub(crate) mod read;

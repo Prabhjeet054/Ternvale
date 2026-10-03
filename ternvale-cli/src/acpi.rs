@@ -11,16 +11,21 @@ use std::process::ExitCode;
 use anyhow::{Context, Result};
 use ternvale_acpi::DumpedTable;
 
-/// Dump, and compare when `qemu_ram` is given. `ram_base` is the guest
-/// physical address of the image's first byte.
+/// Dump the tables for a `cpus`-vCPU guest, and compare when `qemu_ram` is
+/// given. `ram_base` is the guest physical address of the image's first byte.
 #[tracing::instrument(
     level = "debug",
     target = "ternvale::cli",
     skip_all,
-    fields(out = %out.display(), qemu_ram = ?qemu_ram, ram_base = %format!("{ram_base:#x}"))
+    fields(out = %out.display(), qemu_ram = ?qemu_ram, ram_base = %format!("{ram_base:#x}"), cpus)
 )]
-pub fn acpi_dump(out: &Path, qemu_ram: Option<&Path>, ram_base: u64) -> Result<ExitCode> {
-    let ours = ternvale_vmm::dump_guest_acpi()
+pub fn acpi_dump(
+    out: &Path,
+    qemu_ram: Option<&Path>,
+    ram_base: u64,
+    cpus: u32,
+) -> Result<ExitCode> {
+    let ours = ternvale_vmm::dump_guest_acpi(cpus)
         .context("read ternvale's acpi tables back from guest memory")?;
     let ours_dir = out.join("ternvale");
     write_set(&ours_dir, &ours)?;

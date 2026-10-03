@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::config::tests::sample;
 use crate::sdt::{checksum, SDT_CHECKSUM_OFFSET, SDT_HEADER_LEN};
-use crate::{dsdt, AcpiTables, PsciConduit};
+use crate::{dsdt, AcpiTables};
 
 static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
 
@@ -127,30 +128,117 @@ fn dsdt_disassembles_cleanly_and_recompiles_to_the_same_aml() {
     std::fs::remove_dir_all(&dir).expect("remove scratch");
 }
 
+/// iasl 20260408 decodes every SPCR with its revision 4 template, so a
+/// revision 2 table (80 bytes, QEMU's too) "terminates in the middle of a data
+/// structure" at offset 0x50. That one line is expected; any other is not.
+fn data_table_problems(signature: &str, text: &str) -> Vec<String> {
+    let spcr_rev2_end = "/**** ACPI table terminates in the middle of a data structure! \
+                         (dump table)\nCurrentOffset: 50, TableLength: 50 ***/";
+    let text = if signature == "SPCR" {
+        text.replace(spcr_rev2_end, "")
+    } else {
+        text.to_string()
+    };
+    let mut found = problems(&text);
+    for line in text.lines().filter(|line| line.contains("terminates")) {
+        if !found.contains(&line) {
+            found.push(line);
+        }
+    }
+    found.into_iter().map(str::to_string).collect()
+}
+
 #[test]
-fn xsdt_and_fadt_disassemble_cleanly() {
+fn data_tables_disassemble_cleanly_with_the_expected_fields() {
     if !have_iasl() {
         return;
     }
     let dir = scratch("data");
-    let tables = AcpiTables::build(0x0910_0000, 0x2_0000, PsciConduit::Hvc).expect("build");
+    let tables = AcpiTables::build(0x0910_0000, 0x2_0000, &sample(2)).expect("build");
+    let gpa = |signature: &str| {
+        tables
+            .tables()
+            .iter()
+            .find(|t| t.signature == signature)
+            .expect("table")
+            .gpa
+    };
+    let xsdt: Vec<String> = ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2"]
+        .iter()
+        .enumerate()
+        .map(|(i, s)| format!("ACPI Table Address {i} : {:016X}", gpa(s)))
+        .collect();
+    let dsdt = format!("[08Ch 0140 008h] DSDT Address : {:016X}", gpa("DSDT"));
     // iasl 20260408 cannot take a standalone RSDP: it guesses "CDAT" and stops
     // (QEMU's own RSDP does the same). checksum_tests and rsdp.rs cover it.
-    let expect: [(&str, &[&str]); 2] = [
-        (
-            "XSDT",
-            &["\"XSDT\"", "ACPI Table Address 0 : 0000000009100058"],
-        ),
+    let expect: Vec<(&str, Vec<&str>)> = vec![
+        ("XSDT", xsdt.iter().map(String::as_str).collect()),
         (
             "FACP",
-            &[
-                "\"FACP\"",
+            vec![
                 "Hardware Reduced (V5) : 1",
                 "PSCI Compliant : 1",
                 "Must use HVC for PSCI : 1",
                 "FADT Minor Revision : 05",
                 "Table Length : 00000114",
-                "[08Ch 0140 008h] DSDT Address : 0000000009100170",
+                &dsdt,
+            ],
+        ),
+        (
+            "APIC",
+            vec![
+                "Revision : 06",
+                "Subtable Type : 0B [Generic Interrupt Controller]",
+                "Length : 52",
+                "Processor UID : 00000001",
+                "ARM MPIDR : 0000000000000001",
+                "Subtable Type : 0C [Generic Interrupt Distributor]",
+                "Base Address : 0000000008000000",
+                "Version : 03",
+                "Subtable Type : 0E [Generic Interrupt Redistributor]",
+                "Base Address : 00000000080A0000",
+                "Length : 00F60000",
+            ],
+        ),
+        (
+            "GTDT",
+            vec![
+                "Secure EL1 Interrupt : 0000001D",
+                "Non-Secure EL1 Interrupt : 0000001E",
+                "Virtual Timer Interrupt : 0000001B",
+                "Non-Secure EL2 Interrupt : 0000001A",
+                "NEL1 Flags (decoded below) : 00000004",
+                "Always On : 1",
+                "Counter Block Address : FFFFFFFFFFFFFFFF",
+            ],
+        ),
+        (
+            "MCFG",
+            vec![
+                "Base Address : 000000003F000000",
+                "Segment Group Number : 0000",
+                "End Bus Number : 0F",
+            ],
+        ),
+        (
+            "SPCR",
+            vec![
+                "Interface Type : 03",
+                "Address : 0000000009000000",
+                "Interrupt Type : 08",
+                "Interrupt : 00000021",
+                "Baud Rate : 07",
+                "PCI Device ID : FFFF",
+            ],
+        ),
+        (
+            "DBG2",
+            vec![
+                "Port Type : 8000",
+                "Port Subtype : 0003",
+                "Address : 0000000009000000",
+                "Address Size : 00001000",
+                "Namepath : \".\"",
             ],
         ),
     ];
@@ -160,16 +248,24 @@ fn xsdt_and_fadt_disassemble_cleanly() {
             .iter()
             .find(|t| t.signature == signature)
             .expect("table");
-        let stem = signature.trim_end().replace(' ', "_").to_ascii_lowercase();
+        let stem = signature.to_ascii_lowercase();
         let (dsl, text) = disassemble(&dir, &stem, &table.bytes);
-        assert_eq!(problems(&text), Vec::<&str>::new(), "{signature}: {text}");
-        assert_eq!(problems(&dsl), Vec::<&str>::new(), "{signature}: {dsl}");
+        let found = data_table_problems(signature, &text);
+        assert_eq!(found, Vec::<String>::new(), "{signature}: {text}");
+        let found = data_table_problems(signature, &dsl);
+        assert_eq!(found, Vec::<String>::new(), "{signature}: {dsl}");
         let squeezed = squeeze(&dsl);
         for needle in needles {
             assert!(
                 squeezed.contains(needle),
                 "{signature}: {needle:?} missing in\n{dsl}"
             );
+        }
+        if signature == "APIC" {
+            let giccs = squeezed
+                .matches("Subtable Type : 0B [Generic Interrupt Controller]")
+                .count();
+            assert_eq!(giccs, 2, "iasl sees one GICC per configured vCPU:\n{dsl}");
         }
     }
     std::fs::remove_dir_all(&dir).expect("remove scratch");
@@ -203,6 +299,26 @@ fn the_iasl_checks_catch_broken_tables() {
         !problems(&text).is_empty(),
         "lowercase name not flagged:\n{text}"
     );
+
+    let tables = AcpiTables::build(0x0910_0000, 0x2_0000, &sample(1)).expect("build");
+    for signature in ["GTDT", "SPCR"] {
+        let full = &tables
+            .tables()
+            .iter()
+            .find(|t| t.signature == signature)
+            .expect("table")
+            .bytes;
+        let mut cut = full[..full.len() - 8].to_vec();
+        let len = cut.len() as u32;
+        cut[4..8].copy_from_slice(&len.to_le_bytes());
+        cut[SDT_CHECKSUM_OFFSET] = 0;
+        cut[SDT_CHECKSUM_OFFSET] = checksum(&cut);
+        let (dsl, _) = disassemble(&dir, &format!("cut{signature}"), &cut);
+        assert!(
+            !data_table_problems(signature, &dsl).is_empty(),
+            "short {signature} not flagged:\n{dsl}"
+        );
+    }
 
     // PkgLength 0x20 runs past the end; iasl -d stays quiet, the round trip does not match.
     let truncated = dsdt_with_body(&[0x10, 0x20, b'\\', b'_', b'S', b'B', b'_']);

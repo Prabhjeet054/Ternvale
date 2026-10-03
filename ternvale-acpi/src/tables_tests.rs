@@ -2,6 +2,7 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use super::*;
+use crate::config::tests::sample;
 use crate::fadt::X_DSDT_OFFSET;
 use crate::rsdp::{rsdp_checksums_ok, RSDP_XSDT_OFFSET};
 use crate::sdt::{SdtHeader, SDT_HEADER_LEN};
@@ -14,14 +15,18 @@ fn u64_at(bytes: &[u8], at: usize) -> u64 {
 }
 
 fn built() -> AcpiTables {
-    AcpiTables::build(BASE, SIZE, PsciConduit::Hvc).expect("build")
+    AcpiTables::build(BASE, SIZE, &sample(2)).expect("build")
 }
 
 #[test]
 fn tables_are_ordered_aligned_and_do_not_overlap() {
     let tables = built();
     let names: Vec<_> = tables.tables().iter().map(|t| t.signature).collect();
-    assert_eq!(names, ["RSD PTR ", "XSDT", "FACP", "DSDT"]);
+    assert_eq!(names, SIGNATURES);
+    assert_eq!(
+        names,
+        ["RSD PTR ", "XSDT", "FACP", "DSDT", "APIC", "GTDT", "MCFG", "SPCR", "DBG2"]
+    );
     assert_eq!(tables.rsdp_gpa(), BASE);
     let mut end = BASE;
     for table in tables.tables() {
@@ -34,15 +39,26 @@ fn tables_are_ordered_aligned_and_do_not_overlap() {
 }
 
 #[test]
-fn pointers_chain_rsdp_to_dsdt() {
+fn pointers_chain_rsdp_to_every_table() {
     let tables = built();
-    let [rsdp, xsdt, fadt, dsdt] = tables.tables() else {
-        panic!("expected four tables");
+    let [rsdp, xsdt, fadt, dsdt, rest @ ..] = tables.tables() else {
+        panic!("expected nine tables");
     };
     assert_eq!(u64_at(&rsdp.bytes, RSDP_XSDT_OFFSET), xsdt.gpa);
-    assert_eq!(xsdt.bytes.len(), SDT_HEADER_LEN + 8);
-    assert_eq!(u64_at(&xsdt.bytes, SDT_HEADER_LEN), fadt.gpa);
+    assert_eq!(xsdt.bytes.len(), SDT_HEADER_LEN + 8 * 6);
+    let listed: Vec<u64> = (0..6)
+        .map(|i| u64_at(&xsdt.bytes, SDT_HEADER_LEN + 8 * i))
+        .collect();
+    let mut expected = vec![fadt.gpa];
+    expected.extend(rest.iter().map(|t| t.gpa));
+    assert_eq!(listed, expected);
     assert_eq!(u64_at(&fadt.bytes, X_DSDT_OFFSET), dsdt.gpa);
+}
+
+#[test]
+fn invalid_config_fails_before_layout() {
+    let error = AcpiTables::build(BASE, SIZE, &sample(0)).unwrap_err();
+    assert!(matches!(error, AcpiError::BadConfig { .. }), "{error}");
 }
 
 #[test]
@@ -64,15 +80,16 @@ fn every_table_checksum_holds() {
 
 #[test]
 fn bad_regions_are_rejected() {
-    let error = AcpiTables::build(BASE, 64, PsciConduit::Hvc).unwrap_err();
+    let config = sample(1);
+    let error = AcpiTables::build(BASE, 64, &config).unwrap_err();
     assert!(
         matches!(error, AcpiError::RegionTooSmall { have: 64, .. }),
         "{error}"
     );
-    let error = AcpiTables::build(BASE + 8, SIZE, PsciConduit::Hvc).unwrap_err();
+    let error = AcpiTables::build(BASE + 8, SIZE, &config).unwrap_err();
     assert_eq!(error, AcpiError::Misaligned { base: BASE + 8 });
     let top = u64::MAX - 0xf;
-    let error = AcpiTables::build(top, SIZE, PsciConduit::Hvc).unwrap_err();
+    let error = AcpiTables::build(top, SIZE, &config).unwrap_err();
     assert_eq!(error, AcpiError::AddressOverflow { base: top });
 }
 

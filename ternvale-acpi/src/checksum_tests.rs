@@ -1,7 +1,9 @@
-//! Checksum correctness for the RSDP, XSDT, and FADT: the sum of all bytes
+//! Checksum correctness for the RSDP, XSDT, FADT, and (through the laid-out
+//! set) MADT, GTDT, MCFG, SPCR, and DBG2: the sum of all bytes
 //! modulo 256 is zero (ACPI 6.5 §5.2.5.3 for both RSDP checksums, §5.2.6 for
 //! SDTs). The sum here is computed independently of `sdt::byte_sum`.
 
+use crate::config::tests::sample;
 use crate::{fadt, rsdp, xsdt, AcpiTables, PsciConduit};
 
 fn sum_mod_256(bytes: &[u8]) -> u32 {
@@ -81,7 +83,8 @@ fn laid_out_tables_sum_to_zero_at_any_base() {
         0x1_0000_0000,
         u64::MAX - 0xffff,
     ] {
-        let tables = AcpiTables::build(base, 0x1_0000, PsciConduit::Hvc).expect("build");
+        let tables = AcpiTables::build(base, 0x1_0000, &sample(8)).expect("build");
+        assert_eq!(tables.tables().len(), 9);
         for table in tables.tables() {
             assert_eq!(
                 sum_mod_256(&table.bytes),
@@ -97,7 +100,7 @@ fn laid_out_tables_sum_to_zero_at_any_base() {
 
 #[test]
 fn any_single_corrupted_byte_breaks_the_sum() {
-    let tables = AcpiTables::build(0x0910_0000, 0x2_0000, PsciConduit::Hvc).expect("build");
+    let tables = AcpiTables::build(0x0910_0000, 0x2_0000, &sample(2)).expect("build");
     for table in tables.tables() {
         for at in 0..table.bytes.len() {
             let mut bytes = table.bytes.clone();
