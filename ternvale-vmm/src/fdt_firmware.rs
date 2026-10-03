@@ -1,15 +1,17 @@
-//! DT nodes for the PL031 RTC and, on a firmware boot, the CFI flash banks.
+//! DT nodes for the PL031 RTC and, on a firmware boot, the CFI flash banks
+//! and (with ACPI tables) fw_cfg.
 //!
-//! Both match QEMU `virt` (`create_rtc`, `create_one_flash` with
-//! `virt_flash_fdt`'s single node covering two banks). EDK2's
-//! `NorFlashQemuLib` walks `cfi-flash` `reg` entries, skips the one holding
-//! the running firmware volume, and marks the node `disabled` before handing
-//! the DT to the OS, so Linux never probes the banks.
+//! All match QEMU `virt` (`create_rtc`, `create_one_flash` with
+//! `virt_flash_fdt`'s single node covering two banks, `create_fw_cfg`).
+//! EDK2's `NorFlashQemuLib` walks `cfi-flash` `reg` entries, skips the one
+//! holding the running firmware volume, and marks the node `disabled` before
+//! handing the DT to the OS, so Linux never probes the banks.
 
 use vm_fdt::{FdtWriter, FdtWriterResult};
 
 use super::reg;
-use crate::platform::{FLASH_BANK_SIZE, FLASH_CODE_BASE, FLASH_VARS_BASE, RTC_BASE};
+use crate::fw_cfg::FW_CFG_REG_SIZE;
+use crate::platform::{FLASH_BANK_SIZE, FLASH_CODE_BASE, FLASH_VARS_BASE, FW_CFG_BASE, RTC_BASE};
 use crate::rtc::{PL031_REG_SIZE, RTC_SPI};
 
 /// GIC SPI, level-high.
@@ -43,6 +45,22 @@ pub(super) fn flash(w: &mut FdtWriter) -> FdtWriterResult<()> {
         vars = format!("{FLASH_VARS_BASE:#x}"),
         bank = format!("{FLASH_BANK_SIZE:#x}"),
         "dtb cfi-flash node"
+    );
+    w.end_node(node)
+}
+
+/// EDK2 `QemuFwCfgInitialize` asserts 2 address and 2 size cells and one
+/// `reg` entry. A size of `0x10` advertises no DMA register (see `fw_cfg.rs`).
+/// QEMU also sets `dma-coherent`, which is left out because there is no DMA.
+pub(super) fn fw_cfg(w: &mut FdtWriter) -> FdtWriterResult<()> {
+    let node = w.begin_node(&format!("fw-cfg@{FW_CFG_BASE:x}"))?;
+    w.property_string("compatible", "qemu,fw-cfg-mmio")?;
+    w.property_array_u32("reg", &reg(FW_CFG_BASE, FW_CFG_REG_SIZE))?;
+    tracing::debug!(
+        target: "ternvale::boot",
+        base = format!("{FW_CFG_BASE:#x}"),
+        size = format!("{FW_CFG_REG_SIZE:#x}"),
+        "dtb fw-cfg node"
     );
     w.end_node(node)
 }

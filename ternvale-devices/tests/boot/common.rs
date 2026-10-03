@@ -42,6 +42,19 @@ pub fn assets_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../test-assets")
 }
 
+/// EDK2 code image for the UEFI scenarios: `TERNVALE_FIRMWARE`, else the
+/// pinned release build `test-assets/firmware/QEMU_EFI.fd`.
+pub fn firmware() -> PathBuf {
+    match std::env::var_os("TERNVALE_FIRMWARE") {
+        Some(path) => {
+            let path = PathBuf::from(path);
+            tracing::info!(target: "ternvale::boot", firmware = %path.display(), "firmware override");
+            path
+        }
+        None => assets_root().join("firmware/QEMU_EFI.fd"),
+    }
+}
+
 pub fn stdin_pipe() -> Result<(std::fs::File, i32), String> {
     let mut ends = [0; 2];
     // SAFETY: `pipe` writes two open fds into `ends` on success.

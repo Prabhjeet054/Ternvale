@@ -4,19 +4,21 @@
 //! Boot 1 starts from a missing NVRAM file, reaches the UEFI shell, stores a
 //! non-volatile variable, leaves the shell (BDS then shows the UiApp front
 //! page), opens Boot Manager, boots "EFI Internal Shell" from it, and powers
-//! off with `reset -s` (PSCI `SYSTEM_OFF`). Boot 2 reads the variable back.
+//! off with `reset -s` (PSCI `SYSTEM_OFF`). Boot 2 reads the variable back
+//! and reads the system table's configuration tables with `dmem` (see
+//! `uefi_dmem`). Both boots use `firmware_tables = "fdt"`, so they must hold
+//! a DTB (`gFdtTableGuid`) and no ACPI 2.0 table.
 
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ternvale_config::VmConfig;
+use ternvale_config::{FirmwareTables, VmConfig};
 use ternvale_devices::{Pl011, Step};
 use ternvale_vmm::{ExitReason, Machine};
 
-use crate::common::{
-    assets_root, drive, init_logging, log_dir, restore_stdin, stdin_pipe, write_result,
-};
+use crate::common::{init_logging, log_dir, restore_stdin, stdin_pipe, write_result};
+use crate::uefi_dmem::{find, Shell, ACPI_20_GUID, FDT_GUID};
 
 /// EDK2's variable store: variables + FTW working + FTW spare, 256 KiB each.
 const VARSTORE_BYTES: u64 = 0xc_0000;
@@ -34,11 +36,18 @@ pub fn run() -> Result<(), String> {
     }
     let started = Instant::now();
     let first = log_dir.join("guest-serial-1.log");
-    boot_once(&log_dir, &first, &nvram, &host, first_boot())?;
+    boot_once(&log_dir, &first, &nvram, &host, |shell| {
+        shell.run(first_boot())
+    })?;
     check_banner(&first)?;
     check_nvram(&nvram)?;
     let second = log_dir.join("guest-serial-2.log");
-    boot_once(&log_dir, &second, &nvram, &host, second_boot())?;
+    boot_once(&log_dir, &second, &nvram, &host, |shell| {
+        shell.run(second_boot())?;
+        let entries = shell.config_tables();
+        shell.run(power_off())?;
+        check_device_tree_only(&entries?)
+    })?;
     check_banner(&second)?;
     tracing::info!(
         target: "ternvale::boot",
@@ -55,7 +64,7 @@ fn boot_once(
     serial_log: &Path,
     nvram: &Path,
     host_log: &Path,
-    steps: Vec<Step>,
+    script: impl FnOnce(&mut Shell<'_>) -> Result<(), String> + Send + 'static,
 ) -> Result<(), String> {
     let vm = VmConfig {
         name: "uefi".to_string(),
@@ -68,8 +77,9 @@ fn boot_once(
         disks: Vec::new(),
         nics: Vec::new(),
         serial_log: serial_log.to_path_buf(),
-        firmware: Some(assets_root().join("firmware/QEMU_EFI.fd")),
+        firmware: Some(crate::common::firmware()),
         nvram: Some(nvram.to_path_buf()),
+        firmware_tables: Some(FirmwareTables::Fdt),
         vsock: None,
     };
     tracing::info!(target: "ternvale::boot", serial = %serial_log.display(), nvram = %nvram.display(), "firmware boot");
@@ -79,7 +89,14 @@ fn boot_once(
     let flag = Arc::clone(&cancel);
     let feed_log = serial_log.to_path_buf();
     let host = host_log.to_path_buf();
-    let feeder = std::thread::spawn(move || drive(&feed_log, &mut input, &flag, &host, steps));
+    let feeder = std::thread::spawn(move || {
+        script(&mut Shell {
+            serial_log: &feed_log,
+            input: &mut input,
+            cancel: &flag,
+            host: &host,
+        })
+    });
     let exit = Machine::run_until(&vm, Box::new(uart), Arc::clone(&cancel));
     let script = feeder
         .join()
@@ -126,6 +143,18 @@ pub fn check_banner(serial_log: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Boot 2's configuration tables hold a DTB and no ACPI 2.0 table.
+fn check_device_tree_only(entries: &[([u8; 16], u64)]) -> Result<(), String> {
+    let acpi = find(entries, &ACPI_20_GUID);
+    let dtb = find(entries, &FDT_GUID);
+    match (acpi, dtb) {
+        (None, Some(dtb)) if dtb != 0 => Ok(()),
+        _ => Err(format!(
+            "fdt boot: expected a DTB and no ACPI 2.0 table, got acpi20={acpi:x?} dtb={dtb:x?}"
+        )),
+    }
+}
+
 /// EDK2 formatted the blank store: full size, `_FVH` signature at 0x28.
 fn check_nvram(nvram: &Path) -> Result<(), String> {
     let bytes = std::fs::read(nvram).map_err(|err| format!("read nvram: {err}"))?;
@@ -145,7 +174,7 @@ fn check_nvram(nvram: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn expect(pattern: &str, secs: u64) -> Step {
+pub fn expect(pattern: &str, secs: u64) -> Step {
     Step::Expect {
         pattern: pattern.to_string(),
         timeout: Duration::from_secs(secs),
@@ -153,7 +182,7 @@ fn expect(pattern: &str, secs: u64) -> Step {
 }
 
 /// Each chunk stays within the PL011's 16-byte RX FIFO.
-fn send(chunks: &[&[u8]]) -> Vec<Step> {
+pub fn send(chunks: &[&[u8]]) -> Vec<Step> {
     chunks
         .iter()
         .map(|chunk| Step::Send {
@@ -163,7 +192,7 @@ fn send(chunks: &[&[u8]]) -> Vec<Step> {
 }
 
 /// Banner, then skip the shell's 5-second `startup.nsh` countdown.
-fn to_shell(banner: bool) -> Vec<Step> {
+pub fn to_shell(banner: bool) -> Vec<Step> {
     let mut steps = Vec::new();
     if banner {
         steps.push(expect("UEFI firmware", 60));
@@ -184,7 +213,7 @@ fn dump_mark() -> Vec<Step> {
     steps
 }
 
-fn power_off() -> Vec<Step> {
+pub fn power_off() -> Vec<Step> {
     send(&[b"reset -s\r"])
 }
 
@@ -215,6 +244,5 @@ fn first_boot() -> Vec<Step> {
 fn second_boot() -> Vec<Step> {
     let mut steps = to_shell(true);
     steps.extend(dump_mark());
-    steps.extend(power_off());
     steps
 }

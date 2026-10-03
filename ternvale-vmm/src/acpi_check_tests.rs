@@ -147,6 +147,7 @@ fn dtb_and_acpi_agree() {
         initrd_end: RAM_BASE,
         cpu_count: cpus,
         firmware: true,
+        fw_cfg: false,
     };
     let dts = dtc_dts(&build_fdt(&fdt).expect("dtb"));
 

@@ -1,20 +1,67 @@
-//! ACPI tables in the reserved guest window ([`ACPI_BASE`], [`ACPI_SIZE`]).
+//! ACPI tables in the reserved guest window ([`ACPI_BASE`], [`ACPI_SIZE`]),
+//! and their hand-off to EDK2 over fw_cfg.
 //!
 //! `ternvale-acpi` builds the tables from [`crate::acpi_check::acpi_config`];
 //! this module maps the window into the guest read-only, copies them in,
 //! reads them back by walking guest memory from the RSDP, and fails the boot
 //! if what landed disagrees with `platform.rs` ([`crate::acpi_check::check`]).
-//! Nothing points the guest at the RSDP yet: the DTB does not mention it and
-//! the firmware does not install it.
+//!
+//! With `firmware_tables = "acpi"`, [`prepare`] also turns the checked
+//! tables into QEMU's linker/loader files on a [`FwCfg`] device. EDK2
+//! ArmVirtQemu installs ACPI from those files and stops publishing the DTB to
+//! the OS (see `ternvale_acpi::LoaderBlobs`). The OS reads EDK2's copies at
+//! addresses EDK2 picks, not this window. With `"fdt"` nothing is mapped or
+//! offered, and EDK2 publishes the DTB as before.
 
-use ternvale_acpi::{AcpiTables, DumpedTable};
+use ternvale_acpi::{DumpedTable, LoaderBlobs, TableRef};
+use ternvale_config::{FirmwareTables, VmConfig};
 
+use crate::fw_cfg::{FwCfg, FW_CFG_REG_SIZE};
 use crate::machine::MachineError;
 use crate::memory::GuestMemory;
-use crate::platform::{ACPI_BASE, ACPI_SIZE};
+use crate::mmio::MmioDevice;
+use crate::platform::{ACPI_BASE, ACPI_SIZE, FW_CFG_BASE};
+
+/// A device for the MMIO bus: base, size, model.
+pub(crate) type BusDevice = (u64, u64, Box<dyn MmioDevice>);
+
+/// The firmware-table setup for `config`. `acpi` (firmware boots only):
+/// [`install`] the window, then return the fw_cfg device carrying the loader
+/// files built from the tables read back. `fdt`: nothing.
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(name = %config.name, cpus = config.cpus))]
+pub(crate) fn prepare(
+    memory: &mut GuestMemory,
+    vm: &ternvale_hv::Vm,
+    config: &VmConfig,
+) -> Result<Option<BusDevice>, MachineError> {
+    let tables = config.effective_firmware_tables();
+    if tables == FirmwareTables::Fdt || config.firmware.is_none() {
+        tracing::info!(target: "ternvale::acpi", firmware_tables = %tables, "device tree only; acpi tables not installed");
+        return Ok(None);
+    }
+    let checked = install(memory, vm, config.cpus)?;
+    let device = fw_cfg_for(&checked)?;
+    tracing::info!(
+        target: "ternvale::acpi",
+        firmware_tables = %tables,
+        fw_cfg = %format!("{FW_CFG_BASE:#x}"),
+        tables = checked.len(),
+        "acpi tables offered to EDK2 over fw_cfg"
+    );
+    Ok(Some((FW_CFG_BASE, FW_CFG_REG_SIZE, Box::new(device))))
+}
+
+/// The fw_cfg device holding the loader files for `tables`.
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(tables = tables.len()))]
+pub(crate) fn fw_cfg_for(tables: &[DumpedTable]) -> Result<FwCfg, MachineError> {
+    let refs: Vec<TableRef<'_>> = tables.iter().map(TableRef::from).collect();
+    let blobs = LoaderBlobs::build(&refs)?;
+    Ok(FwCfg::new(blobs.files()?)?)
+}
 
 /// Map the ACPI window into `vm` (guest read-only), write the tables for
-/// `cpus` vCPUs, and check them against the platform map.
+/// `cpus` vCPUs, check them against the platform map, and return them as
+/// read back from guest memory.
 #[tracing::instrument(
     level = "debug",
     target = "ternvale::acpi",
@@ -25,10 +72,11 @@ pub(crate) fn install(
     memory: &mut GuestMemory,
     vm: &ternvale_hv::Vm,
     cpus: u32,
-) -> Result<AcpiTables, MachineError> {
+) -> Result<Vec<DumpedTable>, MachineError> {
     memory.map_flags(vm, ACPI_BASE, ACPI_SIZE, ternvale_hv::HV_MEMORY_READ)?;
-    let tables = write_tables(memory, cpus)?;
-    crate::acpi_check::check(&dump_tables(memory)?, cpus)?;
+    write_tables(memory, cpus)?;
+    let tables = dump_tables(memory)?;
+    crate::acpi_check::check(&tables, cpus)?;
     Ok(tables)
 }
 
@@ -38,9 +86,9 @@ pub(crate) fn install(
 pub(crate) fn write_tables(
     memory: &mut GuestMemory,
     cpus: u32,
-) -> Result<AcpiTables, MachineError> {
+) -> Result<ternvale_acpi::AcpiTables, MachineError> {
     let config = crate::acpi_check::acpi_config(cpus);
-    let tables = AcpiTables::build(ACPI_BASE, ACPI_SIZE, &config)?;
+    let tables = ternvale_acpi::AcpiTables::build(ACPI_BASE, ACPI_SIZE, &config)?;
     tables.write(|gpa, bytes| memory.write_bytes(gpa, bytes))?;
     tracing::debug!(
         target: "ternvale::acpi",
@@ -75,8 +123,7 @@ pub(crate) fn dump_tables(memory: &GuestMemory) -> Result<Vec<DumpedTable>, Mach
 pub fn dump_guest_acpi(cpus: u32) -> Result<Vec<DumpedTable>, MachineError> {
     let vm = ternvale_hv::Vm::create()?;
     let mut memory = GuestMemory::new()?;
-    install(&mut memory, &vm, cpus)?;
-    let tables = dump_tables(&memory)?;
+    let tables = install(&mut memory, &vm, cpus)?;
     drop(memory);
     drop(vm);
     Ok(tables)
@@ -148,6 +195,24 @@ mod tests {
             assert_eq!(dumped.bytes, table.bytes);
             assert!(dumped.checksum_ok(), "{}", dumped.signature);
         }
+    }
+
+    #[test]
+    fn read_back_tables_become_the_three_fw_cfg_loader_files() {
+        let mut memory = GuestMemory::new().expect("memory");
+        memory.add_region(ACPI_BASE, ACPI_SIZE).expect("region");
+        write_tables(&mut memory, 2).expect("write");
+        let dumped = dump_tables(&memory).expect("dump");
+        let device = fw_cfg_for(&dumped).expect("fw_cfg");
+        let names: Vec<&str> = device.file_names().collect();
+        assert_eq!(
+            names,
+            [
+                ternvale_acpi::RSDP_FILE,
+                ternvale_acpi::TABLES_FILE,
+                ternvale_acpi::LOADER_FILE
+            ]
+        );
     }
 
     #[test]

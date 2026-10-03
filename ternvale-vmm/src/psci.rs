@@ -21,6 +21,7 @@ const PSCI_SYSTEM_RESET: u64 = 0x8400_0009;
 const PSCI_FEATURES: u64 = 0x8400_000a;
 const PSCI_CPU_ON: u64 = 0xc400_0003;
 const PSCI_AFFINITY_INFO: u64 = 0xc400_0004;
+const SMCCC_FAST_CALL: u64 = 0x8000_0000;
 
 /// PSCI return codes (DEN0022 table 5.2.2).
 pub(crate) const SUCCESS: i32 = 0;
@@ -79,7 +80,8 @@ pub enum PsciAction {
     SystemReset,
 }
 
-/// Decode a PSCI function id. `None` means x0 is not one of the handled ids.
+/// Decode a PSCI function id. Any other SMCCC fast call returns
+/// `NOT_SUPPORTED`. `None` means x0 is not an SMCCC fast call at all.
 #[tracing::instrument(
     level = "debug",
     target = "ternvale::psci",
@@ -109,6 +111,16 @@ pub fn call(function: u64, x1: u64, x2: u64, x3: u64) -> Option<PsciAction> {
         PSCI_MIGRATE_INFO_TYPE => PsciAction::Return {
             x0: sign(TOS_NOT_PRESENT_MP),
         },
+        _ if is_fast_call(function) => {
+            tracing::warn!(
+                target: "ternvale::psci",
+                function = format!("{:#x}", function),
+                "unknown smccc fast call; returning NOT_SUPPORTED"
+            );
+            PsciAction::Return {
+                x0: sign(NOT_SUPPORTED),
+            }
+        }
         _ => return None,
     };
     let x0 = match action {
@@ -155,6 +167,14 @@ fn features(id: u64) -> i32 {
         | PSCI_FEATURES => SUCCESS,
         _ => NOT_SUPPORTED,
     }
+}
+
+/// SMCCC fast call: bit 31 of the 32-bit function id (W0). An unknown one
+/// returns `NOT_SUPPORTED` (DEN0028 SMCCC v1.5 §2.5.3, "Unknown Function
+/// Identifier"), as QEMU/KVM do. EDK2's `ArmTrngLib` probes `SMCCC_VERSION`
+/// and `TRNG_VERSION` this way and continues without a TRNG.
+fn is_fast_call(function: u64) -> bool {
+    function >> 32 == 0 && function & SMCCC_FAST_CALL != 0
 }
 
 /// A PSCI status as the guest sees it in x0.
@@ -317,7 +337,30 @@ mod tests {
                 x3: 0,
                 expected: None,
             },
+            Row {
+                function: 0x1_8000_0000,
+                x1: 0,
+                x2: 0,
+                x3: 0,
+                expected: None,
+            },
         ];
+        // SMCCC_VERSION, ARCH_FEATURES, TRNG_VERSION, TRNG_RND64, a vendor hyp call.
+        for function in [
+            0x8000_0000,
+            0x8000_0001,
+            0x8400_0050,
+            0xc400_0053,
+            0x8600_ff01,
+        ] {
+            assert_eq!(
+                call(function, 0, 0, 0),
+                Some(PsciAction::Return {
+                    x0: sign(NOT_SUPPORTED)
+                }),
+                "function {function:#x}"
+            );
+        }
         for row in table {
             assert_eq!(
                 call(row.function, row.x1, row.x2, row.x3),

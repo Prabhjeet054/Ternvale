@@ -38,3 +38,5 @@ libc = "0.2"
 ternvale-log = { path = "../ternvale-log" }
 # VmConfig for the Linux boot test.
 ternvale-config = { path = "../ternvale-config" }
+# Expected ACPI tables for the firmware-acpi boot scenario (what EDK2 installed vs the builder).
+ternvale-acpi = { path = "../ternvale-acpi" }

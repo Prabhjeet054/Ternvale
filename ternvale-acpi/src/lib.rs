@@ -7,7 +7,9 @@
 //! hands each table to a guest-memory callback and logs its signature, length,
 //! and checksum at INFO on `ternvale::acpi`. [`walk`] reads a table set back
 //! out of guest memory (or a RAM image from another VMM), [`verify`] checks it
-//! against the config, and [`compare`] diffs two sets by signature. The crate
+//! against the config, and [`compare`] diffs two sets by signature.
+//! [`LoaderBlobs`] turns a table set into QEMU's fw_cfg linker/loader files,
+//! which is how EDK2 ArmVirtQemu receives ACPI tables. The crate
 //! does not depend on the VMM: callers pass the region and the reader or
 //! writer.
 
@@ -22,6 +24,8 @@ mod error;
 mod fadt;
 mod gas;
 mod gtdt;
+mod loader;
+mod loader_command;
 mod madt;
 mod mcfg;
 mod rsdp;
@@ -50,6 +54,8 @@ pub use fadt::{
 };
 pub use gas::{Gas, ACCESS_DWORD, GAS_LEN, SPACE_SYSTEM_MEMORY};
 pub use gtdt::{gtdt, GTDT_LEN, GTDT_REVISION, GTDT_SIGNATURE, TIMER_ALWAYS_ON};
+pub use loader::{LoaderBlobs, TableRef, LOADER_FILE, RSDP_FILE, TABLES_FILE};
+pub use loader_command::{LoaderCommand, Zone, FNAME_LEN, LOADER_ENTRY_LEN};
 pub use madt::{
     madt, GICC_ENABLED, GICC_LEN, GICD_LEN, GICR_LEN, GIC_VERSION_3, MADT_REVISION, MADT_SIGNATURE,
 };

@@ -21,7 +21,17 @@
 #                       and top, on TERNVALE_BOOT_CPUS CPUs (default 4)
 #   firmware          — EDK2 UEFI (needs ./scripts/fetch-firmware.sh): UEFI shell, front
 #                       page, Boot Manager, and an NV variable that survives a second boot
-#                       on the same nvram.fd
+#                       on the same nvram.fd (firmware_tables = "fdt": DTB, no ACPI)
+#   firmware-acpi     — EDK2 with the default firmware_tables = "acpi": tables reach EDK2
+#                       over fw_cfg; the UEFI shell's dmem walks what EDK2 installed and the
+#                       harness compares it with the builder (acpi-tables.txt)
+#   firmware-debug    — verbose DEBUG EDK2 (needs ./scripts/fetch-debug-firmware.sh) with
+#                       firmware_tables = "acpi" up to BDS; EDK2's own serial log must show
+#                       it installed the fw_cfg ACPI tables and did not expose the DTB
+#   uefi-linux        — the test kernel and initramfs booted through EDK2 (firmware_tables =
+#                       "fdt") from a FAT16 disk; initrd checks plus /sys/firmware/{efi,fdt}
+#                       present and /sys/firmware/acpi absent, then poweroff
+#   TERNVALE_FIRMWARE=<QEMU_EFI.fd> replaces the EDK2 image in the UEFI scenarios.
 #   installer         — EDK2 boots the Alpine arm64 ISO (needs ./scripts/fetch-installer-iso.sh)
 #                       from a read-only virtio-blk disk to a root login and setup-alpine;
 #                       TERNVALE_INSTALLER_TRANSPORT=pci puts the disk on virtio-pci.

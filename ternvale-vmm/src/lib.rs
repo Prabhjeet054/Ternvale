@@ -10,6 +10,7 @@ mod diag;
 mod esr;
 mod fdt;
 mod firmware;
+mod fw_cfg;
 mod gic_redist;
 mod linux;
 mod machine;
@@ -37,6 +38,7 @@ pub use fdt::{
     UART_SPI, VIRTIO_SPI0,
 };
 pub use firmware::{FirmwareError, RomdWindow, VarsFlash};
+pub use fw_cfg::{FwCfg, FW_CFG_REG_SIZE};
 pub use linux::{
     load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
     CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
@@ -50,7 +52,7 @@ pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{
     Layout, PlatformError, Region, ACPI_BASE, ACPI_SIZE, FLASH_BANK_SIZE, FLASH_CODE_BASE,
-    FLASH_VARS_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE,
+    FLASH_VARS_BASE, FW_CFG_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE,
     PCIE_MMIO_BASE, PCIE_MMIO_SIZE, RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE,
     VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };

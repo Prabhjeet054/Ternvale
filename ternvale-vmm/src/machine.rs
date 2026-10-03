@@ -1,7 +1,7 @@
 //! Boots a configured guest and runs it until PSCI powers it off.
 //!
-//! Order: config, guest RAM (plus the firmware code bank and ACPI tables), GIC, attached
-//! devices (MMIO and PCI), UART, PL031, variable flash, and the PCI ECAM/BAR
+//! Order: config, guest RAM (plus the firmware code bank; ACPI tables and fw_cfg when
+//! `firmware_tables = "acpi"`), GIC, attached devices, UART, PL031, variable flash, PCI ECAM/BAR
 //! windows on the MMIO bus, DTB, then one host thread per vCPU
 //! (`machine_vcpu.rs`). CPU 0 loads Linux or enters UEFI at GPA 0
 //! (`machine_images.rs`); the others start on PSCI `CPU_ON`. Host stdin goes straight into the shared UART, which raises
@@ -240,12 +240,12 @@ impl Machine {
         let vm = ternvale_hv::Vm::create()?;
         let gic = Arc::new(vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE)?);
         let memory = Arc::new(Mutex::new(crate::memory::GuestMemory::new()?));
-        {
+        let fw_cfg = {
             let mut mem = crate::lockwatch::lock(&memory, "guest-memory");
             mem.map(&vm, RAM_BASE, ram_size)?;
             inputs.map(&mut mem, &vm)?;
-            crate::acpi::install(&mut mem, &vm, config.cpus)?;
-        }
+            crate::acpi::prepare(&mut mem, &vm, config)?
+        };
         let spi_levels = Arc::new(Mutex::new(Vec::new()));
         let attached = DeviceAttach::new(
             Arc::clone(&memory),
@@ -289,7 +289,7 @@ impl Machine {
                 Box::new(images::vars_flash(path)?),
             )?;
         }
-        for (base, size, device) in devices {
+        for (base, size, device) in devices.into_iter().chain(fw_cfg) {
             bus.register(base, size, device)?;
         }
         attached.pci.register(&mut bus)?;

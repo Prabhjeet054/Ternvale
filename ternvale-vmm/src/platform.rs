@@ -34,6 +34,12 @@ pub const UART_SIZE: u64 = HOST_PAGE_SIZE;
 pub const RTC_BASE: u64 = 0x0901_0000;
 /// RTC window. QEMU's device is 4 KiB; this reservation is one host page.
 pub const RTC_SIZE: u64 = HOST_PAGE_SIZE;
+/// fw_cfg (QEMU `VIRT_FW_CFG`). Only registered when EDK2 gets ACPI tables
+/// (`firmware_tables = "acpi"`).
+pub const FW_CFG_BASE: u64 = 0x0902_0000;
+/// fw_cfg window. QEMU's registers span `0x18` bytes, Ternvale's `0x10` (no
+/// DMA); this reservation is one host page.
+pub const FW_CFG_SIZE: u64 = HOST_PAGE_SIZE;
 /// ACPI tables (RSDP first), mapped read-only. Not in QEMU, which hands its
 /// tables to firmware over fw_cfg; this sits past QEMU's last low device
 /// (`VIRT_SECURE_GPIO` at `0x090b0000`) and below the virtio-mmio window.
@@ -124,6 +130,7 @@ impl Layout {
             region("gic-redist", GIC_REDIST_BASE, GIC_REDIST_SIZE),
             region("uart", UART_BASE, UART_SIZE),
             region("rtc", RTC_BASE, RTC_SIZE),
+            region("fw-cfg", FW_CFG_BASE, FW_CFG_SIZE),
             region("acpi", ACPI_BASE, ACPI_SIZE),
             region("virtio-mmio", VIRTIO_MMIO_BASE, VIRTIO_MMIO_SIZE),
             region("pcie-mmio", PCIE_MMIO_BASE, PCIE_MMIO_SIZE),

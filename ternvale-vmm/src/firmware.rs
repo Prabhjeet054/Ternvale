@@ -16,6 +16,9 @@
 //! - `fw_cfg` is not provided. Every ArmVirtQemu consumer handles a missing
 //!   `qemu,fw-cfg-mmio` node: no ACPI tables (the DT is passed on instead), no
 //!   QEMU boot order, no kernel loading.
+//!   TODO(verify): EDK2 master since 2026-08-28 ("ArmVirtPkg: Map QEMU fw_cfg
+//!   MMIO region in PEI") asserts in `ArmVirtGetMemoryMap` without that node.
+//!   Released EDK2 up to edk2-stable202608 does not.
 
 mod nvram;
 mod pflash;
@@ -103,6 +106,14 @@ pub enum FirmwareError {
         gpa: u64,
         /// Hypervisor error.
         source: ternvale_hv::HvError,
+    },
+    /// A fw_cfg file cannot be offered (bad name, too large, too many).
+    #[error("fw_cfg file {name:?}: {reason}")]
+    FwCfgFile {
+        /// File name.
+        name: String,
+        /// What is wrong.
+        reason: String,
     },
 }
 

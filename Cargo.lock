@@ -710,6 +710,7 @@ name = "ternvale-devices"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "ternvale-acpi",
  "ternvale-agent",
  "ternvale-agent-proto",
  "ternvale-config",

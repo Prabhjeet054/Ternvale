@@ -48,6 +48,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         serial_log: PathBuf::from("/tmp/serial.log"),
         firmware: None,
         nvram: None,
+        firmware_tables: None,
         vsock,
     }
 }

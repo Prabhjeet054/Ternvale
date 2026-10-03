@@ -29,17 +29,32 @@ pub(super) struct Images<'a> {
 
 /// Host files for one boot.
 pub(super) enum Inputs {
-    Linux { kernel: Vec<u8>, initrd: Vec<u8> },
-    Firmware { code: Vec<u8> },
+    Linux {
+        kernel: Vec<u8>,
+        initrd: Vec<u8>,
+    },
+    /// `fw_cfg`: the DTB gets the fw_cfg node (`firmware_tables = "acpi"`).
+    Firmware {
+        code: Vec<u8>,
+        fw_cfg: bool,
+    },
 }
 
 impl Inputs {
     #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(name = %config.name))]
     pub(super) fn read(config: &ternvale_config::VmConfig) -> Result<Self, MachineError> {
         if let Some(path) = &config.firmware {
-            tracing::info!(target: "ternvale::boot", firmware = %path.display(), "firmware boot: UEFI instead of a direct kernel boot");
+            let tables = config.effective_firmware_tables();
+            tracing::info!(
+                target: "ternvale::boot",
+                firmware = %path.display(),
+                firmware_tables = %tables,
+                explicit = config.firmware_tables.is_some(),
+                "firmware boot: UEFI instead of a direct kernel boot"
+            );
             return Ok(Self::Firmware {
                 code: super::read_file("firmware", path)?,
+                fw_cfg: tables == ternvale_config::FirmwareTables::Acpi,
             });
         }
         let kernel = super::read_file("kernel", &config.kernel)?;
@@ -56,7 +71,7 @@ impl Inputs {
         memory: &mut GuestMemory,
         vm: &ternvale_hv::Vm,
     ) -> Result<(), MachineError> {
-        if let Self::Firmware { code } = self {
+        if let Self::Firmware { code, .. } = self {
             crate::firmware::map_code(memory, vm, code)?;
         }
         Ok(())
@@ -80,7 +95,7 @@ impl Inputs {
                 );
                 Ok(dtb)
             }
-            Self::Firmware { .. } => {
+            Self::Firmware { fw_cfg, .. } => {
                 let dtb = build_fdt(&GuestFdt {
                     bootargs: String::new(),
                     ram_base: RAM_BASE,
@@ -89,6 +104,7 @@ impl Inputs {
                     initrd_end: 0,
                     cpu_count: cpus,
                     firmware: true,
+                    fw_cfg: *fw_cfg,
                 })?;
                 crate::firmware::check_layout(ram_size, dtb.len() as u64)?;
                 Ok(dtb)
@@ -145,6 +161,7 @@ fn boot_images(
             initrd_end: guess.initrd.saturating_add(initrd.len() as u64),
             cpu_count: cpus,
             firmware: false,
+            fw_cfg: false,
         })?;
         let next = place(
             RAM_BASE,

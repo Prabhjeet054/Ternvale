@@ -217,6 +217,7 @@ fn dtb_is_bundled_with_a_dts_or_a_reason() {
         initrd_end: 0,
         cpu_count: 1,
         firmware: false,
+        fw_cfg: false,
     })
     .expect("fdt");
     std::fs::write(dir.join("ternvale-demo-20261002-120000.dtb"), &dtb).expect("dtb");

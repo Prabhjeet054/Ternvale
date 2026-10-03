@@ -5,7 +5,7 @@ use super::*;
 fn tables_read_back_from_a_real_vm_match_the_builder() {
     let dumped = dump_guest_acpi(2).expect("dump guest acpi");
     let config = crate::acpi_check::acpi_config(2);
-    let built = AcpiTables::build(ACPI_BASE, ACPI_SIZE, &config).expect("build");
+    let built = ternvale_acpi::AcpiTables::build(ACPI_BASE, ACPI_SIZE, &config).expect("build");
     let names: Vec<_> = dumped.iter().map(|t| t.signature.as_str()).collect();
     assert_eq!(names, ternvale_acpi::SIGNATURES);
     for (dumped, table) in dumped.iter().zip(built.tables()) {

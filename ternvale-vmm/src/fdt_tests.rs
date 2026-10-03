@@ -14,6 +14,7 @@ fn sample() -> GuestFdt {
         initrd_end: RAM_BASE + 0x0200_1000,
         cpu_count: 2,
         firmware: false,
+        fw_cfg: false,
     }
 }
 
@@ -48,6 +49,22 @@ fn every_boot_has_the_pl031_and_firmware_boots_add_cfi_flash() {
     assert!(!uefi.contains("bootargs"), "firmware owns the command line");
     assert!(!uefi.contains("linux,initrd"), "{uefi}");
     assert!(uefi.contains("stdout-path = \"/pl011@9000000\""), "{uefi}");
+}
+
+#[test]
+fn fw_cfg_node_appears_only_for_acpi_firmware_tables() {
+    let mut fdt = sample();
+    fdt.firmware = true;
+    let plain = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    assert!(!plain.contains("fw-cfg"), "{plain}");
+
+    fdt.fw_cfg = true;
+    let acpi = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    let start = acpi.find("fw-cfg@9020000 {").expect("fw-cfg node");
+    let node = &acpi[start..start + acpi[start..].find("};").expect("node end")];
+    assert!(node.contains("compatible = \"qemu,fw-cfg-mmio\""), "{node}");
+    assert!(node.contains("reg = <0x00 0x9020000 0x00 0x10>"), "{node}");
+    assert!(!node.contains("dma-coherent"), "{node}");
 }
 
 #[test]

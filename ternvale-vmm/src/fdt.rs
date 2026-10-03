@@ -54,6 +54,9 @@ pub struct GuestFdt {
     /// UEFI boot: add the `cfi-flash` node and leave `/chosen` to the firmware
     /// (only `stdout-path`; no bootargs or initrd).
     pub firmware: bool,
+    /// Add the `qemu,fw-cfg-mmio` node, so EDK2 finds the ACPI loader files
+    /// (`firmware_tables = "acpi"`).
+    pub fw_cfg: bool,
 }
 
 /// Building or installing the DTB failed.
@@ -118,9 +121,12 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     if fdt.firmware {
         firmware_node::flash(&mut w)?;
     }
+    if fdt.fw_cfg {
+        firmware_node::fw_cfg(&mut w)?;
+    }
     w.end_node(root)?;
     let blob = w.finish()?;
-    tracing::info!(target: "ternvale::boot", bytes = blob.len(), firmware = fdt.firmware, "built guest dtb");
+    tracing::info!(target: "ternvale::boot", bytes = blob.len(), firmware = fdt.firmware, fw_cfg = fdt.fw_cfg, "built guest dtb");
     Ok(blob)
 }
 

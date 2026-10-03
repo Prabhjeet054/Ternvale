@@ -17,7 +17,15 @@
 //! an idle guest, and a per-CPU `dd` workload on `TERNVALE_BOOT_CPUS` CPUs (default 4) with
 //! the initrd assets.
 //! Set `TERNVALE_BOOT_SCENARIO=firmware` to boot EDK2 (`./scripts/fetch-firmware.sh`) to the UEFI
-//! shell, open the front page and Boot Manager, and check that an NV variable survives a reboot.
+//! shell, open the front page and Boot Manager, and check that an NV variable survives a reboot
+//! (with `firmware_tables = "fdt"`, so `dmem` must show a DTB and no ACPI table).
+//! Set `TERNVALE_BOOT_SCENARIO=firmware-acpi` to boot EDK2 with the default `acpi` tables and
+//! walk the ACPI tables EDK2 installed from fw_cfg with `dmem`, comparing them with the builder.
+//! Set `TERNVALE_BOOT_SCENARIO=firmware-debug` to boot a verbose debug EDK2
+//! (`./scripts/fetch-debug-firmware.sh`) with `acpi` and check EDK2's own log for the ACPI install.
+//! Set `TERNVALE_BOOT_SCENARIO=uefi-linux` to boot the test kernel and initrd through UEFI
+//! (`firmware_tables = "fdt"`) from a FAT16 disk and run the initrd checks.
+//! `TERNVALE_FIRMWARE` replaces the EDK2 image in every UEFI scenario.
 //! Set `TERNVALE_BOOT_SCENARIO=installer` to boot the Alpine arm64 ISO
 //! (`./scripts/fetch-installer-iso.sh`) from UEFI on a read-only virtio-blk disk and start
 //! `setup-alpine` (`TERNVALE_INSTALLER_TRANSPORT=pci` puts the disk on virtio-pci).
@@ -25,7 +33,10 @@
 mod agent;
 mod common;
 mod devices;
+mod fat;
 mod firmware;
+mod firmware_acpi;
+mod firmware_debug;
 mod idle;
 mod initrd;
 mod installer;
@@ -33,6 +44,8 @@ mod net;
 mod pci;
 mod rootfs;
 mod smp;
+mod uefi_dmem;
+mod uefi_linux;
 
 fn main() {
     let code = match run() {
@@ -58,9 +71,12 @@ fn run() -> Result<(), String> {
         "agent" => agent::run(),
         "smp" => smp::run(),
         "firmware" => firmware::run(),
+        "firmware-acpi" => firmware_acpi::run(),
+        "firmware-debug" => firmware_debug::run(),
+        "uefi-linux" => uefi_linux::run(),
         "installer" => installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, or installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, uefi-linux, or installer)"
         )),
     }
 }

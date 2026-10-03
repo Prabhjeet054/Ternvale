@@ -12,11 +12,15 @@ fn default_layout_is_aligned_and_does_not_overlap() {
         assert_eq!(region.base % 0x4000, 0, "{}", region.name);
         assert_eq!(region.size % 0x4000, 0, "{}", region.name);
     }
-    assert_eq!(layout.regions().len(), 10);
+    assert_eq!(layout.regions().len(), 11);
     assert!(layout
         .regions()
         .iter()
         .any(|region| region.name == "acpi" && region.base == super::ACPI_BASE));
+    assert!(layout
+        .regions()
+        .iter()
+        .any(|region| region.name == "fw-cfg" && region.base == super::FW_CFG_BASE));
     assert!(layout
         .regions()
         .iter()

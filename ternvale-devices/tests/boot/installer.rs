@@ -98,8 +98,9 @@ fn boot(
         }],
         nics: Vec::new(),
         serial_log: serial_log.to_path_buf(),
-        firmware: Some(assets_root().join("firmware/QEMU_EFI.fd")),
+        firmware: Some(crate::common::firmware()),
         nvram: Some(nvram.to_path_buf()),
+        firmware_tables: Some(ternvale_config::FirmwareTables::Fdt),
         vsock: None,
     };
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

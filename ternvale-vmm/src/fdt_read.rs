@@ -115,6 +115,7 @@ mod tests {
             initrd_end: 0x4200_1000,
             cpu_count: 2,
             firmware: false,
+            fw_cfg: false,
         };
         let all = nodes(&build_fdt(&fdt).expect("dtb"));
         let root = node(&all, "");

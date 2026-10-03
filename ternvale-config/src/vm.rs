@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
+use crate::firmware_tables::{self, FirmwareTables};
 use crate::VsockSection;
 
 const RAM_QUANTUM_MIB: u64 = 16;
@@ -71,6 +72,10 @@ pub struct VmConfig {
     /// used with `firmware`; defaults to [`default_nvram_path`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nvram: Option<PathBuf>,
+    /// `"acpi"` or `"fdt"`. Unset: `acpi` with `firmware`, else `fdt`. See
+    /// [`VmConfig::effective_firmware_tables`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub firmware_tables: Option<FirmwareTables>,
     /// Optional virtio-vsock device (and guest agent server).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vsock: Option<VsockSection>,
@@ -180,6 +185,7 @@ impl VmConfig {
         validate_cpus(self.cpus)?;
         validate_ram(self.ram_mib)?;
         self.validate_boot_source()?;
+        firmware_tables::validate(self.firmware_tables, self.firmware.is_some())?;
         if let Some(initrd) = &self.initrd {
             require_file("initrd", initrd)?;
         } else {
@@ -244,6 +250,13 @@ impl VmConfig {
             Some(path) => Ok(Some(path.clone())),
             None => default_nvram_path(&self.name).map(Some),
         }
+    }
+
+    /// The hardware description the OS gets: `firmware_tables`, else `acpi`
+    /// for a firmware boot and `fdt` for a direct kernel boot.
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
+    pub fn effective_firmware_tables(&self) -> FirmwareTables {
+        firmware_tables::resolve(self.firmware_tables, self.firmware.is_some())
     }
 
     /// Firmware boot needs `firmware`; a direct boot needs `kernel`.

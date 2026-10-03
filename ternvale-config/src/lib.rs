@@ -4,10 +4,12 @@
 //! unknown fields and runs validation before returning.
 
 mod error;
+mod firmware_tables;
 mod vm;
 mod vsock;
 
 pub use error::{ConfigError, TernvaleError};
+pub use firmware_tables::FirmwareTables;
 pub use vm::{default_nvram_path, Disk, Nic, VmConfig};
 pub use vsock::{VsockSection, MAX_UDS_DIR};
 
@@ -266,6 +268,36 @@ firmware = "{firmware}"
         ))
         .expect("direct");
         assert_eq!(direct.nvram_path().expect("path"), None);
+    }
+
+    #[test]
+    fn firmware_tables_parse_default_and_round_trip() {
+        use super::FirmwareTables;
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&firmware_only(&fix, "")).expect("default");
+        assert_eq!(config.firmware_tables, None);
+        assert_eq!(config.effective_firmware_tables(), FirmwareTables::Acpi);
+        assert!(!config
+            .to_toml()
+            .expect("serialize")
+            .contains("firmware_tables"));
+        let text = firmware_only(&fix, "firmware_tables = \"fdt\"");
+        let config = VmConfig::from_toml(&text).expect("fdt");
+        assert_eq!(config.effective_firmware_tables(), FirmwareTables::Fdt);
+        let again = VmConfig::from_toml(&config.to_toml().expect("serialize")).expect("reparse");
+        assert_eq!(again, config);
+        let direct = sample(&fix).replace(
+            &format!("firmware = \"{}\"", toml_path(&fix.path("firmware.fd"))),
+            "",
+        );
+        let config = VmConfig::from_toml(&direct).expect("direct");
+        assert_eq!(config.effective_firmware_tables(), FirmwareTables::Fdt);
+        let error = VmConfig::from_toml(&format!("firmware_tables = \"acpi\"\n{direct}"))
+            .expect_err("acpi without firmware");
+        assert!(matches!(error, ConfigError::AcpiWithoutFirmware), "{error}");
+        let error = VmConfig::from_toml(&firmware_only(&fix, "firmware_tables = \"ACPI\""))
+            .expect_err("unknown value");
+        assert!(matches!(error, ConfigError::Parse { .. }), "{error}");
     }
 
     #[test]

@@ -87,6 +87,10 @@ pub enum ConfigError {
     #[error("HOME is unset; set nvram explicitly")]
     NoHome,
 
+    /// `firmware_tables = "acpi"` on a direct kernel boot.
+    #[error("firmware_tables = \"acpi\" needs firmware (UEFI installs the ACPI tables)")]
+    AcpiWithoutFirmware,
+
     /// A `[vsock]` setting is out of range.
     #[error("{field}: {reason}")]
     InvalidVsock {
