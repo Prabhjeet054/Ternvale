@@ -1,4 +1,4 @@
-//! AML data objects: integers, `EisaId`, `Package`, and `Buffer`.
+//! AML data objects: integers, `EisaId`, strings, `Package`, and `Buffer`.
 //!
 //! ACPI 6.5 §20.2.3 (Data Objects Encoding) and §20.2.5.4:
 //!
@@ -8,6 +8,8 @@
 //! - `EisaId ("PNP0A08")` (§19.6.35) is a 32-bit integer: three letters
 //!   compressed to 5 bits each, then four hex digits, stored so the bytes in
 //!   memory read `41 D0 0A 08`.
+//! - String: `StringPrefix` (`0x0D`), ASCII bytes, `NullChar`. `_HID`
+//!   values that are not EISA IDs (`"MSFT0101"`) are strings.
 //! - DefPackage: `PackageOp PkgLength NumElements PackageElementList`, with
 //!   NumElements one byte (at most 255 elements).
 //! - DefBuffer: `BufferOp PkgLength BufferSize ByteList`, BufferSize an
@@ -28,6 +30,8 @@ pub const WORD_PREFIX: u8 = 0x0b;
 pub const DWORD_PREFIX: u8 = 0x0c;
 /// `QWordPrefix`.
 pub const QWORD_PREFIX: u8 = 0x0e;
+/// `StringPrefix`.
+pub const STRING_PREFIX: u8 = 0x0d;
 /// `BufferOp`.
 pub const BUFFER_OP: u8 = 0x11;
 /// `PackageOp`.
@@ -105,6 +109,23 @@ pub fn package(elements: &[Vec<u8>]) -> Result<Vec<u8>, AcpiError> {
     Ok(out)
 }
 
+/// `"text"` as an AML String: `StringPrefix`, the ASCII bytes (`0x01..=0x7f`),
+/// `NullChar` (§20.2.3).
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(text = %text))]
+pub fn string(text: &str) -> Result<Vec<u8>, AcpiError> {
+    if !text.bytes().all(|b| (0x01..=0x7f).contains(&b)) {
+        tracing::warn!(target: "ternvale::acpi", text = %text, "aml string has a non-ASCII or NUL byte");
+        return Err(AcpiError::BadConfig {
+            reason: format!("aml string {text:?} is not 7-bit ASCII without NUL"),
+        });
+    }
+    let mut out = Vec::with_capacity(text.len() + 2);
+    out.push(STRING_PREFIX);
+    out.extend_from_slice(text.as_bytes());
+    out.push(0);
+    Ok(out)
+}
+
 /// `Buffer () { bytes }`.
 #[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(len = bytes.len()))]
 pub fn buffer(bytes: &[u8]) -> Result<Vec<u8>, AcpiError> {
@@ -143,6 +164,17 @@ mod tests {
         for bad in ["PNP0A0", "pnp0a08", "PNP0A0G", "PN10A08", "PNP0A080"] {
             assert!(eisa_id_value(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn strings_are_prefixed_and_nul_terminated() {
+        assert_eq!(
+            string("MSFT0101").unwrap(),
+            [0x0d, b'M', b'S', b'F', b'T', b'0', b'1', b'0', b'1', 0x00]
+        );
+        assert_eq!(string("").unwrap(), [0x0d, 0x00]);
+        assert!(string("a\0b").is_err());
+        assert!(string("café").is_err());
     }
 
     #[test]

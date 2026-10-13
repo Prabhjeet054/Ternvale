@@ -6,10 +6,11 @@
 //! other; see `uefi_dmem`). The harness then walks EDK2's RSDP →
 //! XSDT → each table → the FADT's DSDT with `dmem <addr> <len>`. It compares
 //! every table with what `ternvale-acpi` builds for the same vCPU count. Tables
-//! without pointers (APIC, GTDT, MCFG, SPCR, DBG2, DSDT) must match byte for
+//! without pointers (APIC, GTDT, MCFG, SPCR, DBG2, TPM2, DSDT) must match byte for
 //! byte. The FADT may differ only in its checksum and the FACS/DSDT pointer
 //! fields that `AcpiTableDxe` rewrites. The XSDT is EDK2's own, so only its
-//! entry signatures are checked. Ends with `reset -s`.
+//! entry signatures are checked. EDK2 must also have sent `TPM2_Startup` to
+//! the TPM CRB (seen in the host log). Ends with `reset -s`.
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
@@ -26,7 +27,7 @@ use crate::uefi_dmem::{find, u64_at, Shell, ACPI_20_GUID, FDT_GUID};
 
 const CPUS: u32 = 2;
 /// Tables the XSDT must list (EDK2 rebuilds the XSDT from what it installed).
-const LISTED: [&str; 6] = ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2"];
+const LISTED: [&str; 7] = ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "TPM2"];
 /// FADT bytes `AcpiTableDxe` may rewrite: checksum, `FIRMWARE_CTRL`/`DSDT`,
 /// `X_FIRMWARE_CTRL`/`X_DSDT`.
 const FADT_REWRITTEN: [std::ops::Range<usize>; 3] = [9..10, 36..44, 132..148];
@@ -86,6 +87,7 @@ pub fn run() -> Result<(), String> {
         return Err(format!("exit={exit:?}\nlog={}", host.display()));
     }
     check_banner(&serial_log)?;
+    check_tpm_detected(&host)?;
     let report = compare(&walk)?;
     std::fs::write(log_dir.join("acpi-tables.txt"), &report)
         .map_err(|err| format!("write acpi-tables.txt: {err}"))?;
@@ -97,6 +99,26 @@ pub fn run() -> Result<(), String> {
         "boot harness passed"
     );
     drop(guard);
+    Ok(())
+}
+
+/// EDK2 finds the CRB through the DT's `tcg,tpm-tis-mmio` node, and `Tcg2Pei`
+/// sends it `TPM2_Startup` (command code 0x144) before the stub's error makes
+/// it give up. The RELEASE firmware prints nothing about TPMs on serial, so
+/// the host log's first-command milestone is the evidence.
+fn check_tpm_detected(host: &Path) -> Result<(), String> {
+    let log = std::fs::read_to_string(host)
+        .map_err(|err| format!("read host log {}: {err}", host.display()))?;
+    let startup = log.lines().any(|line| {
+        line.contains("tpm first command from the guest") && line.contains("code=0x144")
+    });
+    if !startup {
+        return Err(format!(
+            "edk2 never sent TPM2_Startup to the tpm crb\nlog={}",
+            host.display()
+        ));
+    }
+    tracing::info!(target: "ternvale::boot", "edk2 detected the tpm crb and sent TPM2_Startup");
     Ok(())
 }
 

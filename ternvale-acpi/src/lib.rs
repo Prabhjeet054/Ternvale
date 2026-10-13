@@ -1,9 +1,9 @@
 //! ACPI tables for ARM64 guests (ACPI 6.5).
 //!
 //! [`AcpiTables::build`] lays out an RSDP, XSDT, hardware-reduced FADT, MADT
-//! (GICv3), GTDT, MCFG, SPCR, DBG2, and a DSDT whose `\_SB` holds the PCIe
-//! root bridge `PCI0` at a base guest physical address, with every pointer
-//! resolved, from an
+//! (GICv3), GTDT, MCFG, SPCR, DBG2, TPM2 (CRB), and a DSDT whose `\_SB`
+//! holds the PCIe root bridge `PCI0` and the TPM device `TPM2` at a base
+//! guest physical address, with every pointer resolved, from an
 //! [`AcpiConfig`] the VMM fills from its platform map. [`AcpiTables::write`]
 //! hands each table to a guest-memory callback and logs its signature, length,
 //! and checksum at INFO on `ternvale::acpi`. [`walk`] reads a table set back
@@ -36,13 +36,14 @@ mod rsdp;
 mod sdt;
 mod spcr;
 mod tables;
+mod tpm2;
 mod verify;
 mod xsdt;
 
 pub use compare::{compare, render_markdown, signature_diff, Row};
 pub use config::{
-    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GicConfig, PciConfig, TimerConfig, UartConfig,
-    MAX_CPUS,
+    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GicConfig, PciConfig, TimerConfig, TpmConfig,
+    UartConfig, MAX_CPUS,
 };
 pub use dbg2::{dbg2, DBG2_REVISION, DBG2_SIGNATURE, PORT_SERIAL, SUBTYPE_PL011};
 pub use decode::{
@@ -78,6 +79,10 @@ pub use spcr::{
     spcr, BAUD_115200, INTERFACE_PL011, INTERRUPT_TYPE_GIC, SPCR_LEN, SPCR_REVISION, SPCR_SIGNATURE,
 };
 pub use tables::{AcpiTables, Table, BASE_ALIGN, SIGNATURES, TABLE_ALIGN};
+pub use tpm2::{
+    decode_tpm2, tpm2, tpm_device, Tpm2Info, PLATFORM_CLIENT, START_METHOD_CRB, TPM2_LEN,
+    TPM2_REVISION, TPM2_SIGNATURE, TPM_HID,
+};
 pub use verify::verify;
 pub use xsdt::{xsdt, xsdt_len, XSDT_REVISION, XSDT_SIGNATURE};
 

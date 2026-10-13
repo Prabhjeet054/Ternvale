@@ -22,6 +22,7 @@ mod psci;
 mod rtc;
 mod serial;
 mod smp;
+mod tpm;
 mod vcpu;
 mod watchdog;
 
@@ -53,8 +54,8 @@ pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
 pub use platform::{
     Layout, PlatformError, Region, ACPI_BASE, ACPI_SIZE, FLASH_BANK_SIZE, FLASH_CODE_BASE,
     FLASH_VARS_BASE, FW_CFG_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE,
-    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, RAM_BASE, RTC_BASE, UART_BASE, VIRTIO_MMIO_BASE,
-    VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
+    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, RAM_BASE, RTC_BASE, TPM_CRB_BASE, TPM_CRB_SIZE, UART_BASE,
+    VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
 pub use psci::{call as psci_call, PowerRequest, PsciAction, TRAP_PC_ADVANCE};
 pub use rtc::{Pl031, PL031_REG_SIZE, RTC_SPI};
@@ -62,6 +63,7 @@ pub use serial::SerialDevice;
 pub use smp::{dt_cpu_reg, mpidr, CpuPower, MPIDR_AFFINITY_MASK, MPIDR_RES1};
 /// The deadlock detector every mutex in this crate and `ternvale-devices` goes through.
 pub use ternvale_log::lockwatch;
+pub use tpm::TPM_DEVICE_NAME;
 pub use vcpu::{process_cpu_ms, ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStatsSource, VcpuStop};
 
 #[cfg(test)]

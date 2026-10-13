@@ -5,6 +5,7 @@ members = [
     "ternvale-config",
     "ternvale-hv",
     "ternvale-acpi",
+    "ternvale-tpm",
     "ternvale-vmm",
     "ternvale-devices",
     "ternvale-cli",

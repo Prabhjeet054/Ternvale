@@ -57,7 +57,7 @@ problem() {
 }
 
 # Tables every Ternvale set has (ternvale_acpi::SIGNATURES, file names).
-generated=(RSDP XSDT FACP DSDT APIC GTDT MCFG SPCR DBG2)
+generated=(RSDP XSDT FACP DSDT APIC GTDT MCFG SPCR DBG2 TPM2)
 
 sets=()
 while [[ $# -gt 0 ]]; do

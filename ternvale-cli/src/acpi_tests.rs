@@ -40,6 +40,7 @@ fn qemu_image_is_walked_and_written_per_signature() {
         "MCFG.dat",
         "SPCR.dat",
         "DBG2.dat",
+        "TPM2.dat",
         "tables.txt",
     ] {
         assert!(dir.join("qemu").join(name).exists(), "{name}");

@@ -153,7 +153,7 @@ fn edk2_installs_every_table_except_the_xsdt_at_any_address() {
             let signatures: Vec<&str> = installed.tables.iter().map(|(s, _)| s.as_str()).collect();
             assert_eq!(
                 signatures,
-                ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "DSDT"]
+                ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "TPM2", "DSDT"]
             );
             let xsdt_gpa = source.tables()[1].gpa;
             let moved = |gpa: u64| gpa - xsdt_gpa + tables_base;
@@ -189,7 +189,7 @@ fn edk2_installs_every_table_except_the_xsdt_at_any_address() {
                 .chunks(8)
                 .map(|e| u64::from_le_bytes(e.try_into().unwrap()))
                 .collect();
-            let listed: Vec<u64> = ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2"]
+            let listed: Vec<u64> = ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "TPM2"]
                 .iter()
                 .map(|s| moved(original(s).gpa))
                 .collect();
@@ -253,10 +253,10 @@ fn blobs_hold_offsets_and_zero_checksums() {
         .count();
     assert_eq!(
         pointers,
-        6 + 1 + 1,
-        "six XSDT entries, X_DSDT, RSDP XsdtAddress"
+        7 + 1 + 1,
+        "seven XSDT entries, X_DSDT, RSDP XsdtAddress"
     );
-    assert_eq!(checksums, 8 + 2, "eight SDTs, two RSDP checksums");
+    assert_eq!(checksums, 9 + 2, "nine SDTs, two RSDP checksums");
     assert!(
         matches!(&blobs.commands[0], LoaderCommand::Allocate { file, align: 16, zone: Zone::FSeg } if file == RSDP_FILE)
     );
@@ -345,7 +345,7 @@ fn a_missing_checksum_command_leaves_the_table_uninstalled() {
     .unwrap();
     assert_eq!(
         installed.tables.len(),
-        6,
+        7,
         "EDK2 skips a table whose bytes do not sum to zero"
     );
 }

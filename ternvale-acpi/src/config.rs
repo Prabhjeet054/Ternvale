@@ -42,6 +42,20 @@ pub struct AcpiConfig {
     pub pci: PciConfig,
     /// PL011 console and debug UART.
     pub uart: UartConfig,
+    /// TPM 2.0 CRB window (TPM2 table, DSDT `\_SB.TPM2`).
+    pub tpm: TpmConfig,
+}
+
+/// The TPM's Command Response Buffer interface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TpmConfig {
+    /// CRB window base (locality 0's page). Must end at or below 4 GiB.
+    pub crb_base: u64,
+    /// CRB window length (`_CRS` `Memory32Fixed`).
+    pub crb_len: u32,
+    /// Address of the CRB control area (`TPM_CRB_CTRL_REQ` of locality 0),
+    /// inside the window. The TPM2 table points here.
+    pub control_area: u64,
 }
 
 /// The root bridge's 32-bit MMIO window and INTx lines.
@@ -170,6 +184,20 @@ impl AcpiConfig {
         if let Some(spi) = pci.intx_spis.iter().find(|spi| spi_gsiv(**spi) > SPI_LAST) {
             return fail(format!("pci INTx SPI {spi} is past INTID {SPI_LAST}"));
         }
+        let tpm = self.tpm;
+        let tpm_end = tpm.crb_base.checked_add(u64::from(tpm.crb_len));
+        if tpm.crb_len == 0 || tpm_end.is_none_or(|end| end > 1 << 32) {
+            return fail(format!(
+                "tpm crb window {:#x}+{:#x} is empty or passes 4 GiB",
+                tpm.crb_base, tpm.crb_len
+            ));
+        }
+        if tpm.control_area < tpm.crb_base || tpm_end.is_none_or(|end| tpm.control_area >= end) {
+            return fail(format!(
+                "tpm control area {:#x} is outside the crb window {:#x}+{:#x}",
+                tpm.control_area, tpm.crb_base, tpm.crb_len
+            ));
+        }
         Ok(())
     }
 }
@@ -208,6 +236,11 @@ pub(crate) mod tests {
                 base: 0x0900_0000,
                 len: 0x1000,
                 spi: 1,
+            },
+            tpm: TpmConfig {
+                crb_base: 0x0914_0000,
+                crb_len: 0x5000,
+                control_area: 0x0914_0040,
             },
         }
     }
@@ -258,5 +291,15 @@ pub(crate) mod tests {
         let mut intx = sample(1);
         intx.pci.intx_spis[3] = 988;
         reject(intx, "pci INTx SPI 988");
+        let mut tpm = sample(1);
+        tpm.tpm.crb_len = 0;
+        reject(tpm, "tpm crb window");
+        let mut tpm = sample(1);
+        tpm.tpm.crb_base = 0xffff_e000;
+        tpm.tpm.control_area = 0xffff_e040;
+        reject(tpm, "passes 4 GiB");
+        let mut tpm = sample(1);
+        tpm.tpm.control_area = 0x0914_5000;
+        reject(tpm, "outside the crb window");
     }
 }

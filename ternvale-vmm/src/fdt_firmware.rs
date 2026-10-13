@@ -1,5 +1,5 @@
 //! DT nodes for the PL031 RTC and, on a firmware boot, the CFI flash banks
-//! and (with ACPI tables) fw_cfg.
+//! and (with ACPI tables) fw_cfg and the TPM.
 //!
 //! All match QEMU `virt` (`create_rtc`, `create_one_flash` with
 //! `virt_flash_fdt`'s single node covering two banks, `create_fw_cfg`).
@@ -9,9 +9,13 @@
 
 use vm_fdt::{FdtWriter, FdtWriterResult};
 
+use ternvale_tpm::CRB_WINDOW_SIZE;
+
 use super::reg;
 use crate::fw_cfg::FW_CFG_REG_SIZE;
-use crate::platform::{FLASH_BANK_SIZE, FLASH_CODE_BASE, FLASH_VARS_BASE, FW_CFG_BASE, RTC_BASE};
+use crate::platform::{
+    FLASH_BANK_SIZE, FLASH_CODE_BASE, FLASH_VARS_BASE, FW_CFG_BASE, RTC_BASE, TPM_CRB_BASE,
+};
 use crate::rtc::{PL031_REG_SIZE, RTC_SPI};
 
 /// GIC SPI, level-high.
@@ -61,6 +65,28 @@ pub(super) fn fw_cfg(w: &mut FdtWriter) -> FdtWriterResult<()> {
         base = format!("{FW_CFG_BASE:#x}"),
         size = format!("{FW_CFG_REG_SIZE:#x}"),
         "dtb fw-cfg node"
+    );
+    w.end_node(node)
+}
+
+/// The TPM CRB, for EDK2 only. ArmVirtPkg `PlatformPeiLib` (edk2-stable202308)
+/// sets `PcdTpmBaseAddress` from the first top-level `tcg,tpm-tis-mmio` node
+/// and installs the TPM-discovered PPI, which starts `Tcg2ConfigPei` and
+/// `Tcg2Pei`. Their `Tpm2DeviceLibDTpm` reads `TPM_CRB_INTF_ID` and picks the
+/// CRB interface itself, so the TIS compatible is only the discovery key; QEMU
+/// `virt` uses it for its own TPM node. Only `acpi`-mode trees carry it: there
+/// EDK2 hands the OS ACPI (the TPM2 table and `\_SB.TPM2`), never this DT. A
+/// DT-booted Linux would bind `tpm_tis` to it, which cannot drive a CRB.
+/// TODO(verify): newer EDK2 still keys TPM discovery on this compatible.
+pub(super) fn tpm(w: &mut FdtWriter) -> FdtWriterResult<()> {
+    let node = w.begin_node(&format!("tpm@{TPM_CRB_BASE:x}"))?;
+    w.property_string("compatible", "tcg,tpm-tis-mmio")?;
+    w.property_array_u32("reg", &reg(TPM_CRB_BASE, CRB_WINDOW_SIZE))?;
+    tracing::debug!(
+        target: "ternvale::boot",
+        base = format!("{TPM_CRB_BASE:#x}"),
+        size = format!("{CRB_WINDOW_SIZE:#x}"),
+        "dtb tpm node for firmware discovery"
     );
     w.end_node(node)
 }

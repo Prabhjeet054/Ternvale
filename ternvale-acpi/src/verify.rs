@@ -13,6 +13,7 @@ use crate::madt::{GICC_ENABLED, GIC_VERSION_3};
 use crate::sdt::SDT_HEADER_LEN;
 use crate::spcr::{INTERFACE_PL011, INTERRUPT_TYPE_GIC};
 use crate::tables::SIGNATURES;
+use crate::tpm2::{decode_tpm2, PLATFORM_CLIENT, START_METHOD_CRB};
 use crate::AcpiError;
 
 /// Collects mismatches.
@@ -157,6 +158,13 @@ pub fn verify(tables: &[DumpedTable], expected: &AcpiConfig) -> Result<(), AcpiE
             "DBG2 devices (type, subtype, base, size)",
             vec![(PORT_SERIAL, SUBTYPE_PL011, uart, expected.uart.len)],
             found,
+        );
+    }
+    if let Some(tpm2) = bytes("TPM2").and_then(|b| p.decoded("TPM2", decode_tpm2(b))) {
+        p.expect(
+            "TPM2 (platform class, control area, start method)",
+            (PLATFORM_CLIENT, expected.tpm.control_area, START_METHOD_CRB),
+            (tpm2.platform_class, tpm2.control_area, tpm2.start_method),
         );
     }
 

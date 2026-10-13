@@ -1,0 +1,17 @@
+[package]
+name = "ternvale-tpm"
+description = "TPM 2.0 Command Response Buffer (CRB) interface model for Ternvale guests."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed TpmError (library crates use thiserror).
+thiserror = "2"
+# Required project-wide logging facade (target ternvale::tpm).
+tracing = "0.1"
+
+[dev-dependencies]
+# Scoped subscriber that captures the TRACE command/response lines in unit tests.
+# Already built for ternvale-log.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }

@@ -138,7 +138,7 @@ fn data_tables_disassemble_cleanly_with_the_expected_fields() {
             .expect("table")
             .gpa
     };
-    let xsdt: Vec<String> = ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2"]
+    let xsdt: Vec<String> = ["FACP", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "TPM2"]
         .iter()
         .enumerate()
         .map(|(i, s)| format!("ACPI Table Address {i} : {:016X}", gpa(s)))
@@ -214,6 +214,18 @@ fn data_tables_disassemble_cleanly_with_the_expected_fields() {
                 "Address : 0000000009000000",
                 "Address Size : 00001000",
                 "Namepath : \".\"",
+            ],
+        ),
+        (
+            "TPM2",
+            vec![
+                "Table Length : 0000004C",
+                "Revision : 04",
+                "Platform Class : 0000",
+                "Control Address : 0000000009140040",
+                "Start Method : 07 [Command Response Buffer]",
+                "Minimum Log Length : 00000000",
+                "Log Address : 0000000000000000",
             ],
         ),
     ];

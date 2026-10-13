@@ -84,7 +84,7 @@ fn laid_out_tables_sum_to_zero_at_any_base() {
         u64::MAX - 0xffff,
     ] {
         let tables = AcpiTables::build(base, 0x1_0000, &sample(8)).expect("build");
-        assert_eq!(tables.tables().len(), 9);
+        assert_eq!(tables.tables().len(), 10);
         for table in tables.tables() {
             assert_eq!(
                 sum_mod_256(&table.bytes),

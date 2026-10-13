@@ -46,6 +46,15 @@ pub const FW_CFG_SIZE: u64 = HOST_PAGE_SIZE;
 pub const ACPI_BASE: u64 = 0x0910_0000;
 /// ACPI window: 128 KiB.
 pub const ACPI_SIZE: u64 = 0x0002_0000;
+/// TPM 2.0 CRB registers (TCG PC Client PTP §6.5.3): five 4 KiB locality pages.
+/// QEMU `virt` has no CRB (its TPM is `tpm-tis-device` on the platform bus),
+/// and the x86 PC Client address `0xfed40000` is guest RAM here, so this sits
+/// right after the ACPI window. The ACPI TPM2 table and `\_SB.TPM2._CRS` point
+/// here. TODO(verify): Windows on ARM accepts a CRB outside `0xfed40000`.
+pub const TPM_CRB_BASE: u64 = 0x0914_0000;
+/// TPM reservation: the `0x5000` CRB window rounded up to host pages. The
+/// device decodes only the first `0x5000` bytes.
+pub const TPM_CRB_SIZE: u64 = 0x8000;
 /// First virtio-mmio slot. QEMU `VIRT_MMIO`.
 pub const VIRTIO_MMIO_BASE: u64 = 0x0a00_0000;
 /// Slots in the virtio-mmio window.
@@ -132,6 +141,7 @@ impl Layout {
             region("rtc", RTC_BASE, RTC_SIZE),
             region("fw-cfg", FW_CFG_BASE, FW_CFG_SIZE),
             region("acpi", ACPI_BASE, ACPI_SIZE),
+            region("tpm-crb", TPM_CRB_BASE, TPM_CRB_SIZE),
             region("virtio-mmio", VIRTIO_MMIO_BASE, VIRTIO_MMIO_SIZE),
             region("pcie-mmio", PCIE_MMIO_BASE, PCIE_MMIO_SIZE),
             region("pcie-ecam", PCIE_ECAM_BASE, PCIE_ECAM_SIZE),

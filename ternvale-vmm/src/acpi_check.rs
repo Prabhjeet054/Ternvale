@@ -12,8 +12,9 @@
 
 use ternvale_acpi::{
     AcpiConfig, AcpiError, DumpedTable, EcamConfig, GicConfig, PciConfig, PsciConduit, TimerConfig,
-    UartConfig,
+    TpmConfig, UartConfig,
 };
+use ternvale_tpm::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE};
 
 use crate::fdt::{PL011_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI};
 use crate::gic_redist::REDIST_STRIDE;
@@ -21,7 +22,7 @@ use crate::machine::MachineError;
 use crate::pci::{ECAM_BUSES, PCI_INTX_SPI0};
 use crate::platform::{
     Layout, ACPI_BASE, ACPI_SIZE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, PCIE_ECAM_BASE,
-    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, UART_BASE,
+    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, TPM_CRB_BASE, UART_BASE,
 };
 
 /// DTB SPI of each swizzled INTx line, as `fdt_pci` writes them.
@@ -71,6 +72,11 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
             len: PL011_REG_SIZE as u32,
             spi: UART_SPI,
         },
+        tpm: TpmConfig {
+            crb_base: TPM_CRB_BASE,
+            crb_len: CRB_WINDOW_SIZE as u32,
+            control_area: TPM_CRB_BASE + CONTROL_AREA_OFFSET,
+        },
     }
 }
 
@@ -99,6 +105,7 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
     let buses = u64::from(ecam.end_bus) - u64::from(ecam.start_bus) + 1;
     let uart = config.uart;
     let uart_end = uart.base.saturating_add(u64::from(uart.len));
+    let tpm = config.tpm;
     let mut problems: Vec<String> = [
         region_problem(
             layout,
@@ -137,6 +144,21 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
             "uart",
             |base, size| uart.base >= base && uart_end <= base.saturating_add(size),
             format!("{:#x}+{:#x}", uart.base, uart.len),
+        ),
+        region_problem(
+            layout,
+            "TPM2/DSDT TPM2 _CRS",
+            "tpm-crb",
+            |base, size| {
+                tpm.crb_base == base
+                    && u64::from(tpm.crb_len) == CRB_WINDOW_SIZE
+                    && CRB_WINDOW_SIZE <= size
+                    && tpm.control_area == base + CONTROL_AREA_OFFSET
+            },
+            format!(
+                "{:#x}+{:#x} control area {:#x}",
+                tpm.crb_base, tpm.crb_len, tpm.control_area
+            ),
         ),
     ]
     .into_iter()

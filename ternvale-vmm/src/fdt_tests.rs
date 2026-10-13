@@ -68,6 +68,29 @@ fn fw_cfg_node_appears_only_for_acpi_firmware_tables() {
 }
 
 #[test]
+fn tpm_node_appears_only_for_acpi_firmware_tables() {
+    let mut fdt = sample();
+    assert!(!dtc_dts(&build_fdt(&fdt).expect("dtb")).contains("tpm"));
+    fdt.firmware = true;
+    let plain = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    assert!(
+        !plain.contains("tpm"),
+        "fdt mode hands this DT to the OS\n{plain}"
+    );
+
+    fdt.fw_cfg = true;
+    let acpi = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    let start = acpi.find("tpm@9140000 {").expect("tpm node");
+    let node = &acpi[start..start + acpi[start..].find("};").expect("node end")];
+    assert!(node.contains("compatible = \"tcg,tpm-tis-mmio\""), "{node}");
+    assert!(
+        node.contains("reg = <0x00 0x9140000 0x00 0x5000>"),
+        "{node}"
+    );
+    assert_eq!(acpi.matches("tcg,tpm-tis-mmio").count(), 1, "{acpi}");
+}
+
+#[test]
 fn blob_contains_the_platform_nodes() {
     let blob = build_fdt(&sample()).expect("dtb");
     assert_eq!(&blob[..4], &[0xd0, 0x0d, 0xfe, 0xed]);

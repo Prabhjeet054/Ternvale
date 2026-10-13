@@ -1,7 +1,7 @@
 //! Boots a configured guest and runs it until PSCI powers it off.
 //!
 //! Order: config, guest RAM (plus the firmware code bank; ACPI tables and fw_cfg when
-//! `firmware_tables = "acpi"`), GIC, attached devices, UART, PL031, variable flash, PCI ECAM/BAR
+//! `firmware_tables = "acpi"`), GIC, attached devices, UART, PL031, variable flash, TPM CRB, PCI ECAM/BAR
 //! windows on the MMIO bus, DTB, then one host thread per vCPU
 //! (`machine_vcpu.rs`). CPU 0 loads Linux or enters UEFI at GPA 0
 //! (`machine_images.rs`); the others start on PSCI `CPU_ON`. Host stdin goes straight into the shared UART, which raises
@@ -292,6 +292,7 @@ impl Machine {
         for (base, size, device) in devices.into_iter().chain(fw_cfg) {
             bus.register(base, size, device)?;
         }
+        crate::tpm::register(&mut bus)?;
         attached.pci.register(&mut bus)?;
         // PCI functions (and their guest-memory handles) must die with the bus, before the VM.
         drop(attached);

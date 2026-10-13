@@ -1,8 +1,9 @@
 //! Lays out the ACPI tables in one guest region and writes them.
 //!
 //! Order from the region base, each table 8-byte aligned: RSDP, XSDT, FACP,
-//! DSDT, APIC, GTDT, MCFG, SPCR, DBG2 (the order [`crate::walk`] reads them
-//! back in). The XSDT lists FACP, APIC, GTDT, MCFG, SPCR, and DBG2; the
+//! DSDT, APIC, GTDT, MCFG, SPCR, DBG2, TPM2 (the order [`crate::walk`] reads
+//! them back in). The XSDT lists FACP, APIC, GTDT, MCFG, SPCR, DBG2, and TPM2;
+//! the
 //! FADT's `X_DSDT` points at the DSDT. Tables without pointers are encoded
 //! first, then every address is laid out, then the FADT, XSDT, and RSDP are
 //! built once with their final pointers.
@@ -19,15 +20,16 @@ use crate::mcfg::mcfg;
 use crate::rsdp::{rsdp, RSDP_CHECKSUM_OFFSET, RSDP_LEN};
 use crate::sdt::{byte_sum, SDT_CHECKSUM_OFFSET};
 use crate::spcr::spcr;
+use crate::tpm2::tpm2;
 use crate::xsdt::{xsdt, xsdt_len};
 use crate::AcpiError;
 
 /// Signatures in address order.
-pub const SIGNATURES: [&str; 9] = [
-    "RSD PTR ", "XSDT", "FACP", "DSDT", "APIC", "GTDT", "MCFG", "SPCR", "DBG2",
+pub const SIGNATURES: [&str; 10] = [
+    "RSD PTR ", "XSDT", "FACP", "DSDT", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "TPM2",
 ];
 /// Tables the XSDT lists.
-const XSDT_ENTRIES: usize = 6;
+const XSDT_ENTRIES: usize = 7;
 
 /// Alignment of every table after the RSDP.
 pub const TABLE_ALIGN: u64 = 8;
@@ -85,12 +87,13 @@ impl AcpiTables {
             return Err(AcpiError::Misaligned { base });
         }
         config.validate()?;
-        let leaves: [(&'static str, Vec<u8>); 5] = [
+        let leaves: [(&'static str, Vec<u8>); XSDT_ENTRIES - 1] = [
             ("APIC", madt(config)?),
             ("GTDT", gtdt(&config.timer)?),
             ("MCFG", mcfg(&config.ecam)?),
             ("SPCR", spcr(&config.uart)?),
             ("DBG2", dbg2(&config.uart)?),
+            ("TPM2", tpm2(&config.tpm)?),
         ];
         let dsdt = dsdt(config)?;
         let overflow = || {

@@ -39,7 +39,7 @@ fn built_tables_verify_against_their_config() {
     let config = sample(4);
     let tables = dumped(&config);
     let names: Vec<_> = tables.iter().map(|t| t.signature.as_str()).collect();
-    assert_eq!(names.len(), 9, "{names:?}");
+    assert_eq!(names.len(), 10, "{names:?}");
     verify(&tables, &config).expect("no drift");
 }
 
@@ -53,6 +53,7 @@ fn every_drifted_field_is_named() {
     tamper(&mut tables, "MCFG", 55, &[7]);
     tamper(&mut tables, "SPCR", 44, &0x0900_1000u64.to_le_bytes());
     tamper(&mut tables, "DBG2", 44 + 34, &0x2000u32.to_le_bytes());
+    tamper(&mut tables, "TPM2", 48, &8u32.to_le_bytes());
     let found = problems(&tables, &config);
     let text = found.join("\n");
     for needle in [
@@ -61,10 +62,11 @@ fn every_drifted_field_is_named() {
         "MCFG allocations",
         "SPCR base",
         "DBG2 devices",
+        "TPM2 (platform class, control area, start method): expected (0, 9140040, 7), found (0, 9140040, 8)",
     ] {
         assert!(text.contains(needle), "missing {needle:?} in\n{text}");
     }
-    assert_eq!(found.len(), 5, "{text}");
+    assert_eq!(found.len(), 6, "{text}");
 }
 
 #[test]

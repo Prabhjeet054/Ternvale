@@ -41,6 +41,14 @@ fn config_comes_from_the_platform_constants() {
         (config.uart.base, config.uart.len, config.uart.spi),
         (0x0900_0000, 0x1000, 1)
     );
+    assert_eq!(
+        (
+            config.tpm.crb_base,
+            config.tpm.crb_len,
+            config.tpm.control_area
+        ),
+        (0x0914_0000, 0x5000, 0x0914_0040)
+    );
     assert!(platform_problems(&config, &Layout::virt(0)).is_empty());
 }
 
@@ -86,6 +94,7 @@ fn config_that_leaves_the_platform_map_is_named() {
     config.gic.redist_len = 0x2_0000;
     config.ecam.end_bus = 31;
     config.uart.base = 0x0900_3800;
+    config.tpm.control_area = TPM_CRB_BASE + 0x1040;
     let text = platform_problems(&config, &layout).join("\n");
     assert!(
         text.contains("GICD: platform gic-dist is 0x8000000+0x10000, tables say 0x8010000"),
@@ -94,6 +103,10 @@ fn config_that_leaves_the_platform_map_is_named() {
     assert!(text.contains("GICR: platform gic-redist"), "{text}");
     assert!(text.contains("MCFG: platform pcie-ecam"), "{text}");
     assert!(text.contains("SPCR/DBG2 UART: platform uart"), "{text}");
+    assert!(
+        text.contains("TPM2/DSDT TPM2 _CRS: platform tpm-crb is 0x9140000+0x8000, tables say 0x9140000+0x5000 control area 0x9141040"),
+        "{text}"
+    );
 
     let many = acpi_config(200);
     let text = platform_problems(&many, &layout).join("\n");

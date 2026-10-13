@@ -12,11 +12,17 @@ fn default_layout_is_aligned_and_does_not_overlap() {
         assert_eq!(region.base % 0x4000, 0, "{}", region.name);
         assert_eq!(region.size % 0x4000, 0, "{}", region.name);
     }
-    assert_eq!(layout.regions().len(), 11);
+    assert_eq!(layout.regions().len(), 12);
     assert!(layout
         .regions()
         .iter()
         .any(|region| region.name == "acpi" && region.base == super::ACPI_BASE));
+    assert!(layout
+        .regions()
+        .iter()
+        .any(|region| region.name == "tpm-crb"
+            && region.base == super::TPM_CRB_BASE
+            && region.size >= ternvale_tpm::CRB_WINDOW_SIZE));
     assert!(layout
         .regions()
         .iter()

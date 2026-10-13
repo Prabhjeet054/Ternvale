@@ -742,6 +742,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ternvale-tpm"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ternvale-vmm"
 version = "0.1.0"
 dependencies = [
@@ -751,6 +760,7 @@ dependencies = [
  "ternvale-config",
  "ternvale-hv",
  "ternvale-log",
+ "ternvale-tpm",
  "thiserror",
  "tracing",
  "tracing-subscriber",

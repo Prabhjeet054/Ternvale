@@ -4,6 +4,8 @@
 //!   the length): ASL `WordBusNumber` when the resource type is 2.
 //! - DWord Address Space Descriptor (§6.4.3.5.2, tag `0x87`, 23 bytes after
 //!   the length): ASL `DWordMemory` when the resource type is 0.
+//! - 32-Bit Fixed Memory Range Descriptor (§6.4.3.4, tag `0x86`, 9 bytes
+//!   after the length): ASL `Memory32Fixed`.
 //! - End Tag (§6.4.2.9, `0x79` + checksum). A zero checksum means "ignore";
 //!   iasl writes zero too.
 //!
@@ -19,6 +21,10 @@ use crate::AcpiError;
 pub const DWORD_ADDRESS_TAG: u8 = 0x87;
 /// Large item tag of the Word Address Space Descriptor.
 pub const WORD_ADDRESS_TAG: u8 = 0x88;
+/// Large item tag of the 32-Bit Fixed Memory Range Descriptor.
+pub const MEMORY32_FIXED_TAG: u8 = 0x86;
+/// 32-Bit Fixed Memory Range information byte: `_RW` = 1 (read/write).
+pub const MEMORY32_READ_WRITE: u8 = 0x01;
 /// Small item End Tag (type 0xF, length 1).
 pub const END_TAG: u8 = 0x79;
 /// Resource type: memory range.
@@ -119,6 +125,35 @@ pub fn dword_memory(usage: Usage, base: u64, len: u64) -> Result<Vec<u8>, AcpiEr
     Ok(out)
 }
 
+/// `Memory32Fixed (ReadWrite, base, len)`: tag `0x86`, length 9, `_RW` = 1,
+/// then base and length (§6.4.3.4). The range must be non-empty and end at or
+/// below 4 GiB.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::acpi",
+    skip_all,
+    fields(base = %format!("{base:#x}"), len = %format!("{len:#x}"))
+)]
+pub fn memory32_fixed(base: u64, len: u64) -> Result<Vec<u8>, AcpiError> {
+    let end = base.checked_add(len);
+    let (Ok(base32), Ok(len32), Some(true)) = (
+        u32::try_from(base),
+        u32::try_from(len),
+        end.map(|end| end <= 1 << 32),
+    ) else {
+        return Err(bad(format!(
+            "memory {base:#x}+{len:#x} does not fit a Memory32Fixed descriptor"
+        )));
+    };
+    if len == 0 {
+        return Err(bad(format!("memory {base:#x} has zero length")));
+    }
+    let mut out = vec![MEMORY32_FIXED_TAG, 9, 0, MEMORY32_READ_WRITE];
+    out.extend_from_slice(&base32.to_le_bytes());
+    out.extend_from_slice(&len32.to_le_bytes());
+    Ok(out)
+}
+
 /// `ResourceTemplate () { descriptors }`: a Buffer holding the descriptors
 /// and an End Tag.
 #[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(descriptors = descriptors.len()))]
@@ -172,6 +207,23 @@ mod tests {
         assert!(dword_memory(Usage::Producer, 0xffff_f000, 0x2000).is_err());
         assert!(dword_memory(Usage::Producer, 0xffff_f000, 0x1000).is_ok());
         assert!(dword_memory(Usage::Producer, u64::MAX, 2).is_err());
+    }
+
+    #[test]
+    fn fixed_memory_descriptor_matches_the_spec_layout() {
+        assert_eq!(
+            memory32_fixed(0x0914_0000, 0x5000).unwrap(),
+            [
+                0x86, 0x09, 0x00, // tag, length 9
+                0x01, // read/write
+                0x00, 0x00, 0x14, 0x09, // base
+                0x00, 0x50, 0x00, 0x00, // length
+            ]
+        );
+        assert!(memory32_fixed(0x1000, 0).is_err());
+        assert!(memory32_fixed(0xffff_f000, 0x2000).is_err());
+        assert!(memory32_fixed(0xffff_f000, 0x1000).is_ok());
+        assert!(memory32_fixed(u64::MAX, 2).is_err());
     }
 
     #[test]

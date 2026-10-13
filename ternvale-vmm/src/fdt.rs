@@ -54,7 +54,8 @@ pub struct GuestFdt {
     /// UEFI boot: add the `cfi-flash` node and leave `/chosen` to the firmware
     /// (only `stdout-path`; no bootargs or initrd).
     pub firmware: bool,
-    /// Add the `qemu,fw-cfg-mmio` node, so EDK2 finds the ACPI loader files
+    /// Add the `qemu,fw-cfg-mmio` node, so EDK2 finds the ACPI loader files,
+    /// and the `tcg,tpm-tis-mmio` node EDK2 finds the TPM CRB by
     /// (`firmware_tables = "acpi"`).
     pub fw_cfg: bool,
 }
@@ -123,6 +124,7 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     }
     if fdt.fw_cfg {
         firmware_node::fw_cfg(&mut w)?;
+        firmware_node::tpm(&mut w)?;
     }
     w.end_node(root)?;
     let blob = w.finish()?;

@@ -195,7 +195,7 @@ mod tests {
             rsdp.as_slice().try_into().unwrap()
         ));
         let xsdt_gpa = u64_at(&rsdp, ternvale_acpi::RSDP_XSDT_OFFSET);
-        let xsdt = read(&memory, xsdt_gpa, ternvale_acpi::xsdt_len(6));
+        let xsdt = read(&memory, xsdt_gpa, ternvale_acpi::xsdt_len(7));
         assert_eq!(&xsdt[..4], b"XSDT");
         assert_eq!(ternvale_acpi::byte_sum(&xsdt), 0);
         let fadt_gpa = u64_at(&xsdt, ternvale_acpi::SDT_HEADER_LEN);

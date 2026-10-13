@@ -25,7 +25,7 @@ fn tables_are_ordered_aligned_and_do_not_overlap() {
     assert_eq!(names, SIGNATURES);
     assert_eq!(
         names,
-        ["RSD PTR ", "XSDT", "FACP", "DSDT", "APIC", "GTDT", "MCFG", "SPCR", "DBG2"]
+        ["RSD PTR ", "XSDT", "FACP", "DSDT", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "TPM2"]
     );
     assert_eq!(tables.rsdp_gpa(), BASE);
     let mut end = BASE;
@@ -42,11 +42,11 @@ fn tables_are_ordered_aligned_and_do_not_overlap() {
 fn pointers_chain_rsdp_to_every_table() {
     let tables = built();
     let [rsdp, xsdt, fadt, dsdt, rest @ ..] = tables.tables() else {
-        panic!("expected nine tables");
+        panic!("expected ten tables");
     };
     assert_eq!(u64_at(&rsdp.bytes, RSDP_XSDT_OFFSET), xsdt.gpa);
-    assert_eq!(xsdt.bytes.len(), SDT_HEADER_LEN + 8 * 6);
-    let listed: Vec<u64> = (0..6)
+    assert_eq!(xsdt.bytes.len(), SDT_HEADER_LEN + 8 * 7);
+    let listed: Vec<u64> = (0..7)
         .map(|i| u64_at(&xsdt.bytes, SDT_HEADER_LEN + 8 * i))
         .collect();
     let mut expected = vec![fadt.gpa];
