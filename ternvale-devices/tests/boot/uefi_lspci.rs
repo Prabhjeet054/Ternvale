@@ -149,6 +149,7 @@ fn boot(
         nvram: Some(log_dir.join(format!("nvram-{label}.fd"))),
         firmware_tables: Some(tables),
         vsock: None,
+        tpm: None,
     };
     tracing::info!(target: "ternvale::boot", tables = label, serial = %serial_log.display(), "uefi lspci boot");
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;

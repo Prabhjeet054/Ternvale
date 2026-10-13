@@ -5,11 +5,13 @@
 
 mod error;
 mod firmware_tables;
+mod tpm;
 mod vm;
 mod vsock;
 
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
+pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
 pub use vm::{default_nvram_path, Disk, Nic, VmConfig};
 pub use vsock::{VsockSection, MAX_UDS_DIR};
 

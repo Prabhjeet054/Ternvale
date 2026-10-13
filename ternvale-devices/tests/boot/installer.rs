@@ -102,6 +102,7 @@ fn boot(
         nvram: Some(nvram.to_path_buf()),
         firmware_tables: Some(ternvale_config::FirmwareTables::Fdt),
         vsock: None,
+        tpm: None,
     };
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));

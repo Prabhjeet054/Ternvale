@@ -50,6 +50,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         nvram: None,
         firmware_tables: None,
         vsock,
+        tpm: None,
     }
 }
 

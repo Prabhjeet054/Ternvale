@@ -40,3 +40,6 @@ ternvale-log = { path = "../ternvale-log" }
 ternvale-config = { path = "../ternvale-config" }
 # Expected ACPI tables for the firmware-acpi boot scenario (what EDK2 installed vs the builder).
 ternvale-acpi = { path = "../ternvale-acpi" }
+# firmware-tpm boot scenario: read the TPM identity from the swtpm state file host-side
+# between boots (workspace crate, already built through ternvale-vmm).
+ternvale-tpm = { path = "../ternvale-tpm" }

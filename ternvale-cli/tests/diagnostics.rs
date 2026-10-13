@@ -82,9 +82,20 @@ fn doctor_passes_signed_and_fails_without_the_entitlement() {
             signed.stdout
         );
     }
-    assert!(signed
-        .stdout
-        .ends_with("6 passed, 0 warnings, 0 failed, 0 skipped\n"));
+    // swtpm is optional: PASS when installed, WARN otherwise.
+    let swtpm = usize::from(ternvale_tpm::find_swtpm(None).is_ok());
+    let totals = |passed: usize, failed: usize, skipped: usize| {
+        format!(
+            "{} passed, {} warnings, {failed} failed, {skipped} skipped\n",
+            passed + swtpm,
+            1 - swtpm
+        )
+    };
+    assert!(
+        signed.stdout.ends_with(&totals(6, 0, 0)),
+        "{}",
+        signed.stdout
+    );
 
     let bare = harness.out.join("ternvale-no-entitlement");
     std::fs::copy(&harness.bin, &bare).expect("copy binary");
@@ -118,10 +129,7 @@ fn doctor_passes_signed_and_fails_without_the_entitlement() {
     );
     assert!(stdout.contains(&format!("fix: Sign it: `codesign --sign - --force --entitlements entitlements/ternvale.entitlements {}`", bare.display())), "{stdout}");
     assert!(stdout.contains("SKIP  GICv3"), "{stdout}");
-    assert!(
-        stdout.ends_with("3 passed, 0 warnings, 2 failed, 1 skipped\n"),
-        "{stdout}"
-    );
+    assert!(stdout.ends_with(&totals(3, 2, 1)), "{stdout}");
 }
 
 #[test]

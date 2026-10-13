@@ -1,12 +1,16 @@
 //! TPM 2.0 CRB at [`crate::platform::TPM_CRB_BASE`] on the MMIO bus.
 //!
-//! The register model lives in `ternvale-tpm`; this module only adapts it to
-//! [`MmioDevice`]. Commands complete synchronously inside the `START` write and
-//! get stub responses (`ternvale_tpm::StubBackend`). Guests find the device
-//! through the ACPI TPM2 table and `\_SB.TPM2` (`firmware_tables = "acpi"`);
-//! there is no device tree node, so a DT-only guest never probes it.
+//! The register model lives in `ternvale-tpm`; this module adapts it to
+//! [`MmioDevice`] and picks the command backend from `[tpm]` (docs/TPM.md):
+//! swtpm over its socket interface, with state in `<nvram>.swtpm`, or the
+//! stub that answers every command with `TPM_RC_COMMAND_CODE`. Guests find
+//! the device through the ACPI TPM2 table and `\_SB.TPM2`
+//! (`firmware_tables = "acpi"`); the acpi-only `tpm@` DT node exists for
+//! EDK2. A guest without ACPI never sees the TPM, so it always gets the stub
+//! and no swtpm is started.
 
-use ternvale_tpm::{StubBackend, TpmCrb, CRB_WINDOW_SIZE};
+use ternvale_config::{FirmwareTables, TpmBackendKind, VmConfig};
+use ternvale_tpm::{StubBackend, SwtpmBackend, TpmBackend, TpmCrb, CRB_WINDOW_SIZE};
 
 use crate::acpi::BusDevice;
 use crate::machine::MachineError;
@@ -32,18 +36,55 @@ impl MmioDevice for TpmCrb {
     }
 }
 
-/// The CRB with a stub command backend, ready for [`crate::MmioBus::register`].
-#[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(base = %format!("{TPM_CRB_BASE:#x}")))]
-pub(crate) fn device() -> Result<BusDevice, MachineError> {
-    let crb = TpmCrb::new(TPM_CRB_BASE, Box::new(StubBackend::new()))
+/// The command backend `config` asks for. `auto` falls back to the stub when
+/// swtpm is missing or too old; any other swtpm failure (bad state file,
+/// lock held by another VM, start-up error) stops the VM rather than hand the
+/// guest a TPM with a different identity.
+#[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(vm = %config.name))]
+pub(crate) fn backend_for(config: &VmConfig) -> Result<Box<dyn TpmBackend>, MachineError> {
+    let section = config.tpm_section();
+    let tables = config.effective_firmware_tables();
+    let state = match (section.backend, tables, config.tpm_state_path()?) {
+        (TpmBackendKind::Stub, _, _) => {
+            tracing::info!(target: "ternvale::tpm", "tpm backend is the stub ([tpm] backend = \"stub\"); every command gets TPM_RC_COMMAND_CODE");
+            return Ok(Box::new(StubBackend::new()));
+        }
+        (_, FirmwareTables::Acpi, Some(state)) => state,
+        (backend, tables, _) => {
+            tracing::debug!(target: "ternvale::tpm", backend = %backend, firmware_tables = %tables, "guest cannot see the tpm without acpi; stub backend, swtpm not started");
+            return Ok(Box::new(StubBackend::new()));
+        }
+    };
+    match SwtpmBackend::start(section.swtpm.as_deref(), &state) {
+        Ok(backend) => Ok(Box::new(backend)),
+        Err(error) if section.backend == TpmBackendKind::Auto && error.is_unavailable() => {
+            tracing::warn!(
+                target: "ternvale::tpm",
+                error = %error,
+                "swtpm unavailable; the guest TPM answers every command with an error (no measured boot, Windows 11 will not install). Install swtpm with `brew install swtpm`; `ternvale doctor` checks it"
+            );
+            Ok(Box::new(StubBackend::new()))
+        }
+        Err(error) => {
+            tracing::error!(target: "ternvale::tpm", error = %error, state = %state.display(), "swtpm backend failed");
+            Err(MachineError::Attach(format!("tpm swtpm backend: {error}")))
+        }
+    }
+}
+
+/// The CRB over `backend`, ready for [`crate::MmioBus::register`].
+#[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(base = %format!("{TPM_CRB_BASE:#x}"), backend = backend.name()))]
+pub(crate) fn device(backend: Box<dyn TpmBackend>) -> Result<BusDevice, MachineError> {
+    let crb = TpmCrb::new(TPM_CRB_BASE, backend)
         .map_err(|error| MachineError::Attach(format!("tpm crb: {error}")))?;
     Ok((TPM_CRB_BASE, CRB_WINDOW_SIZE, Box::new(crb)))
 }
 
-/// Put the CRB on `bus` at [`TPM_CRB_BASE`].
-#[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all)]
-pub(crate) fn register(bus: &mut MmioBus) -> Result<(), MachineError> {
-    let (base, size, crb) = device()?;
+/// Put the CRB, with the backend `config` asks for, on `bus` at
+/// [`TPM_CRB_BASE`].
+#[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(vm = %config.name))]
+pub(crate) fn register(bus: &mut MmioBus, config: &VmConfig) -> Result<(), MachineError> {
+    let (base, size, crb) = device(backend_for(config)?)?;
     bus.register(base, size, crb)?;
     tracing::debug!(
         target: "ternvale::tpm",
@@ -57,3 +98,7 @@ pub(crate) fn register(bus: &mut MmioBus) -> Result<(), MachineError> {
 #[cfg(test)]
 #[path = "tpm_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tpm_backend_tests.rs"]
+mod backend_tests;

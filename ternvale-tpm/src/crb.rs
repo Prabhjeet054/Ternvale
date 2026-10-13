@@ -7,9 +7,12 @@
 //! `TPM_CRB_CTRL_START`, poll until `START` reads 0, read the response from
 //! the same buffer, write `goIdle`, relinquish.
 //!
-//! Commands complete inside the `START` write, so `START` never reads 1 and
-//! cancel has nothing to stop. Only the active locality's `START` runs a
-//! command. One data buffer backs all five pages, and the buffer and
+//! A command runs on the backend inline, inside the `START` write, or on a
+//! worker thread for a backend with host I/O (`crb_command.rs`,
+//! `worker.rs`); then `START` reads 1 until the response arrives, and buffer
+//! or `START` writes meanwhile are ignored. Cancel is not forwarded: a
+//! command always runs to completion. Only the active locality's `START`
+//! runs a command. One data buffer backs all five pages, and the buffer and
 //! `CTRL_REQ` accept any locality's writes, as in QEMU.
 //! TODO(verify): whether the PTP requires per-locality buffers or dropping
 //! data-buffer writes from a locality that is not active.
@@ -20,12 +23,10 @@
 //! window. Anything else logs WARN, reads 0 and writes nothing. Every command
 //! and response byte stream is logged at TRACE on `ternvale::tpm`.
 
-use crate::backend::{
-    error_response, hex, CommandHeader, TpmBackend, HEADER_LEN, RC_COMMAND_SIZE, RC_FAILURE,
-    ST_NO_SESSIONS,
-};
+use crate::backend::TpmBackend;
 use crate::locality::Localities;
 use crate::regs::*;
+use crate::worker::Runner;
 use crate::TpmError;
 
 /// The CRB interface of one TPM.
@@ -36,7 +37,8 @@ pub struct TpmCrb {
     cancel: u32,
     int_enable: u32,
     buffer: Vec<u8>,
-    backend: Box<dyn TpmBackend>,
+    runner: Runner,
+    pending: Option<command::Pending>,
     commands: u64,
 }
 
@@ -47,7 +49,8 @@ impl std::fmt::Debug for TpmCrb {
             .field("base", &format_args!("{:#x}", self.base))
             .field("active", &self.localities.active())
             .field("idle", &self.idle)
-            .field("backend", &self.backend.name())
+            .field("backend", &self.runner.name())
+            .field("running", &self.pending.is_some())
             .field("commands", &self.commands)
             .finish()
     }
@@ -55,7 +58,8 @@ impl std::fmt::Debug for TpmCrb {
 
 impl TpmCrb {
     /// A CRB at guest physical `base` (page aligned) running commands on
-    /// `backend`. Starts idle with no locality assigned.
+    /// `backend` (on a worker thread if it has host I/O). Starts idle with no
+    /// locality assigned.
     #[tracing::instrument(
         level = "debug",
         target = "ternvale::tpm",
@@ -71,13 +75,15 @@ impl TpmCrb {
             tracing::warn!(target: "ternvale::tpm", base = %format!("{base:#x}"), "tpm crb window overflows");
             return Err(TpmError::Overflow { base });
         }
+        let runner = Runner::new(backend)?;
         tracing::info!(
             target: "ternvale::tpm",
             base = %format!("{base:#x}"),
             size = %format!("{CRB_WINDOW_SIZE:#x}"),
             control_area = %format!("{:#x}", base + CONTROL_AREA_OFFSET),
             buffer_bytes = DATA_BUFFER_SIZE,
-            backend = backend.name(),
+            backend = runner.name(),
+            worker = runner.is_worker(),
             "tpm crb ready"
         );
         Ok(Self {
@@ -87,7 +93,8 @@ impl TpmCrb {
             cancel: 0,
             int_enable: 0,
             buffer: vec![0; DATA_BUFFER_SIZE],
-            backend,
+            runner,
+            pending: None,
             commands: 0,
         })
     }
@@ -107,6 +114,7 @@ impl TpmCrb {
     /// Read `size` bytes at `offset` from the window base.
     #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip(self), fields(offset = %format!("{offset:#x}")))]
     pub fn read(&mut self, offset: u64, size: u8) -> u64 {
+        self.settle();
         let Some((locality, reg)) = check_access(offset, size, "read") else {
             return 0;
         };
@@ -136,10 +144,15 @@ impl TpmCrb {
         fields(offset = %format!("{offset:#x}"))
     )]
     pub fn write(&mut self, offset: u64, size: u8, value: u64) {
+        self.settle();
         let Some((locality, reg)) = check_access(offset, size, "write") else {
             return;
         };
         tracing::trace!(target: "ternvale::tpm", locality, reg = %format!("{reg:#x}"), size, value = %format!("{value:#x}"), direction = "write", "tpm crb access");
+        if self.pending.is_some() && (reg >= DATA_BUFFER || reg & !3 == CTRL_START) {
+            tracing::warn!(target: "ternvale::tpm", locality, reg = %format!("{reg:#x}"), "tpm buffer or START write while a command runs ignored");
+            return;
+        }
         let len = usize::from(size);
         if reg >= DATA_BUFFER {
             let at = (reg - DATA_BUFFER) as usize;
@@ -171,13 +184,14 @@ impl TpmCrb {
             INTF_ID_LO => INTF_ID_LOW,
             INTF_ID_HI => INTF_ID_HIGH,
             CTRL_STS if self.idle => CTRL_STS_IDLE,
+            CTRL_START if self.pending.is_some() => START_INVOKE,
             CTRL_CANCEL => self.cancel,
             INT_ENABLE => self.int_enable,
             CMD_SIZE | RSP_SIZE => DATA_BUFFER_SIZE as u32,
             CMD_LADDR | RSP_ADDR_LO => self.buffer_gpa(locality) as u32,
             CMD_HADDR | RSP_ADDR_HI => (self.buffer_gpa(locality) >> 32) as u32,
-            // LOC_CTRL, CTRL_EXT, CTRL_REQ, CTRL_START, INT_STS, busy
-            // CTRL_STS, and reserved offsets read 0.
+            // LOC_CTRL, CTRL_EXT, CTRL_REQ, CTRL_START with nothing
+            // running, INT_STS, busy CTRL_STS, and reserved offsets read 0.
             _ => 0,
         }
     }
@@ -189,7 +203,7 @@ impl TpmCrb {
             CTRL_REQ => self.request(locality, value),
             CTRL_CANCEL => {
                 self.cancel = (self.cancel & !mask) | (value & START_INVOKE);
-                tracing::debug!(target: "ternvale::tpm", locality, cancel = self.cancel, "tpm cancel written; commands complete synchronously, nothing to cancel");
+                tracing::debug!(target: "ternvale::tpm", locality, cancel = self.cancel, running = self.pending.is_some(), "tpm cancel written; not forwarded, commands run to completion");
             }
             CTRL_START if value & START_INVOKE != 0 => self.start(locality),
             CTRL_START => {}
@@ -241,84 +255,6 @@ impl TpmCrb {
             (false, false) => {}
         }
     }
-
-    fn start(&mut self, locality: u8) {
-        if self.localities.active() != Some(locality) {
-            tracing::warn!(
-                target: "ternvale::tpm",
-                locality,
-                active = ?self.localities.active(),
-                "tpm start from a locality that is not active ignored"
-            );
-            return;
-        }
-        if self.idle {
-            tracing::warn!(target: "ternvale::tpm", locality, "tpm start while idle (no cmdReady); running it anyway, as QEMU does");
-        }
-        let header = CommandHeader::parse(&self.buffer);
-        let size = header
-            .map(|h| h.size as usize)
-            .filter(|size| (HEADER_LEN..=DATA_BUFFER_SIZE).contains(size));
-        let shown = size.unwrap_or(HEADER_LEN);
-        tracing::trace!(
-            target: "ternvale::tpm",
-            locality,
-            len = shown,
-            code = %header.map_or("none".into(), |h| format!("{:#x}", h.code)),
-            bytes = %hex(&self.buffer[..shown]),
-            "tpm command"
-        );
-        let mut response = match size {
-            Some(size) => self.backend.execute(locality, &self.buffer[..size]),
-            None => {
-                tracing::warn!(
-                    target: "ternvale::tpm",
-                    locality,
-                    size = header.map(|h| h.size),
-                    max = DATA_BUFFER_SIZE,
-                    "tpm commandSize outside 10..=buffer size; answered TPM_RC_COMMAND_SIZE"
-                );
-                error_response(ST_NO_SESSIONS, RC_COMMAND_SIZE)
-            }
-        };
-        let declared = response
-            .get(2..6)
-            .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize);
-        if !(HEADER_LEN..=DATA_BUFFER_SIZE).contains(&response.len())
-            || declared != Some(response.len())
-        {
-            tracing::error!(
-                target: "ternvale::tpm",
-                backend = self.backend.name(),
-                len = response.len(),
-                declared = ?declared,
-                "tpm backend returned a malformed response; answered TPM_RC_FAILURE"
-            );
-            response = error_response(ST_NO_SESSIONS, RC_FAILURE);
-        }
-        self.buffer[..response.len()].copy_from_slice(&response);
-        self.commands += 1;
-        let code = header.map_or("none".into(), |h| format!("{:#x}", h.code));
-        if self.commands == 1 {
-            tracing::info!(target: "ternvale::tpm", locality, code = %code, "tpm first command from the guest");
-        }
-        tracing::trace!(
-            target: "ternvale::tpm",
-            locality,
-            len = response.len(),
-            bytes = %hex(&response),
-            "tpm response"
-        );
-        tracing::debug!(
-            target: "ternvale::tpm",
-            locality,
-            code = %code,
-            rc = %format!("{:#x}", u32::from_be_bytes([response[6], response[7], response[8], response[9]])),
-            response_len = response.len(),
-            commands = self.commands,
-            "tpm command completed"
-        );
-    }
 }
 
 /// `(locality, register offset in its page)` for a valid access.
@@ -339,6 +275,9 @@ fn check_access(offset: u64, size: u8, direction: &str) -> Option<(u8, u64)> {
     Some(((offset / LOCALITY_STRIDE) as u8, offset % LOCALITY_STRIDE))
 }
 
+#[path = "crb_command.rs"]
+mod command;
+
 #[cfg(test)]
 #[path = "crb_tests.rs"]
 mod tests;
@@ -346,3 +285,7 @@ mod tests;
 #[cfg(test)]
 #[path = "crb_sequence_tests.rs"]
 mod sequence_tests;
+
+#[cfg(test)]
+#[path = "crb_worker_tests.rs"]
+mod worker_tests;

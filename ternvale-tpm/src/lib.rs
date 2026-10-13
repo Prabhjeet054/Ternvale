@@ -4,10 +4,11 @@
 //! Profile (PTP) specification: five locality pages, each with the locality
 //! registers, the control area (start/cancel/request/status) and the shared
 //! command/response buffer ([`regs`] has the map). A command written to the
-//! buffer runs when the active locality sets `START`, on a [`TpmBackend`].
-//! [`StubBackend`] implements no TPM command semantics yet: it answers every
-//! command with an error code. Every command and response byte stream is
-//! logged at TRACE on `ternvale::tpm`.
+//! buffer runs when the active locality sets `START`, on a [`TpmBackend`]:
+//! [`SwtpmBackend`] forwards it unmodified to a spawned swtpm (on a worker
+//! thread, so the vCPU never waits on the socket); [`StubBackend`] answers
+//! every command with an error code. Every command and response byte stream
+//! is logged at TRACE on `ternvale::tpm`.
 //!
 //! The crate does not depend on the VMM: `ternvale-vmm` puts a [`TpmCrb`] on
 //! its MMIO bus and describes it to the guest with the ACPI TPM2 table and
@@ -17,6 +18,10 @@ mod backend;
 mod crb;
 mod locality;
 pub mod regs;
+mod swtpm;
+#[cfg(test)]
+mod test_log;
+mod worker;
 
 pub use backend::{
     error_response, header_error, hex, CommandHeader, StubBackend, TpmBackend, HEADER_LEN,
@@ -26,6 +31,10 @@ pub use backend::{
 pub use crb::TpmCrb;
 pub use locality::Localities;
 pub use regs::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE, DATA_BUFFER, DATA_BUFFER_SIZE, LOCALITIES};
+pub use swtpm::{
+    check_state_file, find_swtpm, locate_swtpm, probe_swtpm, StateFile, SwtpmBackend, SwtpmError,
+    SwtpmInfo, REQUIRED_FEATURES, STATE_MAGIC, STATE_VERSION, SWTPM_FALLBACK_DIRS,
+};
 
 /// Building a CRB failed.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -41,5 +50,11 @@ pub enum TpmError {
     Overflow {
         /// Rejected base.
         base: u64,
+    },
+    /// The backend's worker thread could not be started.
+    #[error("start the tpm backend worker: {reason}")]
+    Worker {
+        /// Why.
+        reason: String,
     },
 }

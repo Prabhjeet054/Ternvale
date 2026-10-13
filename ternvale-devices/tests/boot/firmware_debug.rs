@@ -8,8 +8,8 @@
 //!
 //! Required lines: `Found FwCfg @ 0x9020008/0x9020000` (and no `Found FwCfg
 //! DMA`); `OnRootBridgesConnected: … installing ACPI tables`;
-//! `InstallQemuFwCfgTables: installed 7 tables` (FACP, APIC, GTDT, MCFG,
-//! SPCR, DBG2, DSDT). Forbidden: FdtClientDxe's DT fallback `exposing DTB …
+//! `InstallQemuFwCfgTables: installed 8 tables` (FACP, APIC, GTDT, MCFG,
+//! SPCR, DBG2, TPM2, DSDT). Forbidden: FdtClientDxe's DT fallback `exposing DTB …
 //! to OS` and AcpiPlatformDxe's failure line `InstallAcpiTables: <status>`.
 //!
 //! Messages are from `OvmfPkg/AcpiPlatformDxe/EntryPoint.c`,
@@ -38,7 +38,7 @@ const PRESENT: [&str; 3] = [
     "Found FwCfg @ 0x9020008/0x9020000",
     "OnRootBridgesConnected: root bridges have been connected, installing ACPI tables",
     // Every builder table but the RSDP and XSDT.
-    "InstallQemuFwCfgTables: installed 7 tables",
+    "InstallQemuFwCfgTables: installed 8 tables",
 ];
 const ABSENT: [&str; 3] = ["exposing DTB", "Found FwCfg DMA", "InstallAcpiTables: "];
 
@@ -87,6 +87,7 @@ fn boot(firmware: &Path, serial_log: &Path, log_dir: &Path, host_log: &Path) -> 
         nvram: Some(log_dir.join("nvram.fd")),
         firmware_tables: None,
         vsock: None,
+        tpm: None,
     };
     tracing::info!(
         target: "ternvale::boot",

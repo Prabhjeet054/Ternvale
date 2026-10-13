@@ -45,6 +45,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         nvram: None,
         firmware_tables: None,
         vsock: None,
+        tpm: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
     let base = slot_base(0).expect("slot 0");

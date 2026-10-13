@@ -6,6 +6,7 @@
 //! the files and cmdline of one VM config.
 
 pub mod probe;
+pub mod tpm;
 pub mod vm;
 
 use std::path::PathBuf;
@@ -113,6 +114,7 @@ pub struct Facts {
     pub gic: Option<Result<(), String>>,
     pub disk: Result<DiskFacts, String>,
     pub log_dir: Result<LogDirFacts, String>,
+    pub swtpm: Result<ternvale_tpm::SwtpmInfo, ternvale_tpm::SwtpmError>,
 }
 
 /// macOS 15 or newer (the in-kernel GICv3 needs it).
@@ -274,6 +276,7 @@ pub fn evaluate(facts: &Facts) -> Vec<Check> {
         check_gic(&facts.gic),
         check_disk(&facts.disk),
         check_log_dir(&facts.log_dir),
+        tpm::check_swtpm(&facts.swtpm, tpm::Need::Optional),
     ]
 }
 
@@ -304,11 +307,17 @@ pub fn render(checks: &[Check]) -> String {
     lines.join("\n")
 }
 
-/// Host checks, then the checks for `config` when one is given.
+/// Host checks, then the checks for `config` when one is given. The config's
+/// `[tpm]` decides whether a missing swtpm warns, fails, or does not matter.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = ?config))]
 pub fn all_checks(config: Option<&std::path::Path>) -> Vec<Check> {
     let mut checks = evaluate(&probe::gather());
     if let Some(config) = config {
+        if let Some((need, found)) = tpm::need_for(config) {
+            for check in checks.iter_mut().filter(|c| c.name == tpm::NAME) {
+                *check = tpm::check_swtpm(&found, need);
+            }
+        }
         checks.extend(vm::checks_for_path(config));
     }
     checks

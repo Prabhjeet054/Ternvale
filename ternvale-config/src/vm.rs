@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
-use crate::VsockSection;
+use crate::{TpmSection, VsockSection};
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
@@ -79,6 +79,9 @@ pub struct VmConfig {
     /// Optional virtio-vsock device (and guest agent server).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vsock: Option<VsockSection>,
+    /// TPM backend; unset means `auto`. See [`TpmSection`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tpm: Option<TpmSection>,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -235,6 +238,8 @@ impl VmConfig {
         if let Some(vsock) = &self.vsock {
             vsock.validate()?;
         }
+        self.tpm_section()
+            .validate(self.effective_firmware_tables())?;
         tracing::debug!(target: "ternvale::config", name = %self.name, "VM config is valid");
         Ok(())
     }

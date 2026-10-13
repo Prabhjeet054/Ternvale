@@ -21,6 +21,8 @@
 //! (with `firmware_tables = "fdt"`, so `dmem` must show a DTB and no ACPI table).
 //! Set `TERNVALE_BOOT_SCENARIO=firmware-acpi` to boot EDK2 with the default `acpi` tables and
 //! walk the ACPI tables EDK2 installed from fw_cfg with `dmem`, comparing them with the builder.
+//! Set `TERNVALE_BOOT_SCENARIO=firmware-tpm` to boot EDK2 twice with `[tpm] backend = "swtpm"`
+//! (needs `brew install swtpm`) and check the TPM identity survives the restart (docs/TPM.md).
 //! Set `TERNVALE_BOOT_SCENARIO=firmware-debug` to boot a verbose debug EDK2
 //! (`./scripts/fetch-debug-firmware.sh`) with `acpi` and check EDK2's own log for the ACPI install.
 //! Set `TERNVALE_BOOT_SCENARIO=uefi-linux` to boot the test kernel and initrd through UEFI
@@ -30,6 +32,9 @@
 //! Set `TERNVALE_BOOT_SCENARIO=uefi-lspci` to boot the rootfs kernel twice through UEFI with
 //! the same virtio-pci disks, `fdt` then `acpi`, and compare `lspci -nnk` (needs
 //! `./scripts/make-rootfs.sh` and `./scripts/make-pci-assets.sh`).
+//! Set `TERNVALE_BOOT_SCENARIO=uefi-linux-tpm` to boot Linux through EDK2 with `acpi` and
+//! swtpm twice, run tpm2-tools in the guest, and check random bytes, the EK and an NV index
+//! across the restart (needs swtpm and `./scripts/make-tpm-assets.sh`; docs/TPM.md).
 //! `TERNVALE_FIRMWARE` replaces the EDK2 image in every UEFI scenario.
 //! Set `TERNVALE_BOOT_SCENARIO=installer` to boot the Alpine arm64 ISO
 //! (`./scripts/fetch-installer-iso.sh`) from UEFI on a read-only virtio-blk disk and start
@@ -43,6 +48,7 @@ mod fat;
 mod firmware;
 mod firmware_acpi;
 mod firmware_debug;
+mod firmware_tpm;
 mod idle;
 mod initrd;
 mod installer;
@@ -50,9 +56,11 @@ mod net;
 mod pci;
 mod rootfs;
 mod smp;
+mod tpm_guest_checks;
 mod uefi_dmem;
 mod uefi_linux;
 mod uefi_linux_acpi;
+mod uefi_linux_tpm;
 mod uefi_lspci;
 
 fn main() {
@@ -81,12 +89,14 @@ fn run() -> Result<(), String> {
         "firmware" => firmware::run(),
         "firmware-acpi" => firmware_acpi::run(),
         "firmware-debug" => firmware_debug::run(),
+        "firmware-tpm" => firmware_tpm::run(),
         "uefi-linux" => uefi_linux::run(),
         "uefi-linux-acpi" => uefi_linux_acpi::run(),
         "uefi-lspci" => uefi_lspci::run(),
+        "uefi-linux-tpm" => uefi_linux_tpm::run(),
         "installer" => installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, uefi-linux, uefi-linux-acpi, uefi-lspci, or installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, or installer)"
         )),
     }
 }

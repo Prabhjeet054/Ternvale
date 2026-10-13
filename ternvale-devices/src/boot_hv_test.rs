@@ -40,6 +40,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         nvram: None,
         firmware_tables: None,
         vsock: None,
+        tpm: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

@@ -1,5 +1,5 @@
 //! Read the host for `ternvale doctor`: sysctls, the binary's signature, a
-//! probe VM with a GIC, free disk space, and the log directory.
+//! probe VM with a GIC, free disk space, the log directory, and swtpm.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -37,6 +37,7 @@ pub fn gather() -> Facts {
         gic,
         disk,
         log_dir: log_dir.and_then(|dir| log_dir_facts(&dir)),
+        swtpm: ternvale_tpm::find_swtpm(None),
     }
 }
 

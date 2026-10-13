@@ -1,8 +1,8 @@
-use std::io::Write;
-use std::sync::{Arc, Mutex};
-
 use super::*;
-use crate::backend::{StubBackend, RC_COMMAND_CODE, ST_RSP_COMMAND};
+use crate::backend::{
+    error_response, StubBackend, HEADER_LEN, RC_COMMAND_CODE, RC_COMMAND_SIZE, RC_FAILURE,
+    ST_NO_SESSIONS, ST_RSP_COMMAND,
+};
 use crate::RC_BAD_TAG;
 
 pub(super) const BASE: u64 = 0x0914_0000;
@@ -238,34 +238,12 @@ fn new_rejects_unaligned_and_overflowing_bases() {
     );
 }
 
-#[derive(Clone, Default)]
-pub(super) struct Capture(pub(super) Arc<Mutex<Vec<u8>>>);
-
-impl Write for Capture {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("capture").extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 #[test]
 fn every_command_and_response_byte_stream_is_logged_at_trace() {
-    let capture = Capture::default();
-    let writer = capture.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_ansi(false)
-        .with_writer(move || writer.clone())
-        .finish();
-    tracing::subscriber::with_default(subscriber, || {
+    let ((), text) = crate::test_log::capture(|| {
         let mut crb = crb();
         run(&mut crb, 0, &STARTUP);
     });
-    let text = String::from_utf8(capture.0.lock().expect("capture").clone()).expect("utf8");
     assert!(
         text.contains("tpm command") && text.contains("bytes=80010000000c000001440000"),
         "{text}"

@@ -91,6 +91,13 @@ pub enum ConfigError {
     #[error("firmware_tables = \"acpi\" needs firmware (UEFI installs the ACPI tables)")]
     AcpiWithoutFirmware,
 
+    /// `tpm.backend = "swtpm"` for a guest that cannot see the TPM.
+    #[error("tpm.backend = \"swtpm\" needs firmware_tables = \"acpi\" (the guest finds the TPM through ACPI), got {tables}")]
+    TpmNeedsAcpi {
+        /// The effective `firmware_tables`.
+        tables: crate::FirmwareTables,
+    },
+
     /// A `[vsock]` setting is out of range.
     #[error("{field}: {reason}")]
     InvalidVsock {

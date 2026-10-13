@@ -36,6 +36,11 @@ fn healthy() -> Facts {
             files: 3,
             bytes: 4096,
         }),
+        swtpm: Ok(ternvale_tpm::SwtpmInfo {
+            path: PathBuf::from("/opt/homebrew/bin/swtpm"),
+            version: "0.10.2".into(),
+            features: ternvale_tpm::REQUIRED_FEATURES.map(String::from).to_vec(),
+        }),
     }
 }
 
@@ -52,7 +57,7 @@ fn a_healthy_host_passes_everything() {
         "{text}"
     );
     assert!(
-        text.ends_with("6 passed, 0 warnings, 0 failed, 0 skipped"),
+        text.ends_with("7 passed, 0 warnings, 0 failed, 0 skipped"),
         "{text}"
     );
     assert!(!text.contains("fix:"));
@@ -99,7 +104,7 @@ fn unsigned_binary_fails_hypervisor_and_entitlement_with_codesign_fix() {
         "{text}"
     );
     assert!(
-        text.ends_with("3 passed, 0 warnings, 2 failed, 1 skipped"),
+        text.ends_with("4 passed, 0 warnings, 2 failed, 1 skipped"),
         "{text}"
     );
 }

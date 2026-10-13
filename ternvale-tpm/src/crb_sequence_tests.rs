@@ -3,9 +3,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use super::tests::{crb, get, page, put, Capture, BASE, STARTUP};
+use super::tests::{crb, get, page, put, BASE, STARTUP};
 use super::*;
-use crate::backend::{RC_COMMAND_CODE, ST_NO_SESSIONS};
+use crate::backend::{error_response, HEADER_LEN, RC_COMMAND_CODE, ST_NO_SESSIONS};
 
 /// `TPM_LOC_STATE_x` with `locality` active.
 fn assigned(locality: u8) -> u64 {
@@ -181,14 +181,7 @@ fn response_buffer_reads_back_at_every_width() {
 /// EDK2 `Tpm2Ptp.c` (`PtpCrbRequestUseTpm`, `PtpCrbTpmCommand`) at locality 0.
 #[test]
 fn edk2_ptp_crb_command_flow_completes_without_warnings() {
-    let capture = Capture::default();
-    let writer = capture.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
-        .with_ansi(false)
-        .with_writer(move || writer.clone())
-        .finish();
-    let response = tracing::subscriber::with_default(subscriber, || {
+    let (response, text) = crate::test_log::capture(|| {
         let mut crb = crb();
         let id = crb.read(INTF_ID_LO, 4);
         assert_eq!((id & 0xf, id >> 4 & 0xf, id >> 14 & 1), (1, 1, 1), "CRB");
@@ -215,6 +208,13 @@ fn edk2_ptp_crb_command_flow_completes_without_warnings() {
         response
     });
     assert_eq!(response, error_response(ST_NO_SESSIONS, RC_COMMAND_CODE));
-    let text = String::from_utf8(capture.0.lock().expect("capture").clone()).expect("utf8");
-    assert_eq!(text, "", "EDK2's flow logs no WARN");
+    assert!(text.contains("tpm crb ready"), "capture works: {text}");
+    let warnings: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains(" WARN ") || line.contains(" ERROR "))
+        .collect();
+    assert!(
+        warnings.is_empty(),
+        "EDK2's flow logs no WARN: {warnings:#?}"
+    );
 }

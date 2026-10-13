@@ -10,8 +10,11 @@
 # firmware-acpi (UEFI with ACPI over fw_cfg), uefi-linux (test kernel through
 # UEFI with the DTB) and uefi-linux-acpi (the same kernel with ACPI, disk found
 # through \_SB.PCI0 and PCI enumeration). Opt-in: firmware-debug (debug EDK2 log
-# check; needs ./scripts/fetch-debug-firmware.sh) and uefi-lspci (fdt vs acpi
-# lspci; needs ./scripts/make-pci-assets.sh). Each step's output goes to
+# check; needs ./scripts/fetch-debug-firmware.sh), uefi-lspci (fdt vs acpi
+# lspci; needs ./scripts/make-pci-assets.sh), firmware-tpm (EDK2 on swtpm,
+# EK identity kept across two boots; needs `brew install swtpm`) and
+# uefi-linux-tpm (tpm2-tools in Linux on swtpm, EK and NV index kept across two
+# boots; needs swtpm and ./scripts/make-tpm-assets.sh). Each step's output goes to
 # target/regression/<stamp>/<step>.txt. results.md is a markdown table of
 # result, wall seconds, and the boot artifact directory. Every step runs even
 # after a failure. Exits 1 if any step failed.
@@ -43,6 +46,8 @@ describe() {
         uefi-linux) printf 'test kernel through UEFI, DTB only' ;;
         uefi-linux-acpi) printf 'test kernel through UEFI with ACPI, virtio-pci disk via PCI0' ;;
         uefi-lspci) printf 'lspci -nnk identical under fdt and acpi' ;;
+        firmware-tpm) printf 'EDK2 on swtpm, EK identical across two boots' ;;
+        uefi-linux-tpm) printf 'tpm2-tools in Linux on swtpm, EK and NV index across two boots' ;;
         *) printf '%s' "$1" ;;
     esac
 }

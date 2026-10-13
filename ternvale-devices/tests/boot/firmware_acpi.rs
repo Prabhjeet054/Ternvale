@@ -10,7 +10,8 @@
 //! byte. The FADT may differ only in its checksum and the FACS/DSDT pointer
 //! fields that `AcpiTableDxe` rewrites. The XSDT is EDK2's own, so only its
 //! entry signatures are checked. EDK2 must also have sent `TPM2_Startup` to
-//! the TPM CRB (seen in the host log). Ends with `reset -s`.
+//! the TPM CRB (seen in the host log), answered by swtpm when it is
+//! installed. Ends with `reset -s`.
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
@@ -44,8 +45,10 @@ pub fn run() -> Result<(), String> {
     let guard = init_logging("firmware-acpi", &log_dir)?;
     let host = guard.log_path().to_path_buf();
     let nvram = log_dir.join("nvram.fd");
-    if nvram.exists() {
-        std::fs::remove_file(&nvram).map_err(|err| format!("remove old nvram: {err}"))?;
+    for old in [nvram.clone(), log_dir.join("nvram.fd.swtpm")] {
+        if old.exists() {
+            std::fs::remove_file(&old).map_err(|err| format!("remove {}: {err}", old.display()))?;
+        }
     }
     let serial_log = log_dir.join("guest-serial.log");
     let vm = VmConfig {
@@ -63,6 +66,7 @@ pub fn run() -> Result<(), String> {
         nvram: Some(nvram),
         firmware_tables: None,
         vsock: None,
+        tpm: None,
     };
     if vm.effective_firmware_tables() != FirmwareTables::Acpi {
         return Err("a firmware boot without firmware_tables should default to acpi".into());
@@ -103,22 +107,26 @@ pub fn run() -> Result<(), String> {
 }
 
 /// EDK2 finds the CRB through the DT's `tcg,tpm-tis-mmio` node, and `Tcg2Pei`
-/// sends it `TPM2_Startup` (command code 0x144) before the stub's error makes
-/// it give up. The RELEASE firmware prints nothing about TPMs on serial, so
-/// the host log's first-command milestone is the evidence.
+/// sends it `TPM2_Startup` (command code 0x144). `[tpm]` is unset (`auto`):
+/// with swtpm installed it must answer `TPM_RC_SUCCESS`, without it the stub
+/// answers `TPM_RC_COMMAND_CODE` (0x143) and EDK2 gives up. The RELEASE
+/// firmware prints nothing about TPMs on serial, so the host log's
+/// first-command milestone is the evidence.
 fn check_tpm_detected(host: &Path) -> Result<(), String> {
     let log = std::fs::read_to_string(host)
         .map_err(|err| format!("read host log {}: {err}", host.display()))?;
-    let startup = log.lines().any(|line| {
-        line.contains("tpm first command from the guest") && line.contains("code=0x144")
-    });
-    if !startup {
+    let want = match ternvale_tpm::find_swtpm(None) {
+        Ok(_) => ("0x144", "0x0", "swtpm"),
+        Err(_) => ("0x144", "0x143", "stub"),
+    };
+    let first = log.lines().find_map(crate::firmware_tpm::first_command);
+    if first != Some(want) {
         return Err(format!(
-            "edk2 never sent TPM2_Startup to the tpm crb\nlog={}",
+            "edk2's first tpm command was {first:?} (code, rc, backend), expected {want:?}\nlog={}",
             host.display()
         ));
     }
-    tracing::info!(target: "ternvale::boot", "edk2 detected the tpm crb and sent TPM2_Startup");
+    tracing::info!(target: "ternvale::boot", backend = want.2, rc = want.1, "edk2 detected the tpm crb and sent TPM2_Startup");
     Ok(())
 }
 

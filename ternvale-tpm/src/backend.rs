@@ -30,8 +30,8 @@ pub const RC_COMMAND_CODE: u32 = 0x143;
 /// `TPM_RC_BAD_TAG`.
 pub const RC_BAD_TAG: u32 = 0x01e;
 
-/// Runs commands. Lives on the vCPU thread that wrote `TPM_CRB_CTRL_START`,
-/// so a backend that does real work must not block on host I/O there.
+/// Runs commands. Without [`TpmBackend::host_io`] it runs on the vCPU thread
+/// that wrote `TPM_CRB_CTRL_START`, inside that write.
 pub trait TpmBackend: Send {
     /// Short name for logs.
     fn name(&self) -> &str;
@@ -39,6 +39,13 @@ pub trait TpmBackend: Send {
     /// Execute `command` (header included, `commandSize` bytes) issued at
     /// `locality` and return the whole response.
     fn execute(&mut self, locality: u8, command: &[u8]) -> Vec<u8>;
+
+    /// True when [`TpmBackend::execute`] waits on host I/O. The CRB then
+    /// runs it on a worker thread and keeps `START` at 1 until it returns,
+    /// so the vCPU thread never blocks.
+    fn host_io(&self) -> bool {
+        false
+    }
 }
 
 /// A parsed command header.

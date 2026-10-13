@@ -1,11 +1,12 @@
 use std::cell::RefCell;
 
+use ternvale_config::VmConfig;
 use ternvale_tpm::regs::{
     CTRL_REQ, CTRL_REQ_CMD_READY, CTRL_REQ_GO_IDLE, CTRL_START, CTRL_STS, CTRL_STS_IDLE,
     INTF_ID_HIGH, INTF_ID_LO, INTF_ID_LOW, LOC_CTRL, LOC_CTRL_RELINQUISH, LOC_CTRL_REQUEST_ACCESS,
     LOC_STATE, LOC_STATE_REG_VALID, LOC_STS, LOC_STS_GRANTED, START_INVOKE,
 };
-use ternvale_tpm::{CRB_WINDOW_SIZE, DATA_BUFFER, RC_COMMAND_CODE, ST_NO_SESSIONS};
+use ternvale_tpm::{StubBackend, CRB_WINDOW_SIZE, DATA_BUFFER, RC_COMMAND_CODE, ST_NO_SESSIONS};
 
 use super::{device, register, TPM_DEVICE_NAME};
 use crate::esr::ExitEvent;
@@ -25,23 +26,35 @@ impl GuestRegs for Regs {
     }
 }
 
+/// A direct kernel boot: no ACPI, so the stub backend.
+pub(super) fn direct_boot() -> VmConfig {
+    VmConfig::parse(
+        "name = \"t\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\n",
+    )
+    .expect("config")
+}
+
 /// A guest reaching the CRB only through MMIO exits, as Linux `tpm_crb` would.
-struct Guest {
+pub(super) struct Guest {
     bus: MmioBus,
     regs: Regs,
 }
 
 impl Guest {
     fn new() -> Self {
+        Self::with(&direct_boot())
+    }
+
+    pub(super) fn with(config: &VmConfig) -> Self {
         let mut bus = MmioBus::new();
-        register(&mut bus).expect("register");
+        register(&mut bus, config).expect("register");
         Self {
             bus,
             regs: Regs(RefCell::new([0; 31])),
         }
     }
 
-    fn read(&self, offset: u64, size: u8) -> u64 {
+    pub(super) fn read(&self, offset: u64, size: u8) -> u64 {
         self.bus
             .dispatch(
                 &self.regs,
@@ -56,7 +69,7 @@ impl Guest {
         self.regs.0.borrow()[3]
     }
 
-    fn write(&self, offset: u64, size: u8, value: u64) {
+    pub(super) fn write(&self, offset: u64, size: u8, value: u64) {
         self.regs.0.borrow_mut()[4] = value;
         self.bus
             .dispatch(
@@ -74,7 +87,7 @@ impl Guest {
 
 #[test]
 fn device_sits_in_the_tpm_crb_region() {
-    let (base, size, crb) = device().expect("tpm device");
+    let (base, size, crb) = device(Box::new(StubBackend::new())).expect("tpm device");
     assert_eq!(base, TPM_CRB_BASE);
     assert_eq!(size, CRB_WINDOW_SIZE);
     assert_eq!(crb.name(), TPM_DEVICE_NAME);
@@ -140,8 +153,8 @@ fn linux_command_sequence_through_the_bus_gets_a_stub_response() {
 #[test]
 fn registering_twice_is_an_overlap() {
     let mut bus = MmioBus::new();
-    register(&mut bus).expect("first");
-    let error = register(&mut bus).unwrap_err();
+    register(&mut bus, &direct_boot()).expect("first");
+    let error = register(&mut bus, &direct_boot()).unwrap_err();
     assert!(error.to_string().contains("overlaps"), "{error}");
 }
 

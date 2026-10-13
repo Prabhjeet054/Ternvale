@@ -82,6 +82,7 @@ fn boot(
         nvram: Some(nvram.to_path_buf()),
         firmware_tables: Some(FirmwareTables::Fdt),
         vsock: None,
+        tpm: None,
     };
     tracing::info!(target: "ternvale::boot", esp = %esp.display(), serial = %serial_log.display(), "uefi linux boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;
