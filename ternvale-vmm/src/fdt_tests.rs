@@ -15,6 +15,7 @@ fn sample() -> GuestFdt {
         cpu_count: 2,
         firmware: false,
         fw_cfg: false,
+        tpm: false,
     }
 }
 
@@ -68,8 +69,9 @@ fn fw_cfg_node_appears_only_for_acpi_firmware_tables() {
 }
 
 #[test]
-fn tpm_node_appears_only_for_acpi_firmware_tables() {
+fn tpm_node_appears_only_for_acpi_firmware_tables_with_a_tpm() {
     let mut fdt = sample();
+    fdt.tpm = true;
     assert!(!dtc_dts(&build_fdt(&fdt).expect("dtb")).contains("tpm"));
     fdt.firmware = true;
     let plain = dtc_dts(&build_fdt(&fdt).expect("dtb"));
@@ -79,6 +81,15 @@ fn tpm_node_appears_only_for_acpi_firmware_tables() {
     );
 
     fdt.fw_cfg = true;
+    fdt.tpm = false;
+    let disabled = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    assert!(disabled.contains("fw-cfg@9020000"), "{disabled}");
+    assert!(
+        !disabled.contains("tpm"),
+        "[tpm] enabled = false\n{disabled}"
+    );
+
+    fdt.tpm = true;
     let acpi = dtc_dts(&build_fdt(&fdt).expect("dtb"));
     let start = acpi.find("tpm@9140000 {").expect("tpm node");
     let node = &acpi[start..start + acpi[start..].find("};").expect("node end")];

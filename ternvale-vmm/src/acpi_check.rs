@@ -14,6 +14,7 @@ use ternvale_acpi::{
     AcpiConfig, AcpiError, DumpedTable, EcamConfig, GicConfig, PciConfig, PsciConduit, TimerConfig,
     TpmConfig, UartConfig,
 };
+use ternvale_config::VmConfig;
 use ternvale_tpm::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE};
 
 use crate::fdt::{PL011_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI};
@@ -72,12 +73,24 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
             len: PL011_REG_SIZE as u32,
             spi: UART_SPI,
         },
-        tpm: TpmConfig {
+        tpm: Some(TpmConfig {
             crb_base: TPM_CRB_BASE,
             crb_len: CRB_WINDOW_SIZE as u32,
             control_area: TPM_CRB_BASE + CONTROL_AREA_OFFSET,
-        },
+        }),
     }
+}
+
+/// [`acpi_config`] for the VM `config` describes: no TPM2 table or
+/// `\_SB.TPM2` when its `[tpm] enabled = false`.
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(name = %config.name, cpus = config.cpus))]
+pub fn vm_acpi_config(config: &VmConfig) -> AcpiConfig {
+    let mut acpi = acpi_config(config.cpus);
+    if !config.tpm_enabled() {
+        tracing::debug!(target: "ternvale::acpi", "tpm disabled; no TPM2 table or \\_SB.TPM2");
+        acpi.tpm = None;
+    }
+    acpi
 }
 
 /// One line when region `name` of `layout` fails `ok(base, size)`.
@@ -105,7 +118,6 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
     let buses = u64::from(ecam.end_bus) - u64::from(ecam.start_bus) + 1;
     let uart = config.uart;
     let uart_end = uart.base.saturating_add(u64::from(uart.len));
-    let tpm = config.tpm;
     let mut problems: Vec<String> = [
         region_problem(
             layout,
@@ -145,21 +157,23 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
             |base, size| uart.base >= base && uart_end <= base.saturating_add(size),
             format!("{:#x}+{:#x}", uart.base, uart.len),
         ),
-        region_problem(
-            layout,
-            "TPM2/DSDT TPM2 _CRS",
-            "tpm-crb",
-            |base, size| {
-                tpm.crb_base == base
-                    && u64::from(tpm.crb_len) == CRB_WINDOW_SIZE
-                    && CRB_WINDOW_SIZE <= size
-                    && tpm.control_area == base + CONTROL_AREA_OFFSET
-            },
-            format!(
-                "{:#x}+{:#x} control area {:#x}",
-                tpm.crb_base, tpm.crb_len, tpm.control_area
-            ),
-        ),
+        config.tpm.and_then(|tpm| {
+            region_problem(
+                layout,
+                "TPM2/DSDT TPM2 _CRS",
+                "tpm-crb",
+                |base, size| {
+                    tpm.crb_base == base
+                        && u64::from(tpm.crb_len) == CRB_WINDOW_SIZE
+                        && CRB_WINDOW_SIZE <= size
+                        && tpm.control_area == base + CONTROL_AREA_OFFSET
+                },
+                format!(
+                    "{:#x}+{:#x} control area {:#x}",
+                    tpm.crb_base, tpm.crb_len, tpm.control_area
+                ),
+            )
+        }),
     ]
     .into_iter()
     .flatten()
@@ -196,12 +210,21 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
 }
 
 /// Fail unless `tables` (read back from guest memory) describe the platform
-/// for `cpus` vCPUs and sit inside the ACPI window.
-#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(cpus, tables = tables.len()))]
+/// for `cpus` vCPUs (with a TPM) and sit inside the ACPI window.
 pub(crate) fn check(tables: &[DumpedTable], cpus: u32) -> Result<(), MachineError> {
-    let config = acpi_config(cpus);
+    check_config(tables, &acpi_config(cpus))
+}
+
+/// [`check`] against `config`, which must be [`acpi_config`] for its CPU
+/// count, with or without the TPM.
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(cpus = config.mpidrs.len(), tpm = config.tpm.is_some(), tables = tables.len()))]
+pub(crate) fn check_config(
+    tables: &[DumpedTable],
+    config: &AcpiConfig,
+) -> Result<(), MachineError> {
+    let cpus = config.mpidrs.len();
     let layout = Layout::virt(0);
-    let mut problems = platform_problems(&config, &layout);
+    let mut problems = platform_problems(config, &layout);
     for table in tables {
         let end = table.gpa.saturating_add(table.bytes.len() as u64);
         if table.gpa < ACPI_BASE || end > ACPI_BASE + ACPI_SIZE {
@@ -214,7 +237,7 @@ pub(crate) fn check(tables: &[DumpedTable], cpus: u32) -> Result<(), MachineErro
     for problem in &problems {
         tracing::error!(target: "ternvale::acpi", problem = %problem, "acpi platform drift");
     }
-    match ternvale_acpi::verify(tables, &config) {
+    match ternvale_acpi::verify(tables, config) {
         Ok(()) => {}
         Err(AcpiError::Drift { problems: found }) => problems.extend(found),
         Err(other) => return Err(other.into()),
@@ -230,6 +253,7 @@ pub(crate) fn check(tables: &[DumpedTable], cpus: u32) -> Result<(), MachineErro
     tracing::info!(
         target: "ternvale::acpi",
         cpus,
+        tpm = config.tpm.is_some(),
         tables = tables.len(),
         "acpi tables match the platform map"
     );

@@ -5,7 +5,7 @@ use ternvale_vmm::VmControl;
 
 use super::{
     read_manifest, render_mmio, sidecar, write_manifest, DiagSink, RunManifest, SharedDevices,
-    DTB_SUFFIX, MMIO_SUFFIX, SUMMARY_SUFFIX,
+    DTB_SUFFIX, MMIO_SUFFIX, SUMMARY_SUFFIX, TPM_SUFFIX,
 };
 use crate::protocol::Response;
 use crate::server::{handle_line, handle_line_with};
@@ -90,6 +90,53 @@ fn dump_writes_dtb_mmio_and_summary() {
         mmio.starts_with("# vm demo: 0 mmio accesses, 0 unmapped"),
         "{mmio}"
     );
+}
+
+#[test]
+fn dump_writes_the_tpm_history_when_the_vm_has_a_tpm() {
+    let dir = scratch("tpm");
+    let control = Arc::new(VmControl::new("demo", 1));
+    let (log, sink) = sink(&dir, &control);
+    let history = Arc::new(ternvale_tpm::TpmHistory::new("swtpm", 8));
+    let startup = [0x80, 0x01, 0, 0, 0, 12, 0, 0, 0x01, 0x44, 0, 0];
+    let ok = [0x80, 0x01, 0, 0, 0, 10, 0, 0, 0, 0];
+    history.record(
+        0,
+        ternvale_tpm::CommandHeader::parse(&startup),
+        &startup,
+        &ok,
+        40,
+    );
+    let unseal = [0x80, 0x02, 0, 0, 0, 12, 0, 0, 0x01, 0x5e, 0x81, 0];
+    let secret = [
+        0x80, 0x02, 0, 0, 0, 16, 0, 0, 0, 0, 0x5e, 0xc2, 0xe7, 0x5e, 0xc2, 0xe7,
+    ];
+    history.record(
+        0,
+        ternvale_tpm::CommandHeader::parse(&unseal),
+        &unseal,
+        &secret,
+        90,
+    );
+    control.diagnostics().set_tpm(history);
+    let files = sink.dump(None).expect("dump");
+    assert!(files.contains(&sidecar(&log, TPM_SUFFIX)), "{files:?}");
+    let text = std::fs::read_to_string(sidecar(&log, TPM_SUFFIX)).expect("tpm");
+    assert!(
+        text.starts_with("# TPM commands: backend swtpm, 2 since"),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "name=Startup cmd_len=12 rc=0x0 rsp_len=10 us=40 cmd=80010000000c000001440000"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("name=Unseal cmd_len=12 rc=0x0 rsp_len=16 us=90 bytes=redacted"),
+        "{text}"
+    );
+    assert!(!text.contains("5ec2e7"), "unsealed data leaked:\n{text}");
 }
 
 #[test]

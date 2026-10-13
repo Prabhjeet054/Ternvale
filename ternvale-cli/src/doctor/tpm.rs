@@ -3,12 +3,16 @@
 //! Without it `[tpm] backend = "auto"` (the default) falls back to a stub
 //! that answers every TPM command with an error, so a missing swtpm warns;
 //! a VM config with `backend = "swtpm"` turns that into a failure, and a
-//! config that never uses swtpm skips the check.
+//! config that never uses swtpm (stub, no ACPI, or `enabled = false`) skips
+//! the check. A swtpm that has every required feature but is older than
+//! [`TESTED_SWTPM_VERSION`], or whose version cannot be read, warns.
 
 use std::path::Path;
 
 use ternvale_config::{FirmwareTables, TpmBackendKind, VmConfig};
-use ternvale_tpm::{find_swtpm, SwtpmError, SwtpmInfo, REQUIRED_FEATURES};
+use ternvale_tpm::{
+    find_swtpm, parse_swtpm_version, SwtpmError, SwtpmInfo, REQUIRED_FEATURES, TESTED_SWTPM_VERSION,
+};
 
 use super::{Check, Outcome};
 
@@ -34,6 +38,7 @@ pub fn need_for(path: &Path) -> Option<(Need, Result<SwtpmInfo, SwtpmError>)> {
     let config = VmConfig::parse(&text).ok()?;
     let section = config.tpm_section();
     let need = match (section.backend, config.effective_firmware_tables()) {
+        _ if !section.enabled => Need::Unused("[tpm] enabled = false, the VM has no TPM"),
         (TpmBackendKind::Stub, _) => Need::Unused("[tpm] backend = \"stub\""),
         (_, FirmwareTables::Fdt) => Need::Unused("the guest has no ACPI, so it cannot see the TPM"),
         (TpmBackendKind::Swtpm, _) => Need::Required,
@@ -50,13 +55,27 @@ pub fn check_swtpm(found: &Result<SwtpmInfo, SwtpmError>, need: Need) -> Check {
         Need::Required => Outcome::Fail,
         _ => Outcome::Warn,
     };
+    let (major, minor) = TESTED_SWTPM_VERSION;
     match (found, need) {
         (_, Need::Unused(why)) => Check::new(NAME, Outcome::Skip, format!("not used: {why}")),
-        (Ok(info), _) => Check::new(
-            NAME,
-            Outcome::Pass,
-            format!("swtpm {} at {}", info.version, info.path.display()),
-        ),
+        (Ok(info), _) => match parse_swtpm_version(&info.version) {
+            Some((a, b, _)) if (a, b) >= TESTED_SWTPM_VERSION => Check::new(
+                NAME,
+                Outcome::Pass,
+                format!("swtpm {} at {}", info.version, info.path.display()),
+            ),
+            parsed => Check::new(
+                NAME,
+                Outcome::Warn,
+                format!(
+                    "swtpm {} at {} has every feature Ternvale needs, but {}; Ternvale is tested with {major}.{minor} or newer",
+                    info.version,
+                    info.path.display(),
+                    if parsed.is_some() { "is older" } else { "its version cannot be read" }
+                ),
+            )
+            .fix(format!("Upgrade it: `brew upgrade swtpm` (or point `[tpm] swtpm` at swtpm {major}.{minor} or newer).")),
+        },
         (Err(SwtpmError::NotFound { searched }), _) => Check::new(
             NAME,
             missing,
@@ -67,7 +86,7 @@ pub fn check_swtpm(found: &Result<SwtpmInfo, SwtpmError>, need: Need) -> Check {
         .fix("Install it: `brew install swtpm`, or set `[tpm] swtpm = \"/path/to/swtpm\"` in the VM config. See docs/TPM.md."),
         (Err(error @ (SwtpmError::Unsupported { .. } | SwtpmError::Probe { .. })), _) => {
             Check::new(NAME, missing, error.to_string()).fix(format!(
-                "Upgrade it: `brew upgrade swtpm`. Ternvale needs swtpm 0.10 or newer: `swtpm socket --print-capabilities` must list {}.",
+                "Upgrade it: `brew upgrade swtpm`. `swtpm socket --print-capabilities` must list {}; Ternvale is tested with swtpm {major}.{minor} or newer.",
                 REQUIRED_FEATURES.join(", ")
             ))
         }

@@ -33,10 +33,12 @@ pub(super) enum Inputs {
         kernel: Vec<u8>,
         initrd: Vec<u8>,
     },
-    /// `fw_cfg`: the DTB gets the fw_cfg node (`firmware_tables = "acpi"`).
+    /// `fw_cfg`: the DTB gets the fw_cfg node (`firmware_tables = "acpi"`);
+    /// `tpm`: and the TPM node, unless `[tpm] enabled = false`.
     Firmware {
         code: Vec<u8>,
         fw_cfg: bool,
+        tpm: bool,
     },
 }
 
@@ -55,6 +57,7 @@ impl Inputs {
             return Ok(Self::Firmware {
                 code: super::read_file("firmware", path)?,
                 fw_cfg: tables == ternvale_config::FirmwareTables::Acpi,
+                tpm: config.tpm_enabled(),
             });
         }
         let kernel = super::read_file("kernel", &config.kernel)?;
@@ -95,7 +98,7 @@ impl Inputs {
                 );
                 Ok(dtb)
             }
-            Self::Firmware { fw_cfg, .. } => {
+            Self::Firmware { fw_cfg, tpm, .. } => {
                 let dtb = build_fdt(&GuestFdt {
                     bootargs: String::new(),
                     ram_base: RAM_BASE,
@@ -105,6 +108,7 @@ impl Inputs {
                     cpu_count: cpus,
                     firmware: true,
                     fw_cfg: *fw_cfg,
+                    tpm: *tpm,
                 })?;
                 crate::firmware::check_layout(ram_size, dtb.len() as u64)?;
                 Ok(dtb)
@@ -162,6 +166,7 @@ fn boot_images(
             cpu_count: cpus,
             firmware: false,
             fw_cfg: false,
+            tpm: false,
         })?;
         let next = place(
             RAM_BASE,

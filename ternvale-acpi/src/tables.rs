@@ -3,7 +3,7 @@
 //! Order from the region base, each table 8-byte aligned: RSDP, XSDT, FACP,
 //! DSDT, APIC, GTDT, MCFG, SPCR, DBG2, TPM2 (the order [`crate::walk`] reads
 //! them back in). The XSDT lists FACP, APIC, GTDT, MCFG, SPCR, DBG2, and TPM2;
-//! the
+//! a VM without a TPM has no TPM2 table. The
 //! FADT's `X_DSDT` points at the DSDT. Tables without pointers are encoded
 //! first, then every address is laid out, then the FADT, XSDT, and RSDP are
 //! built once with their final pointers.
@@ -24,12 +24,20 @@ use crate::tpm2::tpm2;
 use crate::xsdt::{xsdt, xsdt_len};
 use crate::AcpiError;
 
-/// Signatures in address order.
+/// Signatures in address order, for a VM with a TPM.
 pub const SIGNATURES: [&str; 10] = [
     "RSD PTR ", "XSDT", "FACP", "DSDT", "APIC", "GTDT", "MCFG", "SPCR", "DBG2", "TPM2",
 ];
-/// Tables the XSDT lists.
-const XSDT_ENTRIES: usize = 7;
+
+/// The signatures [`AcpiTables::build`] lays out for `config`, in address
+/// order: [`SIGNATURES`], without TPM2 when `config` has no TPM.
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(tpm = config.tpm.is_some()))]
+pub fn signatures(config: &AcpiConfig) -> Vec<&'static str> {
+    SIGNATURES
+        .into_iter()
+        .filter(|signature| config.tpm.is_some() || *signature != "TPM2")
+        .collect()
+}
 
 /// Alignment of every table after the RSDP.
 pub const TABLE_ALIGN: u64 = 8;
@@ -87,14 +95,16 @@ impl AcpiTables {
             return Err(AcpiError::Misaligned { base });
         }
         config.validate()?;
-        let leaves: [(&'static str, Vec<u8>); XSDT_ENTRIES - 1] = [
+        let mut leaves: Vec<(&'static str, Vec<u8>)> = vec![
             ("APIC", madt(config)?),
             ("GTDT", gtdt(&config.timer)?),
             ("MCFG", mcfg(&config.ecam)?),
             ("SPCR", spcr(&config.uart)?),
             ("DBG2", dbg2(&config.uart)?),
-            ("TPM2", tpm2(&config.tpm)?),
         ];
+        if let Some(tpm) = &config.tpm {
+            leaves.push(("TPM2", tpm2(tpm)?));
+        }
         let dsdt = dsdt(config)?;
         let overflow = || {
             tracing::warn!(target: "ternvale::acpi", base = %format!("{base:#x}"), "acpi layout overflows");
@@ -106,7 +116,7 @@ impl AcpiTables {
                 .ok_or_else(overflow)
         };
         let xsdt_gpa = after(base, RSDP_LEN)?;
-        let fadt_gpa = after(xsdt_gpa, xsdt_len(XSDT_ENTRIES))?;
+        let fadt_gpa = after(xsdt_gpa, xsdt_len(1 + leaves.len()))?;
         let dsdt_gpa = after(fadt_gpa, FADT_LEN)?;
         let mut next = dsdt_gpa;
         let mut len = dsdt.len();

@@ -42,8 +42,9 @@ pub struct AcpiConfig {
     pub pci: PciConfig,
     /// PL011 console and debug UART.
     pub uart: UartConfig,
-    /// TPM 2.0 CRB window (TPM2 table, DSDT `\_SB.TPM2`).
-    pub tpm: TpmConfig,
+    /// TPM 2.0 CRB window (TPM2 table, DSDT `\_SB.TPM2`). `None`: the VM
+    /// has no TPM, so neither the table nor the device exists.
+    pub tpm: Option<TpmConfig>,
 }
 
 /// The TPM's Command Response Buffer interface.
@@ -184,7 +185,9 @@ impl AcpiConfig {
         if let Some(spi) = pci.intx_spis.iter().find(|spi| spi_gsiv(**spi) > SPI_LAST) {
             return fail(format!("pci INTx SPI {spi} is past INTID {SPI_LAST}"));
         }
-        let tpm = self.tpm;
+        let Some(tpm) = self.tpm else {
+            return Ok(());
+        };
         let tpm_end = tpm.crb_base.checked_add(u64::from(tpm.crb_len));
         if tpm.crb_len == 0 || tpm_end.is_none_or(|end| end > 1 << 32) {
             return fail(format!(
@@ -237,11 +240,19 @@ pub(crate) mod tests {
                 len: 0x1000,
                 spi: 1,
             },
-            tpm: TpmConfig {
+            tpm: Some(TpmConfig {
                 crb_base: 0x0914_0000,
                 crb_len: 0x5000,
                 control_area: 0x0914_0040,
-            },
+            }),
+        }
+    }
+
+    /// [`sample`] for a VM without a TPM.
+    pub(crate) fn sample_without_tpm(cpus: u32) -> AcpiConfig {
+        AcpiConfig {
+            tpm: None,
+            ..sample(cpus)
         }
     }
 
@@ -291,15 +302,27 @@ pub(crate) mod tests {
         let mut intx = sample(1);
         intx.pci.intx_spis[3] = 988;
         reject(intx, "pci INTx SPI 988");
-        let mut tpm = sample(1);
-        tpm.tpm.crb_len = 0;
-        reject(tpm, "tpm crb window");
-        let mut tpm = sample(1);
-        tpm.tpm.crb_base = 0xffff_e000;
-        tpm.tpm.control_area = 0xffff_e040;
-        reject(tpm, "passes 4 GiB");
-        let mut tpm = sample(1);
-        tpm.tpm.control_area = 0x0914_5000;
-        reject(tpm, "outside the crb window");
+        let tpm_with = |edit: fn(&mut TpmConfig)| {
+            let mut config = sample(1);
+            edit(config.tpm.as_mut().expect("sample tpm"));
+            config
+        };
+        reject(tpm_with(|t| t.crb_len = 0), "tpm crb window");
+        reject(
+            tpm_with(|t| {
+                t.crb_base = 0xffff_e000;
+                t.control_area = 0xffff_e040;
+            }),
+            "passes 4 GiB",
+        );
+        reject(
+            tpm_with(|t| t.control_area = 0x0914_5000),
+            "outside the crb window",
+        );
+    }
+
+    #[test]
+    fn a_config_without_a_tpm_is_valid() {
+        sample_without_tpm(2).validate().expect("valid");
     }
 }

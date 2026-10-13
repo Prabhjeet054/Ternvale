@@ -12,8 +12,11 @@
 //! bytes, boot 2 must find and read back the same bytes. It also reports the
 //! size of EDK2's TCG2 event log and PCRs 0 and 7 (logged, not checked). Under ACPI there is
 //! no console device, so the script writes to `/dev/kmsg` (earlycon carries
-//! it to the serial log), then powers off. [`crate::tpm_guest_checks`] holds
-//! the checks.
+//! it to the serial log), then powers off. Each boot's crash-report TPM
+//! command history must keep EDK2's `TPM2_Startup` bytes and redact the
+//! guest's `TPM2_GetRandom`. A third boot with `[tpm] enabled = false` must
+//! show Linux no TPM at all and leave swtpm's state untouched.
+//! [`crate::tpm_guest_checks`] holds the checks.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,13 +25,15 @@ use std::time::Instant;
 
 use ternvale_config::{Disk, FirmwareTables, TpmBackendKind, TpmSection, VmConfig};
 use ternvale_devices::{attach_disks_pci, last_lines, Pl011, Step};
-use ternvale_vmm::{ExitReason, Machine};
+use ternvale_vmm::{ExitReason, Machine, VmControl};
 
 use crate::common::{
     assets_root, drive, init_logging_at, log_dir, restore_stdin, stdin_pipe, write_result,
 };
 use crate::firmware::{check_banner, expect, to_shell};
-use crate::tpm_guest_checks::{check_boot, check_host_log, check_restart, Guest, DONE};
+use crate::tpm_guest_checks::{
+    check_boot, check_disabled, check_history, check_host_log, check_restart, Guest, DONE,
+};
 use crate::uefi_linux::{line, INITRD, KERNEL};
 
 const CPUS: u32 = 2;
@@ -78,8 +83,10 @@ $B poweroff -f
 
 pub fn run() -> Result<(), String> {
     let log_dir = log_dir();
-    // TRACE on ternvale::tpm records every CRB response, so the check can find
-    // the guest's random bytes in what swtpm returned.
+    // TRACE on ternvale::tpm with secrets unredacted records every CRB
+    // response, so the check can find the guest's random bytes in what swtpm
+    // returned. The command history stays redacted regardless.
+    std::env::set_var(ternvale_tpm::LOG_SECRETS_ENV, "1");
     let base = std::env::var("TERNVALE_BOOT_LOG").unwrap_or_else(|_| "info".to_string());
     let guard = init_logging_at(
         "uefi-linux-tpm",
@@ -114,11 +121,22 @@ pub fn run() -> Result<(), String> {
     let started = Instant::now();
     let mut guests = Vec::new();
     for boot in 1..=2 {
-        let serial = boot_once(boot, &esp, &nvram, &log_dir, &host)?;
+        let (serial, history) = boot_once(boot, true, &esp, &nvram, &log_dir, &host)?;
+        let history = history.ok_or("the vm recorded no tpm command history")?;
         let guest = Guest::parse(&serial);
         check_boot(boot, &guest)?;
+        check_history(boot, &guest, &history)?;
         guests.push(guest);
     }
+    let state_bytes =
+        std::fs::read(&state).map_err(|err| format!("read {}: {err}", state.display()))?;
+    let (serial, history) = boot_once(3, false, &esp, &nvram, &log_dir, &host)?;
+    check_disabled(
+        &Guest::parse(&serial),
+        history.as_deref(),
+        &state,
+        &state_bytes,
+    )?;
     let host_ek = crate::firmware_tpm::create_primary(&state, ek_template())?;
     check_restart(&guests[0], &guests[1], &host_ek)?;
     check_host_log(&host, &guests)?;
@@ -160,13 +178,16 @@ fn ek_template() -> Vec<u8> {
     )
 }
 
+/// One boot; `tpm` false boots with `[tpm] enabled = false`. Returns the
+/// serial log and the rendered TPM command history (`None` without a TPM).
 fn boot_once(
     boot: u32,
+    tpm: bool,
     esp: &Path,
     nvram: &Path,
     log_dir: &Path,
     host_log: &Path,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let serial_log = log_dir.join(format!("guest-serial-{boot}.log"));
     let vm = VmConfig {
         name: "uefi-linux-tpm".to_string(),
@@ -187,11 +208,16 @@ fn boot_once(
         firmware_tables: Some(FirmwareTables::Acpi),
         vsock: None,
         tpm: Some(TpmSection {
-            backend: TpmBackendKind::Swtpm,
+            backend: if tpm {
+                TpmBackendKind::Swtpm
+            } else {
+                TpmBackendKind::Auto
+            },
             swtpm: None,
+            enabled: tpm,
         }),
     };
-    tracing::info!(target: "ternvale::boot", boot, serial = %serial_log.display(), "uefi linux tpm boot");
+    tracing::info!(target: "ternvale::boot", boot, tpm, serial = %serial_log.display(), "uefi linux tpm boot");
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));
     let (mut input, saved) = stdin_pipe()?;
@@ -199,16 +225,25 @@ fn boot_once(
     let (feed_log, host) = (serial_log.clone(), host_log.to_path_buf());
     let feeder = std::thread::spawn(move || drive(&feed_log, &mut input, &flag, &host, steps()));
     let attach = vec![(esp.to_path_buf(), true)];
-    let exit = Machine::run_with(&vm, Box::new(uart), Arc::clone(&cancel), move |a| {
+    let control = Arc::new(VmControl::new(&vm.name, vm.cpus));
+    let stopper = stop_on_cancel(&control, &cancel);
+    let exit = Machine::run_controlled(&vm, Box::new(uart), &control, move |a| {
         attach_disks_pci(a, &attach).map(|_| Vec::new())
     });
     cancel.store(true, Ordering::Release);
     let script = feeder
         .join()
         .unwrap_or_else(|_| Err("feeder panicked".to_string()));
+    if stopper.join().is_err() {
+        tracing::warn!(target: "ternvale::boot", boot, "stop watcher panicked");
+    }
     restore_stdin(saved);
     let serial = std::fs::read_to_string(&serial_log).unwrap_or_default();
     write_result(log_dir, &exit, &script, &serial);
+    let history = control.diagnostics().tpm().map(|h| h.render());
+    let history_file = log_dir.join(format!("tpm-commands-{boot}.txt"));
+    std::fs::write(&history_file, history.as_deref().unwrap_or(""))
+        .map_err(|err| format!("write {}: {err}", history_file.display()))?;
     script?;
     if !matches!(exit, Ok(ExitReason::SystemOff)) {
         return Err(format!(
@@ -218,7 +253,24 @@ fn boot_once(
         ));
     }
     check_banner(&serial_log)?;
-    Ok(serial)
+    Ok((serial, history))
+}
+
+/// Force-stop the VM `control` runs once `cancel` is set (the serial driver
+/// timed out); returns when the VM has finished either way.
+fn stop_on_cancel(
+    control: &Arc<VmControl>,
+    cancel: &Arc<AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    let (control, cancel) = (Arc::clone(control), Arc::clone(cancel));
+    std::thread::spawn(move || {
+        while !cancel.load(Ordering::Acquire) {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if let Err(error) = control.request_stop(true) {
+            tracing::debug!(target: "ternvale::boot", error = %error, "vm already finished");
+        }
+    })
 }
 
 fn steps() -> Vec<Step> {

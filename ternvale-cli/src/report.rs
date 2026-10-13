@@ -2,7 +2,9 @@
 //!
 //! The bundle holds the newest host log, the VM config, the guest serial
 //! log, the guest DTB (and a DTS when `dtc` is installed), the last MMIO
-//! events, the stop summary, the run manifest, and a `doctor` report. A
+//! events, the last TPM commands (codes and sizes only for any command that
+//! could carry key material), the stop summary, the run manifest, and a
+//! `doctor` report. A
 //! running VM is first asked to `dump-diagnostics`; for a VM that exited,
 //! the files `ternvale run` wrote at stop are used.
 
@@ -15,7 +17,7 @@ use anyhow::{bail, Context, Result};
 use ternvale_log::LogConfig;
 
 use self::bundle::Item;
-use crate::diag::{self, DTB_SUFFIX, MMIO_SUFFIX, RUN_SUFFIX, SUMMARY_SUFFIX};
+use crate::diag::{self, DTB_SUFFIX, MMIO_SUFFIX, RUN_SUFFIX, SUMMARY_SUFFIX, TPM_SUFFIX};
 use crate::protocol::Request;
 
 /// Largest host log tail in a report.
@@ -102,6 +104,7 @@ pub fn plan(dir: &Path, inputs: &PlanInputs<'_>, stamp: &str) -> Result<Plan> {
         ),
     });
     header.extend(doctor_failures(inputs));
+    header.extend(tpm_failure(&diag::sidecar(&host_log, TPM_SUFFIX)));
 
     let mut items = vec![Item::file("host.log", &host_log, HOST_LOG_CAP)];
     items.push(match &config {
@@ -125,14 +128,21 @@ pub fn plan(dir: &Path, inputs: &PlanInputs<'_>, stamp: &str) -> Result<Plan> {
     } else {
         items.push(sidecar_missing("guest.dtb", &dtb));
     }
+    let tpm_disabled = config
+        .as_deref()
+        .and_then(vm_config_of)
+        .is_some_and(|c| !c.tpm_enabled());
     for (entry, suffix) in [
         ("mmio-events.txt", MMIO_SUFFIX),
+        ("tpm-commands.txt", TPM_SUFFIX),
         ("summary.txt", SUMMARY_SUFFIX),
         ("run.json", RUN_SUFFIX),
     ] {
         let path = diag::sidecar(&host_log, suffix);
         items.push(if path.exists() {
             Item::file(entry, &path, SMALL_CAP)
+        } else if suffix == TPM_SUFFIX && tpm_disabled {
+            Item::missing(entry, "the vm has no TPM ([tpm] enabled = false)")
         } else {
             sidecar_missing(entry, &path)
         });
@@ -193,12 +203,27 @@ fn doctor_failures(inputs: &PlanInputs<'_>) -> Vec<String> {
     })
 }
 
+/// The TPM history's backend-failure line (swtpm died), so the README opens
+/// with it too.
+fn tpm_failure(history: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(history).ok()?;
+    let line = text
+        .lines()
+        .take_while(|line| line.starts_with('#'))
+        .find_map(|line| line.strip_prefix(ternvale_tpm::BACKEND_FAILED))?;
+    tracing::debug!(target: "ternvale::cli", history = %history.display(), "tpm backend failure found for the report header");
+    Some(format!("tpm: backend failed: {line}"))
+}
+
+/// The config at `path`, even one that fails validation.
+fn vm_config_of(path: &Path) -> Option<ternvale_config::VmConfig> {
+    let text = std::fs::read_to_string(path).ok()?;
+    ternvale_config::VmConfig::parse(&text).ok()
+}
+
 /// `serial_log` from a config, even one that fails validation.
 fn serial_log_of(config: &Path) -> Option<PathBuf> {
-    let text = std::fs::read_to_string(config).ok()?;
-    ternvale_config::VmConfig::parse(&text)
-        .ok()
-        .map(|c| c.serial_log)
+    vm_config_of(config).map(|c| c.serial_log)
 }
 
 /// The config recorded by the newest run of `name`, for doctor's config checks.

@@ -292,7 +292,7 @@ impl Machine {
         for (base, size, device) in devices.into_iter().chain(fw_cfg) {
             bus.register(base, size, device)?;
         }
-        crate::tpm::register(&mut bus, config)?;
+        crate::tpm::register(&mut bus, config, control.diagnostics())?;
         attached.pci.register(&mut bus)?;
         // PCI functions (and their guest-memory handles) must die with the bus, before the VM.
         drop(attached);

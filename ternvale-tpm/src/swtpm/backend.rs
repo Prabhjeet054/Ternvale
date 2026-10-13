@@ -12,11 +12,14 @@
 //! one, the command bytes on the data socket, then a 10-byte response header
 //! and `responseSize - 10` more bytes back. Any I/O or framing failure puts
 //! the backend in failure mode: this and every later command get
-//! `TPM_RC_FAILURE`, as a TPM in failure mode would answer.
+//! `TPM_RC_FAILURE`, as a TPM in failure mode would answer. The failure is
+//! logged at ERROR (command, swtpm's pid and exit status, the I/O error) and
+//! recorded in the CRB's command history for crash reports.
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::ctrl::{Control, REQUIRED_CAPS};
@@ -24,7 +27,11 @@ use super::locate::{find_swtpm, SwtpmInfo};
 use super::process::SwtpmProcess;
 use super::state::{check_state_file, StateFile};
 use super::SwtpmError;
-use crate::backend::{error_response, TpmBackend, HEADER_LEN, RC_FAILURE, ST_NO_SESSIONS};
+use crate::backend::{
+    error_response, CommandHeader, TpmBackend, HEADER_LEN, RC_FAILURE, ST_NO_SESSIONS,
+};
+use crate::history::TpmHistory;
+use crate::redact::command_name;
 use crate::regs::DATA_BUFFER_SIZE;
 
 /// Longest a command may take. libtpms RSA key generation can take seconds.
@@ -42,6 +49,7 @@ pub struct SwtpmBackend {
     locality: Option<u8>,
     failed: bool,
     commands: u64,
+    history: Option<Arc<TpmHistory>>,
 }
 
 impl SwtpmBackend {
@@ -67,6 +75,9 @@ impl SwtpmBackend {
             };
             tracing::error!(target: "ternvale::tpm", error = %error, "swtpm start-up failed");
             return Err(error);
+        }
+        if let Some(process) = &backend.process {
+            process.running();
         }
         tracing::info!(
             target: "ternvale::tpm",
@@ -101,6 +112,7 @@ impl SwtpmBackend {
             locality: None,
             failed: false,
             commands: 0,
+            history: None,
         })
     }
 
@@ -108,6 +120,53 @@ impl SwtpmBackend {
     #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all)]
     pub fn info(&self) -> Option<&SwtpmInfo> {
         self.info.as_ref()
+    }
+
+    /// swtpm's process id, when this backend started it.
+    #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all)]
+    pub fn pid(&self) -> Option<u32> {
+        self.process.as_ref().map(SwtpmProcess::pid)
+    }
+
+    /// Enter failure mode after `command` got no answer: log why at ERROR
+    /// and record it in the command history.
+    fn fail(&mut self, locality: u8, command: &[u8], error: &SwtpmError) {
+        self.failed = true;
+        let header = CommandHeader::parse(command);
+        let code = header.map_or("none".to_string(), |h| format!("{:#x}", h.code));
+        let name = header
+            .and_then(|h| command_name(h.code))
+            .unwrap_or("unknown");
+        let (pid, status, output) = match self.process.as_mut() {
+            Some(process) => (
+                Some(process.pid()),
+                process.exit_status(),
+                process.recent_output(),
+            ),
+            None => (
+                None,
+                "was not started by Ternvale".to_string(),
+                "none".to_string(),
+            ),
+        };
+        let swtpm = pid.map_or_else(|| "swtpm".to_string(), |pid| format!("swtpm (pid {pid})"));
+        tracing::error!(
+            target: "ternvale::tpm",
+            locality,
+            code = %code,
+            name,
+            pid = ?pid,
+            swtpm = %format!("{swtpm} {status}"),
+            error = %error,
+            swtpm_last_output = %output,
+            commands_answered = self.commands,
+            "swtpm stopped answering; this TPM command and every later one get TPM_RC_FAILURE until the VM restarts"
+        );
+        if let Some(history) = &self.history {
+            history.note_failure(&format!(
+                "{swtpm} {status}: {error}, during {name} ({code})"
+            ));
+        }
     }
 
     /// Capabilities, buffer size, `CMD_INIT`.
@@ -182,9 +241,7 @@ impl TpmBackend for SwtpmBackend {
                 response
             }
             Err(error) => {
-                self.failed = true;
-                let output = self.process.as_ref().map(SwtpmProcess::recent_output);
-                tracing::error!(target: "ternvale::tpm", locality, error = %error, swtpm_output = ?output, "swtpm exchange failed; every further command gets TPM_RC_FAILURE");
+                self.fail(locality, command, &error);
                 error_response(ST_NO_SESSIONS, RC_FAILURE)
             }
         }
@@ -193,6 +250,10 @@ impl TpmBackend for SwtpmBackend {
     fn host_io(&self) -> bool {
         true
     }
+
+    fn attach_history(&mut self, history: Arc<TpmHistory>) {
+        self.history = Some(history);
+    }
 }
 
 impl Drop for SwtpmBackend {
@@ -200,6 +261,12 @@ impl Drop for SwtpmBackend {
         let Some(mut process) = self.process.take() else {
             return;
         };
+        process.expect_exit();
+        if self.failed {
+            tracing::debug!(target: "ternvale::tpm", commands = self.commands, "swtpm failed earlier; stopping it without CMD_SHUTDOWN");
+            drop(process);
+            return;
+        }
         match self.ctrl.shutdown() {
             Ok(()) => {
                 process.exiting();

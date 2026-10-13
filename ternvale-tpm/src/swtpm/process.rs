@@ -4,7 +4,9 @@
 //! holding the two sockets swtpm listens on. swtpm's stdout and stderr are
 //! forwarded line by line to `ternvale::tpm`. `--ctrl …,terminate` makes
 //! swtpm exit when the control connection drops, so it does not outlive a
-//! VMM that crashed.
+//! VMM that crashed. swtpm exiting on its own while the VM runs (killed,
+//! crashed) is logged at ERROR as soon as its stderr closes, before the
+//! guest's next command finds out.
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
@@ -12,7 +14,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -27,6 +29,14 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const EXIT_TIMEOUT: Duration = Duration::from_secs(3);
 /// swtpm output lines kept for error messages.
 const KEPT_LINES: usize = 20;
+/// How long [`SwtpmProcess::exit_status`] waits for a dying swtpm.
+const STATUS_WAIT: Duration = Duration::from_millis(500);
+
+/// [`SwtpmProcess`] life: an exit while `RUNNING` is unexpected.
+const STARTING: u8 = 0;
+const RUNNING: u8 = 1;
+const STOPPING: u8 = 2;
+const DIED: u8 = 3;
 
 static NEXT_RUN: AtomicU64 = AtomicU64::new(0);
 
@@ -72,6 +82,7 @@ pub(super) struct SwtpmProcess {
     runtime_dir: PathBuf,
     lines: Lines,
     readers: Vec<JoinHandle<()>>,
+    life: Arc<AtomicU8>,
     /// `CMD_SHUTDOWN` succeeded, so swtpm is exiting on its own.
     exiting: bool,
     stopped: bool,
@@ -120,18 +131,22 @@ impl SwtpmProcess {
             }
         };
         let lines: Lines = Arc::default();
+        let life = Arc::new(AtomicU8::new(STARTING));
+        let pid = child.id();
         let mut readers = Vec::new();
         if let Some(out) = child.stdout.take() {
-            readers.push(forward(out, "stdout", Arc::clone(&lines)));
+            readers.push(forward(out, "stdout", Arc::clone(&lines), None));
         }
         if let Some(err) = child.stderr.take() {
-            readers.push(forward(err, "stderr", Arc::clone(&lines)));
+            let watch = Some((Arc::clone(&life), pid));
+            readers.push(forward(err, "stderr", Arc::clone(&lines), watch));
         }
         let mut process = Self {
             child,
             runtime_dir,
             lines,
             readers,
+            life,
             exiting: false,
             stopped: false,
         };
@@ -141,9 +156,35 @@ impl SwtpmProcess {
         Ok((process, ctrl, data))
     }
 
+    /// Start-up finished: from now on swtpm exiting is unexpected.
+    pub(super) fn running(&self) {
+        self.life.store(RUNNING, Ordering::Release);
+    }
+
+    /// Ternvale is about to stop swtpm, so its exit is expected.
+    pub(super) fn expect_exit(&self) {
+        self.life.store(STOPPING, Ordering::Release);
+    }
+
     /// `CMD_SHUTDOWN` succeeded: give swtpm time to exit before killing it.
     pub(super) fn exiting(&mut self) {
         self.exiting = true;
+    }
+
+    /// `exited with signal: 9 (SIGKILL)` once swtpm has exited (waiting up
+    /// to [`STATUS_WAIT`] for one that is dying), else `is still running`.
+    pub(super) fn exit_status(&mut self) -> String {
+        let deadline = Instant::now() + STATUS_WAIT;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) => return format!("exited with {status}"),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                Ok(None) => return "is still running".to_string(),
+                Err(error) => return format!("has an unknown status ({error})"),
+            }
+        }
     }
 
     /// Process id, for logs.
@@ -213,6 +254,7 @@ impl SwtpmProcess {
             return self.recent_output();
         }
         self.stopped = true;
+        self.expect_exit();
         let deadline = Instant::now()
             + if self.exiting {
                 EXIT_TIMEOUT
@@ -256,8 +298,15 @@ impl Drop for SwtpmProcess {
     }
 }
 
-/// Log each line of `pipe` and keep the last [`KEPT_LINES`].
-fn forward(pipe: impl Read + Send + 'static, stream: &'static str, lines: Lines) -> JoinHandle<()> {
+/// Log each line of `pipe` and keep the last [`KEPT_LINES`]. With `watch`
+/// (swtpm's life and pid), the pipe closing while swtpm should be running
+/// means swtpm exited on its own: ERROR.
+fn forward(
+    pipe: impl Read + Send + 'static,
+    stream: &'static str,
+    lines: Lines,
+    watch: Option<(Arc<AtomicU8>, u32)>,
+) -> JoinHandle<()> {
     std::thread::spawn(move || {
         for line in BufReader::new(pipe).lines() {
             let Ok(line) = line else { break };
@@ -267,6 +316,17 @@ fn forward(pipe: impl Read + Send + 'static, stream: &'static str, lines: Lines)
                 kept.pop_front();
             }
             kept.push_back(line);
+        }
+        let Some((life, pid)) = watch else { return };
+        if life
+            .compare_exchange(RUNNING, DIED, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            tracing::error!(
+                target: "ternvale::tpm",
+                pid,
+                "swtpm exited while the VM was running (killed or crashed); the guest's next TPM command gets TPM_RC_FAILURE, and the TPM stays failed until the VM restarts"
+            );
         }
     })
 }

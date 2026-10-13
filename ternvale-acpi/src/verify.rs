@@ -12,7 +12,7 @@ use crate::gas::Gas;
 use crate::madt::{GICC_ENABLED, GIC_VERSION_3};
 use crate::sdt::SDT_HEADER_LEN;
 use crate::spcr::{INTERFACE_PL011, INTERRUPT_TYPE_GIC};
-use crate::tables::SIGNATURES;
+use crate::tables::signatures;
 use crate::tpm2::{decode_tpm2, PLATFORM_CLIENT, START_METHOD_CRB};
 use crate::AcpiError;
 
@@ -44,7 +44,7 @@ impl Problems {
 pub fn verify(tables: &[DumpedTable], expected: &AcpiConfig) -> Result<(), AcpiError> {
     let mut p = Problems(Vec::new());
     let found: Vec<&str> = tables.iter().map(|t| t.signature.as_str()).collect();
-    let mut want = SIGNATURES.to_vec();
+    let mut want = signatures(expected);
     let mut have = found.clone();
     want.sort_unstable();
     have.sort_unstable();
@@ -160,10 +160,11 @@ pub fn verify(tables: &[DumpedTable], expected: &AcpiConfig) -> Result<(), AcpiE
             found,
         );
     }
-    if let Some(tpm2) = bytes("TPM2").and_then(|b| p.decoded("TPM2", decode_tpm2(b))) {
+    let tpm2 = bytes("TPM2").and_then(|b| p.decoded("TPM2", decode_tpm2(b)));
+    if let (Some(tpm2), Some(tpm)) = (tpm2, expected.tpm) {
         p.expect(
             "TPM2 (platform class, control area, start method)",
-            (PLATFORM_CLIENT, expected.tpm.control_area, START_METHOD_CRB),
+            (PLATFORM_CLIENT, tpm.control_area, START_METHOD_CRB),
             (tpm2.platform_class, tpm2.control_area, tpm2.start_method),
         );
     }

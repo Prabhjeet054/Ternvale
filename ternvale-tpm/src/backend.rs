@@ -13,6 +13,10 @@
 //! `TPM_RC_BAD_TAG`, as TPM 1.2 software expects (Part 1 §18.4).
 //! TODO(verify): the section numbers against the Library revision in use.
 
+use std::sync::Arc;
+
+use crate::history::TpmHistory;
+
 /// Bytes in a command or response header.
 pub const HEADER_LEN: usize = 10;
 /// `TPM_ST_NO_SESSIONS`.
@@ -46,6 +50,10 @@ pub trait TpmBackend: Send {
     fn host_io(&self) -> bool {
         false
     }
+
+    /// The CRB's command history, handed over before the first command, so
+    /// a backend that can fail (swtpm) records why in crash reports.
+    fn attach_history(&mut self, _history: Arc<TpmHistory>) {}
 }
 
 /// A parsed command header.

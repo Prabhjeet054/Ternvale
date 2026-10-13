@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn table_is_revision_4_crb_pointing_at_the_control_area() {
-        let bytes = tpm2(&sample(1).tpm).expect("tpm2");
+        let bytes = tpm2(&sample(1).tpm.expect("tpm")).expect("tpm2");
         assert_eq!(bytes.len(), TPM2_LEN);
         assert_eq!(&bytes[..4], b"TPM2");
         assert_eq!(bytes[8], 4);
@@ -177,14 +177,14 @@ mod tests {
         let config = sample(1);
         let mcfg = crate::mcfg::mcfg(&config.ecam).expect("mcfg");
         assert!(decode_tpm2(&mcfg).is_err());
-        let mut short = tpm2(&config.tpm).expect("tpm2")[..48].to_vec();
+        let mut short = tpm2(&config.tpm.expect("tpm")).expect("tpm2")[..48].to_vec();
         short[4..8].copy_from_slice(&48u32.to_le_bytes());
         assert!(decode_tpm2(&short).is_err());
     }
 
     #[test]
     fn device_has_the_msft0101_hid_and_the_crb_window() {
-        let aml = tpm_device(&sample(1).tpm).expect("device");
+        let aml = tpm_device(&sample(1).tpm.expect("tpm")).expect("device");
         assert_eq!(&aml[..2], &[0x5b, 0x82], "DeviceOp");
         let hid = string("MSFT0101").expect("string");
         assert!(aml.windows(hid.len()).any(|w| w == hid.as_slice()));

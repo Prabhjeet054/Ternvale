@@ -21,13 +21,23 @@
 //!
 //! Every access is checked: size 1, 2, 4 or 8, naturally aligned, inside the
 //! window. Anything else logs WARN, reads 0 and writes nothing. Every command
-//! and response byte stream is logged at TRACE on `ternvale::tpm`.
+//! and response is logged at TRACE on `ternvale::tpm`, with its bytes only
+//! when [`crate::redact`] allows it or [`LOG_SECRETS_ENV`] is `1`, and kept
+//! in a [`TpmHistory`] for crash reports.
+
+use std::sync::Arc;
 
 use crate::backend::TpmBackend;
+use crate::history::{TpmHistory, TPM_HISTORY_LEN};
 use crate::locality::Localities;
 use crate::regs::*;
 use crate::worker::Runner;
 use crate::TpmError;
+
+/// Set to `1` to log the bytes of every TPM command and response at TRACE,
+/// secrets included. For debugging a guest's TPM traffic on a test VM only;
+/// crash-report command histories stay redacted either way.
+pub const LOG_SECRETS_ENV: &str = "TERNVALE_TPM_LOG_SECRETS";
 
 /// The CRB interface of one TPM.
 pub struct TpmCrb {
@@ -40,6 +50,8 @@ pub struct TpmCrb {
     runner: Runner,
     pending: Option<command::Pending>,
     commands: u64,
+    history: Arc<TpmHistory>,
+    log_secrets: bool,
 }
 
 impl std::fmt::Debug for TpmCrb {
@@ -66,7 +78,7 @@ impl TpmCrb {
         skip_all,
         fields(base = %format!("{base:#x}"), backend = backend.name())
     )]
-    pub fn new(base: u64, backend: Box<dyn TpmBackend>) -> Result<Self, TpmError> {
+    pub fn new(base: u64, mut backend: Box<dyn TpmBackend>) -> Result<Self, TpmError> {
         if base % LOCALITY_STRIDE != 0 {
             tracing::warn!(target: "ternvale::tpm", base = %format!("{base:#x}"), "tpm crb base is not 4 KiB aligned");
             return Err(TpmError::Misaligned { base });
@@ -75,7 +87,13 @@ impl TpmCrb {
             tracing::warn!(target: "ternvale::tpm", base = %format!("{base:#x}"), "tpm crb window overflows");
             return Err(TpmError::Overflow { base });
         }
+        let history = Arc::new(TpmHistory::new(backend.name(), TPM_HISTORY_LEN));
+        backend.attach_history(Arc::clone(&history));
         let runner = Runner::new(backend)?;
+        let log_secrets = std::env::var_os(LOG_SECRETS_ENV).is_some_and(|value| value == "1");
+        if log_secrets {
+            tracing::info!(target: "ternvale::tpm", env = LOG_SECRETS_ENV, "TRACE logs carry every tpm command and response byte, keys and auth values included; do not share them");
+        }
         tracing::info!(
             target: "ternvale::tpm",
             base = %format!("{base:#x}"),
@@ -96,7 +114,15 @@ impl TpmCrb {
             runner,
             pending: None,
             commands: 0,
+            history,
+            log_secrets,
         })
+    }
+
+    /// The record of the latest commands, shared with whoever reports them.
+    #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all)]
+    pub fn history(&self) -> Arc<TpmHistory> {
+        Arc::clone(&self.history)
     }
 
     /// Guest physical address of the window.
@@ -289,3 +315,7 @@ mod sequence_tests;
 #[cfg(test)]
 #[path = "crb_worker_tests.rs"]
 mod worker_tests;
+
+#[cfg(test)]
+#[path = "crb_history_tests.rs"]
+mod history_tests;

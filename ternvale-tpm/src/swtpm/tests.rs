@@ -54,6 +54,19 @@ fn capabilities_parse_and_list_what_ternvale_needs() {
 }
 
 #[test]
+fn versions_parse_to_numbers_that_compare_with_the_tested_one() {
+    assert_eq!(parse_swtpm_version("0.10.2"), Some((0, 10, 2)));
+    assert_eq!(parse_swtpm_version("0.9"), Some((0, 9, 0)));
+    assert_eq!(parse_swtpm_version(" 1.0.0-rc1 "), Some((1, 0, 0)));
+    assert_eq!(parse_swtpm_version("unknown"), None);
+    assert_eq!(parse_swtpm_version("0.x.1"), None);
+    let tested = TESTED_SWTPM_VERSION;
+    let at_least = |v: &str| parse_swtpm_version(v).is_some_and(|(a, b, _)| (a, b) >= tested);
+    assert!(at_least("0.10.0") && at_least("0.11.1") && at_least("1.0"));
+    assert!(!at_least("0.9.7") && !at_least("0.8.2"));
+}
+
+#[test]
 fn state_header_needs_magic_known_version_and_sane_size() {
     assert_eq!(parse_prefix(&HEADER_0_10_2, 8384), Ok(()));
     let mut bad = HEADER_0_10_2;
@@ -289,8 +302,23 @@ fn commands_and_responses_pass_through_unmodified_with_locality_switches() {
 fn a_malformed_response_puts_the_backend_in_failure_mode() {
     let (mut backend, log, _threads) =
         fake_swtpm(0x1ffff, |_| vec![0x80, 0x01, 0, 0, 0, 4, 0, 0, 0, 0]);
+    let history = Arc::new(crate::TpmHistory::new("swtpm", 4));
+    backend.attach_history(Arc::clone(&history));
     let failure = error_response(ST_NO_SESSIONS, RC_FAILURE);
-    assert_eq!(backend.execute(0, &STARTUP), failure);
+    let (first, logged) = crate::test_log::capture(|| backend.execute(0, &STARTUP));
+    assert_eq!(first, failure);
+    assert!(
+        logged.contains("ERROR")
+            && logged.contains("swtpm stopped answering")
+            && logged.contains("name=\"Startup\"")
+            && logged.contains("code=0x144"),
+        "{logged}"
+    );
+    let noted = history.failure().expect("failure recorded").reason;
+    assert_eq!(
+        noted,
+        "swtpm was not started by Ternvale: swtpm data channel: responseSize 4 outside 10..=65536, during Startup (0x144)"
+    );
     assert_eq!(backend.execute(0, &STARTUP), failure);
     let data = log
         .lock()

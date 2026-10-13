@@ -40,7 +40,7 @@ pub(super) fn get(crb: &mut TpmCrb, locality: u8, len: usize) -> Vec<u8> {
 }
 
 /// The Linux `tpm_crb` sequence for one command at `locality`.
-fn run(crb: &mut TpmCrb, locality: u8, command: &[u8]) -> Vec<u8> {
+pub(super) fn run(crb: &mut TpmCrb, locality: u8, command: &[u8]) -> Vec<u8> {
     crb.write(
         page(locality, LOC_CTRL),
         4,

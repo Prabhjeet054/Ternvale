@@ -43,9 +43,9 @@ fn config_comes_from_the_platform_constants() {
     );
     assert_eq!(
         (
-            config.tpm.crb_base,
-            config.tpm.crb_len,
-            config.tpm.control_area
+            config.tpm.expect("tpm").crb_base,
+            config.tpm.expect("tpm").crb_len,
+            config.tpm.expect("tpm").control_area
         ),
         (0x0914_0000, 0x5000, 0x0914_0040)
     );
@@ -94,7 +94,7 @@ fn config_that_leaves_the_platform_map_is_named() {
     config.gic.redist_len = 0x2_0000;
     config.ecam.end_bus = 31;
     config.uart.base = 0x0900_3800;
-    config.tpm.control_area = TPM_CRB_BASE + 0x1040;
+    config.tpm.as_mut().expect("tpm").control_area = TPM_CRB_BASE + 0x1040;
     let text = platform_problems(&config, &layout).join("\n");
     assert!(
         text.contains("GICD: platform gic-dist is 0x8000000+0x10000, tables say 0x8010000"),
@@ -161,6 +161,7 @@ fn dtb_and_acpi_agree() {
         cpu_count: cpus,
         firmware: true,
         fw_cfg: false,
+        tpm: false,
     };
     let dts = dtc_dts(&build_fdt(&fdt).expect("dtb"));
 

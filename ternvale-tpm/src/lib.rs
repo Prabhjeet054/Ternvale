@@ -7,8 +7,9 @@
 //! buffer runs when the active locality sets `START`, on a [`TpmBackend`]:
 //! [`SwtpmBackend`] forwards it unmodified to a spawned swtpm (on a worker
 //! thread, so the vCPU never waits on the socket); [`StubBackend`] answers
-//! every command with an error code. Every command and response byte stream
-//! is logged at TRACE on `ternvale::tpm`.
+//! every command with an error code. Every command and response is logged at
+//! TRACE on `ternvale::tpm`, with bytes only for commands [`redact`] deems
+//! public, and the latest ones are kept in a [`TpmHistory`] for crash reports.
 //!
 //! The crate does not depend on the VMM: `ternvale-vmm` puts a [`TpmCrb`] on
 //! its MMIO bus and describes it to the guest with the ACPI TPM2 table and
@@ -16,7 +17,9 @@
 
 mod backend;
 mod crb;
+mod history;
 mod locality;
+pub mod redact;
 pub mod regs;
 mod swtpm;
 #[cfg(test)]
@@ -28,12 +31,16 @@ pub use backend::{
     RC_BAD_TAG, RC_COMMAND_CODE, RC_COMMAND_SIZE, RC_FAILURE, ST_NO_SESSIONS, ST_RSP_COMMAND,
     ST_SESSIONS,
 };
-pub use crb::TpmCrb;
+pub use crb::{TpmCrb, LOG_SECRETS_ENV};
+pub use history::{
+    BackendFailure, TpmExchange, TpmHistory, BACKEND_FAILED, TPM_HISTORY_BYTES, TPM_HISTORY_LEN,
+};
 pub use locality::Localities;
 pub use regs::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE, DATA_BUFFER, DATA_BUFFER_SIZE, LOCALITIES};
 pub use swtpm::{
-    check_state_file, find_swtpm, locate_swtpm, probe_swtpm, StateFile, SwtpmBackend, SwtpmError,
-    SwtpmInfo, REQUIRED_FEATURES, STATE_MAGIC, STATE_VERSION, SWTPM_FALLBACK_DIRS,
+    check_state_file, find_swtpm, locate_swtpm, parse_swtpm_version, probe_swtpm, StateFile,
+    SwtpmBackend, SwtpmError, SwtpmInfo, REQUIRED_FEATURES, STATE_MAGIC, STATE_VERSION,
+    SWTPM_FALLBACK_DIRS, TESTED_SWTPM_VERSION,
 };
 
 /// Building a CRB failed.

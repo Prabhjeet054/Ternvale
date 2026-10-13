@@ -22,7 +22,8 @@ use std::path::PathBuf;
 
 pub use backend::SwtpmBackend;
 pub use locate::{
-    find_swtpm, locate_swtpm, probe_swtpm, SwtpmInfo, REQUIRED_FEATURES, SWTPM_FALLBACK_DIRS,
+    find_swtpm, locate_swtpm, parse_swtpm_version, probe_swtpm, SwtpmInfo, REQUIRED_FEATURES,
+    SWTPM_FALLBACK_DIRS, TESTED_SWTPM_VERSION,
 };
 pub use state::{check_state_file, StateFile, STATE_MAGIC, STATE_VERSION};
 

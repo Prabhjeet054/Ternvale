@@ -56,6 +56,27 @@ fn pointers_chain_rsdp_to_every_table() {
 }
 
 #[test]
+fn without_a_tpm_there_is_no_tpm2_table_and_the_xsdt_lists_six() {
+    let config = crate::config::tests::sample_without_tpm(2);
+    let tables = AcpiTables::build(BASE, SIZE, &config).expect("build");
+    let names: Vec<_> = tables.tables().iter().map(|t| t.signature).collect();
+    assert_eq!(names, signatures(&config));
+    assert_eq!(names, &SIGNATURES[..9]);
+    assert_eq!(signatures(&sample(2)), SIGNATURES);
+    let [_, xsdt, fadt, _, rest @ ..] = tables.tables() else {
+        panic!("expected nine tables");
+    };
+    assert_eq!(xsdt.bytes.len(), SDT_HEADER_LEN + 8 * 6);
+    let listed: Vec<u64> = (0..6)
+        .map(|i| u64_at(&xsdt.bytes, SDT_HEADER_LEN + 8 * i))
+        .collect();
+    let mut expected = vec![fadt.gpa];
+    expected.extend(rest.iter().map(|t| t.gpa));
+    assert_eq!(listed, expected);
+    assert!(tables.used_bytes() < built().used_bytes());
+}
+
+#[test]
 fn invalid_config_fails_before_layout() {
     let error = AcpiTables::build(BASE, SIZE, &sample(0)).unwrap_err();
     assert!(matches!(error, AcpiError::BadConfig { .. }), "{error}");

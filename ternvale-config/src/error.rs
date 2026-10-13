@@ -98,6 +98,13 @@ pub enum ConfigError {
         tables: crate::FirmwareTables,
     },
 
+    /// `[tpm] enabled = false` together with settings that only apply to a TPM.
+    #[error("tpm.enabled = false removes the TPM, so {field} has nothing to configure; drop one of them")]
+    TpmDisabledConflict {
+        /// The conflicting field: `tpm.backend = "swtpm"` or `tpm.swtpm`.
+        field: &'static str,
+    },
+
     /// A `[vsock]` setting is out of range.
     #[error("{field}: {reason}")]
     InvalidVsock {

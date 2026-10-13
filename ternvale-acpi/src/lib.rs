@@ -78,7 +78,7 @@ pub use sdt::{byte_sum, checksum, table, SdtHeader, SDT_CHECKSUM_OFFSET, SDT_HEA
 pub use spcr::{
     spcr, BAUD_115200, INTERFACE_PL011, INTERRUPT_TYPE_GIC, SPCR_LEN, SPCR_REVISION, SPCR_SIGNATURE,
 };
-pub use tables::{AcpiTables, Table, BASE_ALIGN, SIGNATURES, TABLE_ALIGN};
+pub use tables::{signatures, AcpiTables, Table, BASE_ALIGN, SIGNATURES, TABLE_ALIGN};
 pub use tpm2::{
     decode_tpm2, tpm2, tpm_device, Tpm2Info, PLATFORM_CLIENT, START_METHOD_CRB, TPM2_LEN,
     TPM2_REVISION, TPM2_SIGNATURE, TPM_HID,

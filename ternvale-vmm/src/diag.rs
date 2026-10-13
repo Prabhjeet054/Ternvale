@@ -12,6 +12,8 @@ use std::sync::atomic::{fence, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
+use ternvale_tpm::TpmHistory;
+
 /// Events kept by [`MmioTrace::new`] callers that do not choose.
 pub const MMIO_TRACE_LEN: usize = 512;
 
@@ -256,6 +258,7 @@ impl MmioTrace {
 pub struct Diagnostics {
     dtb: OnceLock<Vec<u8>>,
     mmio: Arc<MmioTrace>,
+    tpm: OnceLock<Arc<TpmHistory>>,
 }
 
 impl Diagnostics {
@@ -283,6 +286,21 @@ impl Diagnostics {
     #[tracing::instrument(level = "trace", target = "ternvale::mmio", skip_all)]
     pub fn mmio(&self) -> &Arc<MmioTrace> {
         &self.mmio
+    }
+
+    /// Keep the TPM's command history. Only the first call is kept.
+    #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all)]
+    pub fn set_tpm(&self, history: Arc<TpmHistory>) {
+        if self.tpm.set(history).is_err() {
+            tracing::warn!(target: "ternvale::tpm", "tpm history already recorded; keeping the first");
+        }
+    }
+
+    /// The TPM's command history; `None` when the VM has no TPM
+    /// (`[tpm] enabled = false`) or the machine has not built it yet.
+    #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all)]
+    pub fn tpm(&self) -> Option<&Arc<TpmHistory>> {
+        self.tpm.get()
     }
 }
 

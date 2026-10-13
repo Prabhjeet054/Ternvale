@@ -58,6 +58,95 @@ fn is_hex(text: &str, bytes: usize) -> bool {
     text.len() == 2 * bytes && text.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// Per boot: the crash-report command history (`TpmHistory::render`) shows
+/// EDK2's `TPM2_Startup` with its bytes, the guest's `TPM2_GetRandom` calls
+/// as code and sizes only, and none of the random bytes the guest printed.
+pub fn check_history(boot: u32, guest: &Guest, history: &str) -> Result<(), String> {
+    let mut problems = Vec::new();
+    let lines: Vec<&str> = history.lines().filter(|l| l.starts_with("seq=")).collect();
+    if !history.starts_with("# TPM commands: backend swtpm, ") {
+        problems.push("history header does not name the swtpm backend".to_string());
+    }
+    if !lines
+        .iter()
+        .any(|l| l.contains(" name=Startup ") && l.contains(" cmd=8001"))
+    {
+        problems.push("no TPM2_Startup with its bytes".to_string());
+    }
+    let randoms: Vec<&&str> = lines
+        .iter()
+        .filter(|l| l.contains(" name=GetRandom "))
+        .collect();
+    if randoms.is_empty() || !randoms.iter().all(|l| l.ends_with(" bytes=redacted")) {
+        problems.push(format!(
+            "{} GetRandom lines, want at least 1, all redacted",
+            randoms.len()
+        ));
+    }
+    for random in guest.randoms() {
+        if !random.is_empty() && history.contains(random) {
+            problems.push(format!("guest random {random} appears in the history"));
+        }
+    }
+    tracing::info!(
+        target: "ternvale::boot",
+        boot,
+        exchanges = lines.len(),
+        get_random = randoms.len(),
+        redacted = history.matches("bytes=redacted").count(),
+        "tpm command history checked"
+    );
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(format!("boot {boot}: tpm history: {}", problems.join("; ")))
+}
+
+/// The boot with `[tpm] enabled = false`: Linux finds no TPM2 table and no
+/// TPM device, EDK2 published no TCG2 event log, the VM kept no command
+/// history, and swtpm never touched the state file. (`check_host_log` sees
+/// no `swtpm ready` line for this boot.)
+pub fn check_disabled(
+    guest: &Guest,
+    history: Option<&str>,
+    state: &Path,
+    state_before: &[u8],
+) -> Result<(), String> {
+    let mut problems = Vec::new();
+    for (what, key, want) in [
+        ("probe", "acpi_tpm2", "n"),
+        ("probe", "tpmrm0", "n"),
+        ("probe", "driver", ""),
+        ("eventlog", "bytes", ""),
+    ] {
+        if guest.get(what, key) != want {
+            problems.push(format!(
+                "{what} {key}={:?}, want {want:?}",
+                guest.get(what, key)
+            ));
+        }
+    }
+    if history.is_some() {
+        problems.push("the vm recorded a tpm command history".to_string());
+    }
+    let state_after =
+        std::fs::read(state).map_err(|err| format!("read {}: {err}", state.display()))?;
+    if state_after != state_before {
+        problems.push(format!("{} changed", state.display()));
+    }
+    tracing::info!(
+        target: "ternvale::boot",
+        acpi_tpm2 = guest.get("probe", "acpi_tpm2"),
+        tpmrm0 = guest.get("probe", "tpmrm0"),
+        random1_rc = guest.get("random1", "rc"),
+        "tpm-disabled boot"
+    );
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(format!("boot 3 (tpm disabled): {}", problems.join("; ")))
+}
+
 /// Per boot: Linux bound `tpm_crb` to `\_SB.TPM2`, and every tpm2-tools step
 /// succeeded with plausible output. Boot 1 defines the NV index, boot 2 finds it.
 pub fn check_boot(boot: u32, guest: &Guest) -> Result<(), String> {

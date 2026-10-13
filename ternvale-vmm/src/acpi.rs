@@ -13,7 +13,7 @@
 //! addresses EDK2 picks, not this window. With `"fdt"` nothing is mapped or
 //! offered, and EDK2 publishes the DTB as before.
 
-use ternvale_acpi::{DumpedTable, LoaderBlobs, TableRef};
+use ternvale_acpi::{AcpiConfig, DumpedTable, LoaderBlobs, TableRef};
 use ternvale_config::{FirmwareTables, VmConfig};
 
 use crate::fw_cfg::{FwCfg, FW_CFG_REG_SIZE};
@@ -39,7 +39,7 @@ pub(crate) fn prepare(
         tracing::info!(target: "ternvale::acpi", firmware_tables = %tables, "device tree only; acpi tables not installed");
         return Ok(None);
     }
-    let checked = install(memory, vm, config.cpus)?;
+    let checked = install(memory, vm, &crate::acpi_check::vm_acpi_config(config))?;
     let device = fw_cfg_for(&checked)?;
     tracing::info!(
         target: "ternvale::acpi",
@@ -60,35 +60,43 @@ pub(crate) fn fw_cfg_for(tables: &[DumpedTable]) -> Result<FwCfg, MachineError> 
 }
 
 /// Map the ACPI window into `vm` (guest read-only), write the tables for
-/// `cpus` vCPUs, check them against the platform map, and return them as
-/// read back from guest memory.
+/// `config`, check them against the platform map, and return them as read
+/// back from guest memory.
 #[tracing::instrument(
     level = "debug",
     target = "ternvale::acpi",
     skip_all,
-    fields(base = %format!("{ACPI_BASE:#x}"), size = %format!("{ACPI_SIZE:#x}"), cpus)
+    fields(base = %format!("{ACPI_BASE:#x}"), size = %format!("{ACPI_SIZE:#x}"), cpus = config.mpidrs.len(), tpm = config.tpm.is_some())
 )]
 pub(crate) fn install(
     memory: &mut GuestMemory,
     vm: &ternvale_hv::Vm,
-    cpus: u32,
+    config: &AcpiConfig,
 ) -> Result<Vec<DumpedTable>, MachineError> {
     memory.map_flags(vm, ACPI_BASE, ACPI_SIZE, ternvale_hv::HV_MEMORY_READ)?;
-    write_tables(memory, cpus)?;
+    write_config(memory, config)?;
     let tables = dump_tables(memory)?;
-    crate::acpi_check::check(&tables, cpus)?;
+    crate::acpi_check::check_config(&tables, config)?;
     Ok(tables)
 }
 
-/// Build the tables for [`ACPI_BASE`] and `cpus` vCPUs and write them into
-/// `memory`, which must already hold the ACPI window.
-#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(cpus))]
+/// Build the tables for [`ACPI_BASE`] and `cpus` vCPUs (with a TPM) and
+/// write them into `memory`, which must already hold the ACPI window.
+#[cfg(test)]
 pub(crate) fn write_tables(
     memory: &mut GuestMemory,
     cpus: u32,
 ) -> Result<ternvale_acpi::AcpiTables, MachineError> {
-    let config = crate::acpi_check::acpi_config(cpus);
-    let tables = ternvale_acpi::AcpiTables::build(ACPI_BASE, ACPI_SIZE, &config)?;
+    write_config(memory, &crate::acpi_check::acpi_config(cpus))
+}
+
+/// [`write_tables`] for `config`.
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(cpus = config.mpidrs.len(), tpm = config.tpm.is_some()))]
+pub(crate) fn write_config(
+    memory: &mut GuestMemory,
+    config: &AcpiConfig,
+) -> Result<ternvale_acpi::AcpiTables, MachineError> {
+    let tables = ternvale_acpi::AcpiTables::build(ACPI_BASE, ACPI_SIZE, config)?;
     tables.write(|gpa, bytes| memory.write_bytes(gpa, bytes))?;
     tracing::debug!(
         target: "ternvale::acpi",
@@ -123,7 +131,7 @@ pub(crate) fn dump_tables(memory: &GuestMemory) -> Result<Vec<DumpedTable>, Mach
 pub fn dump_guest_acpi(cpus: u32) -> Result<Vec<DumpedTable>, MachineError> {
     let vm = ternvale_hv::Vm::create()?;
     let mut memory = GuestMemory::new()?;
-    let tables = install(&mut memory, &vm, cpus)?;
+    let tables = install(&mut memory, &vm, &crate::acpi_check::acpi_config(cpus))?;
     drop(memory);
     drop(vm);
     Ok(tables)
@@ -261,6 +269,27 @@ mod tests {
             assert_eq!(offline, guest, "cpus={cpus}");
         }
         assert!(build_acpi_offline(0).is_err());
+    }
+
+    #[test]
+    fn a_vm_without_a_tpm_gets_no_tpm2_table_and_still_passes_the_check() {
+        let text = "name = \"n\"\ncpus = 2\nram_mib = 256\nfirmware = \"/fw.fd\"\n\
+                    serial_log = \"/tmp/s.log\"\nfirmware_tables = \"acpi\"\n[tpm]\nenabled = false\n";
+        let vm = ternvale_config::VmConfig::parse(text).expect("parse");
+        let config = crate::acpi_check::vm_acpi_config(&vm);
+        assert_eq!(config.tpm, None);
+        let mut memory = GuestMemory::new().expect("memory");
+        memory.add_region(ACPI_BASE, ACPI_SIZE).expect("region");
+        write_config(&mut memory, &config).expect("write");
+        let dumped = dump_tables(&memory).expect("dump");
+        let names: Vec<&str> = dumped.iter().map(|t| t.signature.as_str()).collect();
+        assert_eq!(names, ternvale_acpi::signatures(&config));
+        assert!(!names.contains(&"TPM2"));
+        crate::acpi_check::check_config(&dumped, &config).expect("no drift");
+        let error = crate::acpi_check::check(&dumped, 2)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("table set"), "{error}");
     }
 
     #[test]

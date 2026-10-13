@@ -161,13 +161,16 @@ fn summary_report_and_logs_for_a_real_run() {
     assert_eq!(live.code, Some(0), "{live:?}");
     assert!(
         live.stdout
-            .contains("vm was running: dump-diagnostics wrote 3 files"),
+            .contains("vm was running: dump-diagnostics wrote 4 files"),
         "{}",
         live.stdout
     );
     assert!(!live.stdout.contains("Missing:"), "{}", live.stdout);
     let files = unzip(&live_zip);
     assert!(entry(&files, "mmio-events.txt").contains("\nwindow pl011 0x9000000 0x1000 "));
+    // A direct boot has the stub TPM, which its guest never sees.
+    assert!(entry(&files, "tpm-commands.txt")
+        .starts_with("# TPM commands: backend stub, 0 since the VM started"));
     assert!(entry(&files, "summary.txt")
         .starts_with(&format!("vm {name} is running (snapshot, not stopped)")));
     assert!(entry(&files, "config.toml").contains(&format!("name = \"{name}\"")));

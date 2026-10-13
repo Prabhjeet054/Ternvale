@@ -1,11 +1,13 @@
-//! `[tpm]`: which backend answers the guest's TPM 2.0 commands.
+//! `[tpm]`: whether the VM has a TPM 2.0, and which backend answers it.
 //!
-//! The CRB device exists in every VM; only ACPI guests can see it (the TPM2
-//! table and `\_SB.TPM2` name it). `auto` (the default) forwards commands to
-//! swtpm when it is installed and falls back to the error-answering stub with
-//! a warning when it is not. `swtpm` makes a missing swtpm fatal, `stub`
-//! never starts it. TPM state lives next to the UEFI variable store, see
-//! [`VmConfig::tpm_state_path`].
+//! The CRB device exists in every VM unless `enabled = false`; only ACPI
+//! guests can see it (the TPM2 table and `\_SB.TPM2` name it). `auto` (the
+//! default) forwards commands to swtpm when it is installed and falls back to
+//! the error-answering stub with a warning when it is not. `swtpm` makes a
+//! missing swtpm fatal, `stub` never starts it. `enabled = false` removes the
+//! device, its ACPI description and the swtpm process: for guests (typically
+//! Linux) that do not use a TPM. TPM state lives next to the UEFI variable
+//! store, see [`VmConfig::tpm_state_path`].
 
 use std::fmt;
 use std::path::PathBuf;
@@ -42,9 +44,13 @@ impl fmt::Display for TpmBackendKind {
 }
 
 /// The `[tpm]` table.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TpmSection {
+    /// `false`: no TPM at all (no CRB device, no TPM2 table or `\_SB.TPM2`,
+    /// no swtpm process). Default `true`.
+    #[serde(default = "enabled_default", skip_serializing_if = "is_true")]
+    pub enabled: bool,
     /// `"auto"` (default), `"swtpm"` or `"stub"`.
     #[serde(default)]
     pub backend: TpmBackendKind,
@@ -54,10 +60,45 @@ pub struct TpmSection {
     pub swtpm: Option<PathBuf>,
 }
 
+impl Default for TpmSection {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            backend: TpmBackendKind::default(),
+            swtpm: None,
+        }
+    }
+}
+
+fn enabled_default() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
 impl TpmSection {
     /// `swtpm` must be an existing file; `backend = "swtpm"` needs a guest
-    /// that can see the TPM (`tables` is `acpi`).
+    /// that can see the TPM (`tables` is `acpi`). A disabled TPM takes no
+    /// `backend = "swtpm"` or `swtpm` path: one of the two settings is a
+    /// mistake, and silently dropping the TPM would hide it.
     pub(crate) fn validate(&self, tables: FirmwareTables) -> Result<(), ConfigError> {
+        if !self.enabled {
+            let conflict = if self.backend == TpmBackendKind::Swtpm {
+                Some("tpm.backend = \"swtpm\"")
+            } else if self.swtpm.is_some() {
+                Some("tpm.swtpm")
+            } else {
+                None
+            };
+            if let Some(field) = conflict {
+                tracing::error!(target: "ternvale::config", field, "tpm.enabled = false conflicts with a tpm setting");
+                return Err(ConfigError::TpmDisabledConflict { field });
+            }
+            tracing::debug!(target: "ternvale::config", "tpm disabled");
+            return Ok(());
+        }
         if let Some(path) = &self.swtpm {
             if !path.is_file() {
                 tracing::error!(target: "ternvale::config", path = %path.display(), "tpm.swtpm is not an existing file");
@@ -81,6 +122,12 @@ impl VmConfig {
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
     pub fn tpm_section(&self) -> TpmSection {
         self.tpm.clone().unwrap_or_default()
+    }
+
+    /// False when `[tpm] enabled = false`: the VM gets no TPM device.
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
+    pub fn tpm_enabled(&self) -> bool {
+        self.tpm.as_ref().is_none_or(|tpm| tpm.enabled)
     }
 
     /// The swtpm state file: the NVRAM path with [`TPM_STATE_SUFFIX`]
@@ -149,10 +196,57 @@ mod tests {
     }
 
     #[test]
+    fn enabled_defaults_to_true_and_false_round_trips() {
+        let fw = format!("{BASE}firmware = \"/fw.fd\"\nfirmware_tables = \"acpi\"\n");
+        assert!(VmConfig::parse(&fw).expect("parse").tpm_enabled());
+        let on = VmConfig::parse(&format!("{fw}[tpm]\nbackend = \"stub\"\n")).expect("parse");
+        assert!(on.tpm_enabled());
+        assert!(!toml::to_string(&on).expect("ser").contains("enabled"));
+        let off = VmConfig::parse(&format!("{fw}[tpm]\nenabled = false\n")).expect("parse");
+        assert!(!off.tpm_enabled());
+        assert!(!off.tpm_section().enabled);
+        let text = toml::to_string(&off).expect("ser");
+        assert!(text.contains("enabled = false"), "{text}");
+        let again: VmConfig = toml::from_str(&text).expect("de");
+        assert_eq!(again, off);
+        let fdt = VmConfig::parse(&format!("{BASE}kernel = \"/k\"\n[tpm]\nenabled = false\n"))
+            .expect("a direct boot may disable the tpm too");
+        assert!(!fdt.tpm_enabled());
+    }
+
+    #[test]
+    fn a_disabled_tpm_rejects_settings_that_need_one() {
+        let section = |text: &str| toml::from_str::<TpmSection>(text).expect("parse");
+        let error = section("enabled = false\nbackend = \"swtpm\"")
+            .validate(FirmwareTables::Acpi)
+            .expect_err("swtpm");
+        assert!(
+            matches!(
+                error,
+                ConfigError::TpmDisabledConflict {
+                    field: "tpm.backend = \"swtpm\""
+                }
+            ),
+            "{error}"
+        );
+        let error = section("enabled = false\nswtpm = \"/x\"")
+            .validate(FirmwareTables::Acpi)
+            .expect_err("path");
+        assert!(error.to_string().contains("tpm.swtpm"), "{error}");
+        assert!(error.to_string().contains("enabled = false"), "{error}");
+        for tables in [FirmwareTables::Acpi, FirmwareTables::Fdt] {
+            section("enabled = false\nbackend = \"stub\"")
+                .validate(tables)
+                .expect("stub is harmless");
+        }
+    }
+
+    #[test]
     fn swtpm_backend_needs_acpi_and_the_binary_must_exist() {
         let swtpm = TpmSection {
             backend: TpmBackendKind::Swtpm,
             swtpm: None,
+            enabled: true,
         };
         swtpm.validate(FirmwareTables::Acpi).expect("acpi");
         let error = swtpm.validate(FirmwareTables::Fdt).expect_err("fdt");
@@ -166,6 +260,7 @@ mod tests {
         let missing = TpmSection {
             backend: TpmBackendKind::Auto,
             swtpm: Some(PathBuf::from("/no/such/swtpm")),
+            enabled: true,
         };
         assert!(matches!(
             missing.validate(FirmwareTables::Acpi),

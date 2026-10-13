@@ -25,6 +25,29 @@ pub const REQUIRED_FEATURES: [&str; 4] = [
     "ctrl-opt-terminate",
 ];
 
+/// Oldest swtpm `major.minor` Ternvale is tested with: `tpmstate-opt-lock`
+/// is new in 0.10 (swtpm(8)). An older build that still lists every
+/// [`REQUIRED_FEATURES`] entry (a distribution backport) runs, but
+/// `ternvale doctor` warns about it.
+pub const TESTED_SWTPM_VERSION: (u32, u32) = (0, 10);
+
+/// `major.minor.patch` from a swtpm version string such as `0.10.2`; a
+/// missing patch reads as 0. `None` for anything else (`unknown`).
+#[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(version))]
+pub fn parse_swtpm_version(version: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = version.trim().splitn(3, '.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = match parts.next() {
+        Some(rest) => {
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse().ok()?
+        }
+        None => 0,
+    };
+    Some((major, minor, patch))
+}
+
 /// A swtpm binary that supports everything in [`REQUIRED_FEATURES`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwtpmInfo {

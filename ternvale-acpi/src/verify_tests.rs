@@ -44,6 +44,20 @@ fn built_tables_verify_against_their_config() {
 }
 
 #[test]
+fn a_tpm_table_must_appear_exactly_when_the_config_has_a_tpm() {
+    let without = crate::config::tests::sample_without_tpm(2);
+    let tables = dumped(&without);
+    assert!(tables.iter().all(|t| t.signature != "TPM2"));
+    verify(&tables, &without).expect("no drift");
+    let with = sample(2);
+    let text = problems(&tables, &with).join("\n");
+    assert!(text.contains("table set"), "{text}");
+    let text = problems(&dumped(&with), &without).join("\n");
+    assert!(text.contains("table set"), "{text}");
+    assert!(text.contains("DSDT: AML differs"), "{text}");
+}
+
+#[test]
 fn every_drifted_field_is_named() {
     let config = sample(2);
     let mut tables = dumped(&config);

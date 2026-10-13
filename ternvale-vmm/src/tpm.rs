@@ -7,12 +7,17 @@
 //! the device through the ACPI TPM2 table and `\_SB.TPM2`
 //! (`firmware_tables = "acpi"`); the acpi-only `tpm@` DT node exists for
 //! EDK2. A guest without ACPI never sees the TPM, so it always gets the stub
-//! and no swtpm is started.
+//! and no swtpm is started. `[tpm] enabled = false` removes the device
+//! altogether. The CRB's command history goes to [`Diagnostics`] for the
+//! crash-report bundle.
+
+use std::sync::Arc;
 
 use ternvale_config::{FirmwareTables, TpmBackendKind, VmConfig};
-use ternvale_tpm::{StubBackend, SwtpmBackend, TpmBackend, TpmCrb, CRB_WINDOW_SIZE};
+use ternvale_tpm::{StubBackend, SwtpmBackend, TpmBackend, TpmCrb, TpmHistory, CRB_WINDOW_SIZE};
 
 use crate::acpi::BusDevice;
+use crate::diag::Diagnostics;
 use crate::machine::MachineError;
 use crate::mmio::{MmioBus, MmioDevice};
 use crate::platform::{TPM_CRB_BASE, TPM_CRB_SIZE};
@@ -72,20 +77,34 @@ pub(crate) fn backend_for(config: &VmConfig) -> Result<Box<dyn TpmBackend>, Mach
     }
 }
 
-/// The CRB over `backend`, ready for [`crate::MmioBus::register`].
+/// The CRB over `backend`, ready for [`crate::MmioBus::register`], and its
+/// command history.
 #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(base = %format!("{TPM_CRB_BASE:#x}"), backend = backend.name()))]
-pub(crate) fn device(backend: Box<dyn TpmBackend>) -> Result<BusDevice, MachineError> {
+pub(crate) fn device(
+    backend: Box<dyn TpmBackend>,
+) -> Result<(BusDevice, Arc<TpmHistory>), MachineError> {
     let crb = TpmCrb::new(TPM_CRB_BASE, backend)
         .map_err(|error| MachineError::Attach(format!("tpm crb: {error}")))?;
-    Ok((TPM_CRB_BASE, CRB_WINDOW_SIZE, Box::new(crb)))
+    let history = crb.history();
+    Ok(((TPM_CRB_BASE, CRB_WINDOW_SIZE, Box::new(crb)), history))
 }
 
 /// Put the CRB, with the backend `config` asks for, on `bus` at
-/// [`TPM_CRB_BASE`].
+/// [`TPM_CRB_BASE`], and give its command history to `diag` for crash
+/// reports. Nothing (no device, no swtpm) with `[tpm] enabled = false`.
 #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(vm = %config.name))]
-pub(crate) fn register(bus: &mut MmioBus, config: &VmConfig) -> Result<(), MachineError> {
-    let (base, size, crb) = device(backend_for(config)?)?;
+pub(crate) fn register(
+    bus: &mut MmioBus,
+    config: &VmConfig,
+    diag: &Diagnostics,
+) -> Result<(), MachineError> {
+    if !config.tpm_enabled() {
+        tracing::info!(target: "ternvale::tpm", "tpm disabled ([tpm] enabled = false): no tpm device, no swtpm");
+        return Ok(());
+    }
+    let ((base, size, crb), history) = device(backend_for(config)?)?;
     bus.register(base, size, crb)?;
+    diag.set_tpm(history);
     tracing::debug!(
         target: "ternvale::tpm",
         base = %format!("{base:#x}"),

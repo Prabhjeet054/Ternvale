@@ -93,6 +93,7 @@ fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Re
         tpm: Some(TpmSection {
             backend: TpmBackendKind::Swtpm,
             swtpm: None,
+            enabled: true,
         }),
     };
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

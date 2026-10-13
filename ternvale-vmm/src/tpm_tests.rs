@@ -9,6 +9,7 @@ use ternvale_tpm::regs::{
 use ternvale_tpm::{StubBackend, CRB_WINDOW_SIZE, DATA_BUFFER, RC_COMMAND_CODE, ST_NO_SESSIONS};
 
 use super::{device, register, TPM_DEVICE_NAME};
+use crate::diag::Diagnostics;
 use crate::esr::ExitEvent;
 use crate::mmio::{GuestRegs, MmioBus, MmioError};
 use crate::platform::{Layout, TPM_CRB_BASE, TPM_CRB_SIZE};
@@ -47,7 +48,7 @@ impl Guest {
 
     pub(super) fn with(config: &VmConfig) -> Self {
         let mut bus = MmioBus::new();
-        register(&mut bus, config).expect("register");
+        register(&mut bus, config, &Diagnostics::new()).expect("register");
         Self {
             bus,
             regs: Regs(RefCell::new([0; 31])),
@@ -87,7 +88,8 @@ impl Guest {
 
 #[test]
 fn device_sits_in_the_tpm_crb_region() {
-    let (base, size, crb) = device(Box::new(StubBackend::new())).expect("tpm device");
+    let ((base, size, crb), history) = device(Box::new(StubBackend::new())).expect("tpm device");
+    assert_eq!(history.backend(), "stub");
     assert_eq!(base, TPM_CRB_BASE);
     assert_eq!(size, CRB_WINDOW_SIZE);
     assert_eq!(crb.name(), TPM_DEVICE_NAME);
@@ -153,9 +155,50 @@ fn linux_command_sequence_through_the_bus_gets_a_stub_response() {
 #[test]
 fn registering_twice_is_an_overlap() {
     let mut bus = MmioBus::new();
-    register(&mut bus, &direct_boot()).expect("first");
-    let error = register(&mut bus, &direct_boot()).unwrap_err();
+    let diag = Diagnostics::new();
+    register(&mut bus, &direct_boot(), &diag).expect("first");
+    let error = register(&mut bus, &direct_boot(), &diag).unwrap_err();
     assert!(error.to_string().contains("overlaps"), "{error}");
+}
+
+#[test]
+fn registering_hands_the_command_history_to_diagnostics() {
+    let mut bus = MmioBus::new();
+    let diag = Diagnostics::new();
+    assert!(diag.tpm().is_none());
+    register(&mut bus, &direct_boot(), &diag).expect("register");
+    let history = diag.tpm().expect("tpm history");
+    assert_eq!((history.backend(), history.total()), ("stub", 0));
+}
+
+#[test]
+fn a_disabled_tpm_registers_nothing() {
+    let config = VmConfig::parse(
+        "name = \"t\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\n\
+         [tpm]\nenabled = false\n",
+    )
+    .expect("config");
+    let mut bus = MmioBus::new();
+    let diag = Diagnostics::new();
+    register(&mut bus, &config, &diag).expect("register");
+    assert!(diag.tpm().is_none());
+    let regs = Regs(RefCell::new([0xdead; 31]));
+    bus.dispatch(
+        &regs,
+        ExitEvent::Mmio {
+            gpa: TPM_CRB_BASE + INTF_ID_LO,
+            size: 4,
+            write: false,
+            reg: 3,
+        },
+    )
+    .expect("unmapped reads as zero");
+    assert_eq!(
+        regs.0.borrow()[3],
+        0,
+        "no interface id: nothing decodes the crb window"
+    );
+    register(&mut bus, &direct_boot(), &diag).expect("the window is still free");
 }
 
 #[test]

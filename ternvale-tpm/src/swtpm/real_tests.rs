@@ -147,6 +147,41 @@ fn tpm_identity_survives_a_restart_on_the_same_state_file() {
 }
 
 #[test]
+fn a_killed_swtpm_fails_later_commands_and_the_history_says_why() {
+    let Some(info) = swtpm() else { return };
+    let dir = scratch("real-killed");
+    let backend =
+        SwtpmBackend::start(Some(&info.path), &dir.join("nvram.fd.swtpm")).expect("start");
+    let pid = backend.pid().expect("ternvale started swtpm");
+    let mut crb = TpmCrb::new(0x0914_0000, Box::new(backend)).expect("crb");
+    crb.write(LOC_CTRL, 4, u64::from(LOC_CTRL_REQUEST_ACCESS));
+    let history = crb.history();
+    assert_eq!(rc(&run(&mut crb, &STARTUP)), 0);
+    let killed = std::process::Command::new("kill")
+        .args(["-KILL", &pid.to_string()])
+        .status()
+        .expect("run kill");
+    assert!(killed.success(), "kill -KILL {pid}: {killed}");
+    assert_eq!(rc(&run(&mut crb, &GET_RANDOM)), crate::backend::RC_FAILURE);
+    assert_eq!(rc(&run(&mut crb, &STARTUP)), crate::backend::RC_FAILURE);
+    let failure = history.failure().expect("failure recorded");
+    assert_eq!(failure.seq, 2, "{failure:?}");
+    assert!(
+        failure.reason.starts_with(&format!(
+            "swtpm (pid {pid}) exited with signal: 9 (SIGKILL): swtpm data channel: "
+        )) && failure.reason.ends_with(", during GetRandom (0x17b)"),
+        "{failure:?}"
+    );
+    let text = history.render();
+    assert!(
+        text.contains("seq=3 ") && text.contains("rc=0x101"),
+        "{text}"
+    );
+    drop(crb);
+    std::fs::remove_dir_all(&dir).expect("cleanup");
+}
+
+#[test]
 fn a_state_file_in_use_by_another_swtpm_is_refused() {
     let Some(info) = swtpm() else { return };
     let dir = scratch("real-lock");

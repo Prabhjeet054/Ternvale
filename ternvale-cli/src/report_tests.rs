@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::bundle::{write_zip, Item, Source};
 use super::{plan, Live, PlanInputs};
-use crate::diag::{write_manifest, RunManifest};
+use crate::diag::{self, write_manifest, RunManifest, TPM_SUFFIX};
 
 fn scratch(test: &str) -> PathBuf {
     let dir =
@@ -67,6 +67,11 @@ fn plan_uses_the_newest_run_and_its_sidecars() {
         "vm demo stopped\n",
     )
     .expect("summary");
+    std::fs::write(
+        dir.join("ternvale-demo-20261002-120000.tpm.txt"),
+        "# TPM commands: backend swtpm, 0 since the VM started\n",
+    )
+    .expect("tpm");
 
     let plan = plan(&dir, &inputs(None), "20261002-130000").expect("plan");
     assert_eq!(plan.top, "ternvale-report-demo-20261002-130000");
@@ -99,6 +104,7 @@ fn plan_uses_the_newest_run_and_its_sidecars() {
         "config.toml",
         "guest-serial.log",
         "mmio-events.txt",
+        "tpm-commands.txt",
         "summary.txt",
         "run.json",
         "doctor.txt",
@@ -205,6 +211,54 @@ fn a_vm_that_never_logged_is_reported_from_its_config() {
 }
 
 #[test]
+fn a_missing_tpm_history_says_whether_the_vm_had_a_tpm() {
+    let dir = scratch("tpm");
+    std::fs::write(dir.join("ternvale-demo-20261002-120000.log"), "x\n").expect("log");
+    let base =
+        "name = \"demo\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\n";
+    let reason = |extra: &str| {
+        let config = dir.join("vm.toml");
+        std::fs::write(&config, format!("{base}{extra}")).expect("config");
+        let plan = plan(&dir, &inputs(Some(&config)), "s").expect("plan");
+        match &plan
+            .items
+            .iter()
+            .find(|i| i.name == "tpm-commands.txt")
+            .expect("tpm item")
+            .source
+        {
+            Source::Missing(why) => why.clone(),
+            other => panic!("unexpected {other:?}"),
+        }
+    };
+    assert_eq!(
+        reason("[tpm]\nenabled = false\n"),
+        "the vm has no TPM ([tpm] enabled = false)"
+    );
+    assert!(reason("").contains("does not exist"));
+}
+
+#[test]
+fn a_tpm_backend_failure_opens_the_readme() {
+    let dir = scratch("tpm-failed");
+    let log = dir.join("ternvale-demo-20261002-120000.log");
+    std::fs::write(&log, "x\n").expect("log");
+    let history = ternvale_tpm::TpmHistory::new("swtpm", 4);
+    let plain = || plan(&dir, &inputs(None), "s").expect("plan").header;
+    std::fs::write(diag::sidecar(&log, TPM_SUFFIX), history.render()).expect("history");
+    assert!(!plain().iter().any(|line| line.starts_with("tpm:")));
+    history.note_failure("swtpm (pid 7) exited with signal: 9 (SIGKILL)");
+    std::fs::write(diag::sidecar(&log, TPM_SUFFIX), history.render()).expect("history");
+    let header = plain();
+    assert!(
+        header.iter().any(|line| line.starts_with(
+            "tpm: backend failed: swtpm (pid 7) exited with signal: 9 (SIGKILL); seq=1"
+        )),
+        "{header:?}"
+    );
+}
+
+#[test]
 fn dtb_is_bundled_with_a_dts_or_a_reason() {
     let dir = scratch("dtb");
     let log = dir.join("ternvale-demo-20261002-120000.log");
@@ -218,6 +272,7 @@ fn dtb_is_bundled_with_a_dts_or_a_reason() {
         cpu_count: 1,
         firmware: false,
         fw_cfg: false,
+        tpm: false,
     })
     .expect("fdt");
     std::fs::write(dir.join("ternvale-demo-20261002-120000.dtb"), &dtb).expect("dtb");

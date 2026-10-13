@@ -2,8 +2,9 @@
 //!
 //! For a host log `ternvale-<vm>-<stamp>.log` the sidecars share the stem:
 //! `.run.json` (written at start: config path, serial log, pid), and
-//! `.dtb`, `.mmio.txt`, `.summary.txt` (written when the VM stops, and on a
-//! `dump-diagnostics` control request while it runs).
+//! `.dtb`, `.mmio.txt`, `.tpm.txt` (VMs with a TPM: its last commands,
+//! redacted by `ternvale_tpm::redact`), `.summary.txt` (written when the VM
+//! stops, and on a `dump-diagnostics` control request while it runs).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -20,6 +21,7 @@ pub const RUN_SUFFIX: &str = ".run.json";
 pub const DTB_SUFFIX: &str = ".dtb";
 pub const MMIO_SUFFIX: &str = ".mmio.txt";
 pub const SUMMARY_SUFFIX: &str = ".summary.txt";
+pub const TPM_SUFFIX: &str = ".tpm.txt";
 
 /// Device counters gathered while devices are attached.
 #[derive(Default)]
@@ -134,8 +136,8 @@ impl DiagSink {
         }
     }
 
-    /// Write `.dtb` (once the machine built one), `.mmio.txt`, and
-    /// `.summary.txt`; returns the files written.
+    /// Write `.dtb` (once the machine built one), `.mmio.txt`, `.tpm.txt`
+    /// (when the VM has a TPM), and `.summary.txt`; returns the files written.
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = self.control.name(), stopped = exit.is_some()))]
     pub fn dump(&self, exit: Option<Exit>) -> Result<Vec<PathBuf>> {
         let diag = self.control.diagnostics();
@@ -150,6 +152,12 @@ impl DiagSink {
         std::fs::write(&mmio, render_mmio(&self.control))
             .with_context(|| format!("write mmio events {}", mmio.display()))?;
         written.push(mmio);
+        if let Some(history) = diag.tpm() {
+            let path = sidecar(&self.log, TPM_SUFFIX);
+            std::fs::write(&path, history.render())
+                .with_context(|| format!("write tpm command history {}", path.display()))?;
+            written.push(path);
+        }
         let text = summary::render(&self.summary(exit));
         let path = sidecar(&self.log, SUMMARY_SUFFIX);
         std::fs::write(&path, text + "\n")

@@ -10,6 +10,7 @@ use super::TpmCrb;
 use crate::backend::{
     error_response, hex, CommandHeader, HEADER_LEN, RC_COMMAND_SIZE, RC_FAILURE, ST_NO_SESSIONS,
 };
+use crate::redact::bytes_are_public;
 use crate::regs::DATA_BUFFER_SIZE;
 
 /// A command a worker backend is running.
@@ -39,6 +40,7 @@ impl TpmCrb {
         if self.idle {
             tracing::warn!(target: "ternvale::tpm", locality, "tpm start while idle (no cmdReady); running it anyway, as QEMU does");
         }
+        let since = Instant::now();
         let header = CommandHeader::parse(&self.buffer);
         let size = header
             .map(|h| h.size as usize)
@@ -49,7 +51,7 @@ impl TpmCrb {
             locality,
             len = shown,
             code = %header.map_or("none".into(), |h| format!("{:#x}", h.code)),
-            bytes = %hex(&self.buffer[..shown]),
+            bytes = %self.loggable(header, &self.buffer[..shown]),
             "tpm command"
         );
         let response = match size {
@@ -60,7 +62,7 @@ impl TpmCrb {
                     self.pending = Some(Pending {
                         locality,
                         header,
-                        since: Instant::now(),
+                        since,
                     });
                     return;
                 }
@@ -76,7 +78,17 @@ impl TpmCrb {
                 error_response(ST_NO_SESSIONS, RC_COMMAND_SIZE)
             }
         };
-        self.complete(locality, header, response);
+        self.complete(locality, header, response, since);
+    }
+
+    /// `bytes` for a TRACE line: hex when [`bytes_are_public`] or
+    /// [`crate::LOG_SECRETS_ENV`] allows it, else `redacted`.
+    fn loggable(&self, header: Option<CommandHeader>, bytes: &[u8]) -> String {
+        if self.log_secrets || bytes_are_public(header) {
+            hex(bytes)
+        } else {
+            "redacted".to_string()
+        }
     }
 
     /// Collect a worker's response if it has arrived.
@@ -94,11 +106,18 @@ impl TpmCrb {
             elapsed_us = pending.since.elapsed().as_micros() as u64,
             "tpm backend worker answered"
         );
-        self.complete(pending.locality, pending.header, response);
+        self.complete(pending.locality, pending.header, response, pending.since);
     }
 
-    /// Check `response`, put it in the buffer, and log it.
-    fn complete(&mut self, locality: u8, header: Option<CommandHeader>, mut response: Vec<u8>) {
+    /// Check `response`, record the exchange, put the response in the
+    /// buffer, and log it.
+    fn complete(
+        &mut self,
+        locality: u8,
+        header: Option<CommandHeader>,
+        mut response: Vec<u8>,
+        since: Instant,
+    ) {
         let declared = response
             .get(2..6)
             .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize);
@@ -114,6 +133,17 @@ impl TpmCrb {
             );
             response = error_response(ST_NO_SESSIONS, RC_FAILURE);
         }
+        let ran = header
+            .map(|h| h.size as usize)
+            .filter(|size| (HEADER_LEN..=DATA_BUFFER_SIZE).contains(size))
+            .unwrap_or(HEADER_LEN);
+        self.history.record(
+            locality,
+            header,
+            &self.buffer[..ran],
+            &response,
+            since.elapsed().as_micros() as u64,
+        );
         self.buffer[..response.len()].copy_from_slice(&response);
         self.commands += 1;
         let code = header.map_or("none".into(), |h| format!("{:#x}", h.code));
@@ -128,7 +158,7 @@ impl TpmCrb {
             target: "ternvale::tpm",
             locality,
             len = response.len(),
-            bytes = %hex(&response),
+            bytes = %self.loggable(header, &response),
             "tpm response"
         );
         tracing::debug!(
