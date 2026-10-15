@@ -129,6 +129,7 @@ fn run_once(
     let serial_log = log_dir.join(format!("{label}-serial.log"));
     let vm = VmConfig {
         name: format!("boot-{}-{label}", transport.scenario()),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 256,
         kernel: root.join("Image"),

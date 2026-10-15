@@ -66,6 +66,7 @@ fn boot(
 ) -> Result<(), String> {
     let vm = VmConfig {
         name: "uefi-linux".to_string(),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 512,
         kernel: Default::default(),

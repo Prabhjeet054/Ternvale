@@ -1,7 +1,9 @@
 //! QEMU fw_cfg over MMIO at [`crate::platform::FW_CFG_BASE`] (QEMU `VIRT_FW_CFG`).
 //!
 //! Present only on firmware boots with `firmware_tables = "acpi"`, to hand
-//! EDK2 the ACPI linker/loader files (see `ternvale_acpi::LoaderBlobs`).
+//! EDK2 the ACPI linker/loader files (see `ternvale_acpi::LoaderBlobs`) and,
+//! for the `windows` profile with an ISO attached, `bootorder`
+//! (`crate::boot_order`).
 //! Register layout (QEMU `docs/specs/fw_cfg.rst`, as EDK2
 //! `OvmfPkg/Library/QemuFwCfgLib/QemuFwCfgLibMmio.c` drives it):
 //! - **Data** at `+0x0`, read with 1, 2, 4, or 8 byte loads. Each load

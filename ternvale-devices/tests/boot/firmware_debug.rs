@@ -74,6 +74,7 @@ pub fn run() -> Result<(), String> {
 fn boot(firmware: &Path, serial_log: &Path, log_dir: &Path, host_log: &Path) -> Result<(), String> {
     let vm = VmConfig {
         name: "uefi-debug".to_string(),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 512,
         kernel: Default::default(),

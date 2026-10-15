@@ -59,6 +59,7 @@ pub fn run() -> Result<(), String> {
     let cpus = boot_cpus(1)?;
     let vm = VmConfig {
         name: "boot-devices".to_string(),
+        profile: Default::default(),
         cpus,
         ram_mib: 256,
         kernel: root.join("Image"),

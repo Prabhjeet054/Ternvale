@@ -33,6 +33,7 @@ pub fn run() -> Result<(), String> {
     let root = assets_root();
     let vm = VmConfig {
         name: "boot".to_string(),
+        profile: Default::default(),
         cpus,
         ram_mib: 256,
         kernel: root.join("Image"),

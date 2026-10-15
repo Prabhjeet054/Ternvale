@@ -39,6 +39,9 @@
 //! Set `TERNVALE_BOOT_SCENARIO=installer` to boot the Alpine arm64 ISO
 //! (`./scripts/fetch-installer-iso.sh`) from UEFI on a read-only virtio-blk disk and start
 //! `setup-alpine` (`TERNVALE_INSTALLER_TRANSPORT=pci` puts the disk on virtio-pci).
+//! Set `TERNVALE_BOOT_SCENARIO=windows-profile` to boot a blank system disk plus that ISO on
+//! virtio-pci twice, without and with `profile = "windows"`, and check EDK2 loads the ISO first
+//! only when the fw_cfg `bootorder` says so.
 
 mod agent;
 mod common;
@@ -62,6 +65,7 @@ mod uefi_linux;
 mod uefi_linux_acpi;
 mod uefi_linux_tpm;
 mod uefi_lspci;
+mod windows_profile;
 
 fn main() {
     let code = match run() {
@@ -95,8 +99,9 @@ fn run() -> Result<(), String> {
         "uefi-lspci" => uefi_lspci::run(),
         "uefi-linux-tpm" => uefi_linux_tpm::run(),
         "installer" => installer::run(),
+        "windows-profile" => windows_profile::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, or installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, or windows-profile)"
         )),
     }
 }

@@ -47,6 +47,10 @@
 #                       from a read-only virtio-blk disk to a root login and setup-alpine;
 #                       TERNVALE_INSTALLER_TRANSPORT=pci puts the disk on virtio-pci.
 #                       ./scripts/qemu-compare.sh runs the same steps under QEMU/HVF
+#   windows-profile   — a blank 64 GiB sparse system disk (00:01.0) and the same ISO
+#                       (00:02.0) on virtio-pci, booted twice to GRUB: without a profile
+#                       EDK2 tries 00:01.0 first; with profile = "windows" (Windows 11
+#                       cpus/ram defaults) the fw_cfg bootorder makes it load the ISO first
 # scripts/boot-stress.sh repeats this script N times and summarizes the runs.
 set -euo pipefail
 

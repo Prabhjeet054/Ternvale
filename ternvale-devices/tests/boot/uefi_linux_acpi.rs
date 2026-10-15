@@ -89,6 +89,7 @@ pub fn run() -> Result<(), String> {
 fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Result<(), String> {
     let vm = VmConfig {
         name: "uefi-linux-acpi".to_string(),
+        profile: Default::default(),
         cpus: 2,
         ram_mib: 512,
         kernel: Default::default(),

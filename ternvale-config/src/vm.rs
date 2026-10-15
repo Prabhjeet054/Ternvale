@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
-use crate::{TpmSection, VsockSection};
+use crate::{Profile, TpmSection, VsockSection};
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
@@ -39,9 +39,12 @@ pub struct Nic {
 pub struct VmConfig {
     /// Guest name. Also used in the host log file name.
     pub name: String,
-    /// vCPU count, from 1 through 16.
+    /// `"linux"` (default) or `"windows"`. See [`Profile`].
+    #[serde(default, skip_serializing_if = "Profile::is_linux")]
+    pub profile: Profile,
+    /// vCPU count, from 1 through 16. Required unless the profile has a default.
     pub cpus: u32,
-    /// Guest RAM in MiB. Must be a positive multiple of 16.
+    /// Guest RAM in MiB, a positive multiple of 16. Required unless the profile has a default.
     pub ram_mib: u64,
     /// Linux kernel (or other boot image) on the host. Required unless `firmware`
     /// is set; with firmware the guest boots UEFI and the kernel is ignored.
@@ -108,7 +111,7 @@ impl VmConfig {
     /// in a config rather than the first. Call [`VmConfig::validate`] before use.
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all)]
     pub fn parse(text: &str) -> Result<Self, ConfigError> {
-        toml::from_str::<Self>(text).map_err(|source| {
+        crate::profile::parse(text).map_err(|source| {
             tracing::error!(
                 target: "ternvale::config",
                 error = %source,
@@ -189,6 +192,7 @@ impl VmConfig {
         validate_ram(self.ram_mib)?;
         self.validate_boot_source()?;
         firmware_tables::validate(self.firmware_tables, self.firmware.is_some())?;
+        self.profile.validate(self)?;
         if let Some(initrd) = &self.initrd {
             require_file("initrd", initrd)?;
         } else {

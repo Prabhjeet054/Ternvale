@@ -11,7 +11,8 @@
 //! ArmVirtQemu installs ACPI from those files and stops publishing the DTB to
 //! the OS (see `ternvale_acpi::LoaderBlobs`). The OS reads EDK2's copies at
 //! addresses EDK2 picks, not this window. With `"fdt"` nothing is mapped or
-//! offered, and EDK2 publishes the DTB as before.
+//! offered, and EDK2 publishes the DTB as before. The same device carries the
+//! profile's `bootorder` file ([`crate::boot_order`]).
 
 use ternvale_acpi::{AcpiConfig, DumpedTable, LoaderBlobs, TableRef};
 use ternvale_config::{FirmwareTables, VmConfig};
@@ -40,7 +41,8 @@ pub(crate) fn prepare(
         return Ok(None);
     }
     let checked = install(memory, vm, &crate::acpi_check::vm_acpi_config(config))?;
-    let device = fw_cfg_for(&checked)?;
+    let boot_order = crate::boot_order::file(config)?;
+    let device = fw_cfg_for(&checked, boot_order)?;
     tracing::info!(
         target: "ternvale::acpi",
         firmware_tables = %tables,
@@ -51,12 +53,18 @@ pub(crate) fn prepare(
     Ok(Some((FW_CFG_BASE, FW_CFG_REG_SIZE, Box::new(device))))
 }
 
-/// The fw_cfg device holding the loader files for `tables`.
-#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(tables = tables.len()))]
-pub(crate) fn fw_cfg_for(tables: &[DumpedTable]) -> Result<FwCfg, MachineError> {
+/// The fw_cfg device holding the loader files for `tables`, then `extra`
+/// (the `bootorder` file, when the profile has one).
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(tables = tables.len(), extra = extra.is_some()))]
+pub(crate) fn fw_cfg_for(
+    tables: &[DumpedTable],
+    extra: Option<(String, Vec<u8>)>,
+) -> Result<FwCfg, MachineError> {
     let refs: Vec<TableRef<'_>> = tables.iter().map(TableRef::from).collect();
     let blobs = LoaderBlobs::build(&refs)?;
-    Ok(FwCfg::new(blobs.files()?)?)
+    let mut files = blobs.files()?;
+    files.extend(extra);
+    Ok(FwCfg::new(files)?)
 }
 
 /// Map the ACPI window into `vm` (guest read-only), write the tables for
@@ -246,7 +254,7 @@ mod tests {
         memory.add_region(ACPI_BASE, ACPI_SIZE).expect("region");
         write_tables(&mut memory, 2).expect("write");
         let dumped = dump_tables(&memory).expect("dump");
-        let device = fw_cfg_for(&dumped).expect("fw_cfg");
+        let device = fw_cfg_for(&dumped, None).expect("fw_cfg");
         let names: Vec<&str> = device.file_names().collect();
         assert_eq!(
             names,
@@ -256,6 +264,12 @@ mod tests {
                 ternvale_acpi::LOADER_FILE
             ]
         );
+        let order = Some((
+            crate::boot_order::BOOTORDER_FILE.to_string(),
+            b"/x\0".to_vec(),
+        ));
+        let device = fw_cfg_for(&dumped, order).expect("fw_cfg with bootorder");
+        assert_eq!(device.file_names().last(), Some("bootorder"));
     }
 
     #[test]

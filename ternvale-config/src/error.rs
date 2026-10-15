@@ -105,6 +105,41 @@ pub enum ConfigError {
         field: &'static str,
     },
 
+    /// The profile boots through UEFI, but `firmware` is unset.
+    #[error("profile = \"{profile}\" needs firmware (the guest boots through UEFI and reads ACPI tables)")]
+    ProfileNeedsFirmware {
+        /// The configured profile.
+        profile: crate::Profile,
+    },
+
+    /// A setting contradicts what the profile selects.
+    #[error("profile = \"{profile}\" conflicts with {field}: {reason}")]
+    ProfileConflict {
+        /// The configured profile.
+        profile: crate::Profile,
+        /// The conflicting setting, such as `firmware_tables = "fdt"`.
+        field: &'static str,
+        /// Why the profile needs otherwise.
+        reason: &'static str,
+    },
+
+    /// `cpus` or `ram_mib` is below the profile's guest OS minimum.
+    #[error(
+        "profile = \"{profile}\" needs {field} of at least {minimum}, got {got} ({requirement})"
+    )]
+    BelowProfileMinimum {
+        /// The configured profile.
+        profile: crate::Profile,
+        /// `cpus` or `ram_mib`.
+        field: &'static str,
+        /// The smallest accepted value.
+        minimum: u64,
+        /// The configured value.
+        got: u64,
+        /// The guest OS requirement behind the minimum.
+        requirement: &'static str,
+    },
+
     /// A `[vsock]` setting is out of range.
     #[error("{field}: {reason}")]
     InvalidVsock {

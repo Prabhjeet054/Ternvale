@@ -45,6 +45,7 @@ pub fn run() -> Result<(), String> {
     let serial_log = log_dir.join("guest-serial.log");
     let vm = VmConfig {
         name: "boot-net".to_string(),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 256,
         kernel: root.join("Image"),

@@ -52,6 +52,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
 
     let vm = VmConfig {
         name: "virtio-blk".to_string(),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 256,
         kernel: root.join("Image"),

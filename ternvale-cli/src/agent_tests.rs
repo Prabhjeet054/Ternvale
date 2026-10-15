@@ -37,6 +37,7 @@ impl Drop for TempDir {
 fn config(vsock: Option<VsockSection>) -> VmConfig {
     VmConfig {
         name: "agentvm".into(),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 256,
         kernel: PathBuf::from("/nonexistent/Image"),

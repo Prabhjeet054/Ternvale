@@ -5,6 +5,7 @@
 mod acpi;
 mod acpi_check;
 mod boot;
+mod boot_order;
 mod control;
 mod diag;
 mod esr;
@@ -29,6 +30,7 @@ mod watchdog;
 pub use acpi::{build_acpi_offline, dump_guest_acpi};
 pub use acpi_check::acpi_config;
 pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo, PAYLOAD_GPA};
+pub use boot_order::{disk_ofw_path, pci_disk_bdf, BOOTORDER_FILE};
 pub use control::{
     ControlError, ControlHooks, CpuStats, StopCause, VmControl, VmState, VmStats, VmStatus,
 };

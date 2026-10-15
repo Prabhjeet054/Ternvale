@@ -130,6 +130,7 @@ fn boot(
     let serial_log = log_dir.join(format!("guest-serial-{label}.log"));
     let vm = VmConfig {
         name: format!("uefi-lspci-{label}"),
+        profile: Default::default(),
         cpus: CPUS,
         ram_mib: 512,
         kernel: Default::default(),

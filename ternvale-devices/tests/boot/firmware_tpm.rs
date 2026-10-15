@@ -77,6 +77,7 @@ pub fn run() -> Result<(), String> {
 fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Result<(), String> {
     let vm = VmConfig {
         name: "uefi-tpm".to_string(),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 512,
         kernel: Default::default(),

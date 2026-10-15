@@ -27,6 +27,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
 
     let vm = VmConfig {
         name: "linux".to_string(),
+        profile: Default::default(),
         cpus: 1,
         ram_mib: 256,
         kernel: root.join("Image"),

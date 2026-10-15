@@ -41,6 +41,13 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
     };
     line(format!("{}: ok", path.display()));
     line(format!("  name        {}", config.name));
+    if !config.profile.is_linux() {
+        line(format!(
+            "  profile     {} (disks on {})",
+            config.profile,
+            config.virtio_transport()
+        ));
+    }
     line(format!("  cpus        {}", config.cpus));
     line(format!("  ram         {} MiB", config.ram_mib));
     match &config.firmware {

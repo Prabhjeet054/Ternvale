@@ -191,6 +191,7 @@ fn boot_once(
     let serial_log = log_dir.join(format!("guest-serial-{boot}.log"));
     let vm = VmConfig {
         name: "uefi-linux-tpm".to_string(),
+        profile: Default::default(),
         cpus: CPUS,
         ram_mib: 1024,
         kernel: Default::default(),

@@ -127,6 +127,30 @@ fn error_chain_drops_causes_already_in_the_message() {
     assert_eq!(crate::error_chain(&plain), "outer: inner");
 }
 
+#[test]
+fn validate_summary_shows_the_windows_profile_and_its_defaults() {
+    let text = "name = \"win\"\nprofile = \"windows\"\nfirmware = \"/fw.fd\"\nserial_log = \"/tmp/s.log\"\n";
+    let config = ternvale_config::VmConfig::parse(text).expect("parse");
+    let socket = std::path::Path::new("/tmp/win.sock");
+    let out = crate::commands::describe(std::path::Path::new("win.toml"), &config, socket);
+    assert!(
+        out.contains("  profile     windows (disks on virtio-pci)\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  cpus        2\n  ram         4096 MiB\n"),
+        "{out}"
+    );
+    let linux = ternvale_config::VmConfig::parse(
+        &text.replace("profile = \"windows\"\n", "cpus = 1\nram_mib = 256\n"),
+    )
+    .expect("parse linux");
+    assert!(
+        !crate::commands::describe(std::path::Path::new("l.toml"), &linux, socket)
+            .contains("profile")
+    );
+}
+
 fn ask(path: &std::path::Path, request: Request) -> Response {
     client::request(path, "vm", &request).expect("request")
 }

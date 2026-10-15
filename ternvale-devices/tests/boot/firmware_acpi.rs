@@ -53,6 +53,7 @@ pub fn run() -> Result<(), String> {
     let serial_log = log_dir.join("guest-serial.log");
     let vm = VmConfig {
         name: "uefi-acpi".to_string(),
+        profile: Default::default(),
         cpus: CPUS,
         ram_mib: 512,
         kernel: Default::default(),
