@@ -1,20 +1,21 @@
 //! `ternvale run <config>`: boot a VM and serve its control socket until it stops.
 //!
 //! Guest serial goes to stdout and `serial_log`; host logs go to stderr and
-//! `~/Library/Logs/Ternvale`. Config disks are virtio-blk on virtio-mmio
-//! slots `0..d` (on PCI 00:01.0 onward with `profile = "windows"`), NICs are
+//! `~/Library/Logs/Ternvale`. Config disks, then the `[iso]` installer and
+//! driver discs, are virtio-blk on virtio-mmio slots `0..d` (on PCI 00:01.0
+//! onward with `profile = "windows"`), NICs are
 //! virtio-net on the virtio-mmio slots after them, and `[vsock]` adds
 //! virtio-vsock on the next slot plus the guest agent server.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use ternvale_config::{VirtioTransport, VmConfig};
+use ternvale_config::{BlockDevice, VirtioTransport, VmConfig};
 use ternvale_devices::{
-    open_backend, Pl011, VirtioBlk, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
+    attach_blocks, open_backend, Pl011, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -86,17 +87,13 @@ pub fn run(config_path: &Path) -> Result<ExitCode> {
     let uart = Pl011::open(&config.serial_log)
         .with_context(|| format!("open serial log {}", config.serial_log.display()))?;
 
-    let disks: Vec<(PathBuf, bool)> = config
-        .disks
-        .iter()
-        .map(|disk| (disk.path.clone(), disk.read_only))
-        .collect();
+    let blocks = config.block_devices();
     let nics: Vec<String> = config.nics.iter().map(|nic| nic.backend.clone()).collect();
     let device = vsock.as_ref().map(|setup| setup.device.clone());
     let transport = config.virtio_transport();
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
         let wanted = Wanted {
-            disks: &disks,
+            blocks: &blocks,
             transport,
             nics: &nics,
             vsock: device.as_ref(),
@@ -170,52 +167,34 @@ type Attached = Vec<(u64, u64, Box<dyn MmioDevice>)>;
 
 /// The config's devices, as `attach_devices` needs them.
 struct Wanted<'a> {
-    disks: &'a [(PathBuf, bool)],
-    /// Where the disks go. NICs and vsock have no PCI transport yet.
+    /// `[[disks]]`, then the `[iso]` slots.
+    blocks: &'a [BlockDevice],
+    /// Where the block devices go. NICs and vsock have no PCI transport yet.
     transport: VirtioTransport,
     nics: &'a [String],
     vsock: Option<&'a VsockConfig>,
 }
 
-/// Disks first (virtio-mmio slots `0..d`, or PCI 00:01.0 onward for
-/// `virtio-pci`, matching the fw_cfg boot order), then NICs and vsock on the
-/// next free virtio-mmio slots. MACs count up from [`DEFAULT_MAC`]. Each
-/// device's counters go into `stats`.
-#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(disks = wanted.disks.len(), transport = %wanted.transport, nics = wanted.nics.len(), vsock = wanted.vsock.is_some()))]
+/// Block devices first ([`attach_blocks`]: virtio-mmio slots `0..d`, or PCI
+/// 00:01.0 onward for `virtio-pci`, matching the fw_cfg boot order), then NICs
+/// and vsock on the next free virtio-mmio slots. MACs count up from
+/// [`DEFAULT_MAC`]. Each device's counters go into `stats`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(blocks = wanted.blocks.len(), transport = %wanted.transport, nics = wanted.nics.len(), vsock = wanted.vsock.is_some()))]
 fn attach_devices(
     attach: &DeviceAttach,
     wanted: &Wanted<'_>,
     stats: &SharedDevices,
 ) -> Result<Attached, MachineError> {
-    let (disks, nics, vsock) = (wanted.disks, wanted.nics, wanted.vsock);
+    let (nics, vsock) = (wanted.nics, wanted.vsock);
     let mut stats = lockwatch::lock(stats, "device-stats");
-    let mut devices = Vec::new();
-    let mut mmio_slots = 0;
-    for (index, (path, read_only)) in disks.iter().enumerate() {
-        if wanted.transport == VirtioTransport::Pci {
-            let (bdf, disk_stats) = VirtioBlk::attach_pci(attach, path, *read_only)
-                .map_err(|error| MachineError::Attach(format!("disk {index}: {error}")))?;
-            if ternvale_vmm::pci_disk_bdf(index) != Some(bdf) {
-                tracing::warn!(target: "ternvale::cli", index, %bdf, "disk is not on the PCI slot the uefi boot order names");
-            }
-            tracing::info!(target: "ternvale::cli", %bdf, path = %path.display(), read_only = *read_only, "attached virtio-blk over pci");
-            stats.disks.push((path.clone(), disk_stats));
-            continue;
-        }
-        let slot = u32::try_from(index)
-            .map_err(|_| MachineError::Attach(format!("disk {index} slot does not fit in u32")))?;
-        let (base, size, device, disk_stats) = VirtioBlk::attach(
-            slot,
-            path,
-            *read_only,
-            Arc::clone(&attach.memory),
-            attach.virtio_irq_hook(slot),
-        )
-        .map_err(|error| MachineError::Attach(format!("disk {index}: {error}")))?;
-        tracing::info!(target: "ternvale::cli", slot, path = %path.display(), read_only = *read_only, "attached virtio-blk");
-        stats.disks.push((path.clone(), disk_stats));
-        devices.push((base, size, device));
-        mmio_slots += 1;
+    let blocks = attach_blocks(attach, wanted.blocks, wanted.transport)?;
+    for block in blocks.devices {
+        stats.disks.push((block.path, block.stats));
+    }
+    let mut devices = blocks.mmio;
+    let mmio_slots = devices.len();
+    if wanted.transport == VirtioTransport::Pci && (!nics.is_empty() || vsock.is_some()) {
+        tracing::warn!(target: "ternvale::cli", nics = nics.len(), vsock = vsock.is_some(), "virtio-net and virtio-vsock have no PCI transport yet; they stay on virtio-mmio, which a guest that enumerates only PCI (Windows) never sees");
     }
     for (index, backend_name) in nics.iter().enumerate() {
         let slot = u32::try_from(mmio_slots + index)

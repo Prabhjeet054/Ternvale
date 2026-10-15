@@ -5,6 +5,7 @@
 
 mod error;
 mod firmware_tables;
+mod iso;
 mod profile;
 mod tpm;
 mod vm;
@@ -12,6 +13,7 @@ mod vsock;
 
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
+pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BYTES};
 pub use profile::{
     is_iso9660, Profile, VirtioTransport, WINDOWS_MIN_CPUS, WINDOWS_MIN_DISK_BYTES,
     WINDOWS_MIN_RAM_MIB,

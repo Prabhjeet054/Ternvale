@@ -75,6 +75,7 @@ fn boot(firmware: &Path, serial_log: &Path, log_dir: &Path, host_log: &Path) -> 
     let vm = VmConfig {
         name: "uefi-debug".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: 1,
         ram_mib: 512,
         kernel: Default::default(),

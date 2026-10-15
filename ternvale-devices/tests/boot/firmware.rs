@@ -69,6 +69,7 @@ fn boot_once(
     let vm = VmConfig {
         name: "uefi".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: 1,
         ram_mib: 512,
         kernel: Default::default(),

@@ -78,6 +78,7 @@ fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Re
     let vm = VmConfig {
         name: "uefi-tpm".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: 1,
         ram_mib: 512,
         kernel: Default::default(),

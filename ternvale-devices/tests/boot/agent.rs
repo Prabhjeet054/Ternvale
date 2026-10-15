@@ -49,6 +49,7 @@ pub fn run() -> Result<(), String> {
     let vm = VmConfig {
         name: "boot-agent".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: boot_cpus(1)?,
         ram_mib: 256,
         kernel: root.join("Image"),

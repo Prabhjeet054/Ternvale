@@ -87,6 +87,7 @@ fn boot(
     let vm = VmConfig {
         name: "installer".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: 1,
         ram_mib: 1024,
         kernel: Default::default(),

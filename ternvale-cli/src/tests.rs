@@ -141,6 +141,13 @@ fn validate_summary_shows_the_windows_profile_and_its_defaults() {
         out.contains("  cpus        2\n  ram         4096 MiB\n"),
         "{out}"
     );
+    let media = format!("{text}\n[iso]\ninstaller = \"/w.iso\"\ndrivers = \"/v.iso\"\n");
+    let media = ternvale_config::VmConfig::parse(&media).expect("parse iso slots");
+    let out = crate::commands::describe(std::path::Path::new("win.toml"), &media, socket);
+    assert!(
+        out.contains("  installer   /w.iso (ro, optical)\n  drivers     /v.iso (ro, optical)\n"),
+        "{out}"
+    );
     let linux = ternvale_config::VmConfig::parse(
         &text.replace("profile = \"windows\"\n", "cpus = 1\nram_mib = 256\n"),
     )

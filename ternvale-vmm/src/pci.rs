@@ -19,6 +19,7 @@ mod bus;
 mod capability;
 mod config;
 mod host_bridge;
+mod identity;
 mod intx;
 mod msix;
 mod root;
@@ -30,6 +31,7 @@ pub use config::{
     STATUS_CAP_LIST, STATUS_INTERRUPT,
 };
 pub use host_bridge::{HostBridge, HOST_BRIDGE_DEVICE_ID, HOST_BRIDGE_VENDOR_ID};
+pub use identity::PciIdentity;
 pub use intx::{swizzle, IntxLine, IntxPin, LineHook, PCI_INTX_LINES, PCI_INTX_SPI0};
 pub use msix::{Msix, MSIX_CAP_ID, MSIX_ENTRY_SIZE, MSIX_NO_VECTOR};
 pub use root::{PciRoot, ECAM_BUSES};
@@ -187,3 +189,7 @@ mod bus_tests;
 #[cfg(test)]
 #[path = "pci_config_tests.rs"]
 mod config_tests;
+
+#[cfg(test)]
+#[path = "pci_identity_tests.rs"]
+mod identity_tests;

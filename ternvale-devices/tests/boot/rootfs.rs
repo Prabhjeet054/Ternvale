@@ -130,6 +130,7 @@ fn run_once(
     let vm = VmConfig {
         name: format!("boot-{}-{label}", transport.scenario()),
         profile: Default::default(),
+        iso: None,
         cpus: 1,
         ram_mib: 256,
         kernel: root.join("Image"),

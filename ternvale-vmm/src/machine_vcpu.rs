@@ -125,7 +125,12 @@ fn own_vcpu(index: u32, shared: &Shared<'_>) -> Result<(), MachineError> {
                 shared.power.cpu_off(index);
                 powered_off = true;
             }
-            Leave::Stop => return Ok(()),
+            Leave::Stop => {
+                if let Err(error) = crate::guest_fault::log_final_state(index, &vcpu) {
+                    tracing::warn!(target: "ternvale::vcpu", cpu = index, error = %error, "could not read the final guest state");
+                }
+                return Ok(());
+            }
         }
     }
 }
@@ -137,6 +142,7 @@ fn setup(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<bool, MachineEr
     // until then SPIs routed to this affinity never reach the CPU.
     vcpu.set_sys_reg(SysReg::MpidrEl1, mpidr)
         .map_err(op(index, "set MPIDR_EL1"))?;
+    crate::pmu::advertise_pmuv3(vcpu).map_err(op(index, "advertise PMUv3 in ID_AA64DFR0_EL1"))?;
     match shared.gic.vcpu_redistributor_base(vcpu.id()) {
         Ok(base) => {
             tracing::info!(
@@ -262,6 +268,7 @@ fn run_loop(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<Leave, Machi
         let reason = ran?;
         let pc = vcpu.get_pc().map_err(op(index, "read pc"))?;
         shared.watchdog.note_exit(pc);
+        tracing::trace!(target: "ternvale::vcpu", cpu = index, pc = format!("{pc:#x}"), ?reason, "vcpu exit");
         match reason {
             ExitReason::Exception {
                 syndrome,

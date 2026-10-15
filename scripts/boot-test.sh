@@ -51,6 +51,18 @@
 #                       (00:02.0) on virtio-pci, booted twice to GRUB: without a profile
 #                       EDK2 tries 00:01.0 first; with profile = "windows" (Windows 11
 #                       cpus/ram defaults) the fw_cfg bootorder makes it load the ISO first
+#   windows-media     — profile = "windows" with only [iso] installer (the same ISO) and
+#                       drivers (./scripts/fetch-virtio-win.sh) as read-only optical
+#                       virtio-pci discs on the debug EDK2 (./scripts/fetch-debug-firmware.sh):
+#                       EDK2's PciBus lines must match the host's INFO identification and it
+#                       must boot the installer to GRUB; then a Linux guest checks both discs'
+#                       PCI IDs, ro, 2048-byte blocks, features, bytes, and refused writes
+#   windows-installer — profile = "windows" with the Windows 11 ARM64 ISO
+#                       (./scripts/fetch-windows-iso.sh, or TERNVALE_WINDOWS_ISO) and
+#                       virtio-win, no disk: EDK2 loads the installer first, its loader
+#                       prints "Press any key to boot from CD or DVD" (the harness presses
+#                       Enter), and the boot manager reads boot.wim (WinPE loading); the
+#                       ExitBootServices handoff and the kernel's PSCI CPU_ON are reported
 # scripts/boot-stress.sh repeats this script N times and summarizes the runs.
 set -euo pipefail
 

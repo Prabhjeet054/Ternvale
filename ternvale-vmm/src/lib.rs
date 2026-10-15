@@ -13,12 +13,14 @@ mod fdt;
 mod firmware;
 mod fw_cfg;
 mod gic_redist;
+mod guest_fault;
 mod linux;
 mod machine;
 mod memory;
 mod mmio;
 pub mod pci;
 mod platform;
+mod pmu;
 mod psci;
 mod rtc;
 mod serial;
@@ -71,6 +73,9 @@ pub use vcpu::{process_cpu_ms, ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStats
 #[cfg(test)]
 #[path = "gic_hv_test.rs"]
 mod gic_hv_test;
+#[cfg(test)]
+#[path = "pmu_hv_test.rs"]
+mod pmu_hv_test;
 
 #[cfg(test)]
 mod tests {

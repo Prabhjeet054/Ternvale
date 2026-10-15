@@ -91,6 +91,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
     VmConfig {
         name: "win".to_string(),
         profile: Profile::Windows,
+        iso: None,
         cpus,
         ram_mib,
         kernel: PathBuf::new(),
@@ -243,6 +244,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
     VmConfig {
         name: "boot".to_string(),
         profile,
+        iso: None,
         cpus: 1,
         ram_mib: 256,
         kernel: PathBuf::from(dir.path("Image")),

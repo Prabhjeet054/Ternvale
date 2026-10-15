@@ -42,6 +42,14 @@
 //! Set `TERNVALE_BOOT_SCENARIO=windows-profile` to boot a blank system disk plus that ISO on
 //! virtio-pci twice, without and with `profile = "windows"`, and check EDK2 loads the ISO first
 //! only when the fw_cfg `bootorder` says so.
+//! Set `TERNVALE_BOOT_SCENARIO=windows-media` to attach the `[iso]` installer (that ISO) and
+//! driver (virtio-win, `./scripts/fetch-virtio-win.sh`) slots as read-only optical virtio-pci
+//! discs: debug EDK2 must enumerate the IDs the host logged and boot the installer, and a Linux
+//! guest must see both as read-only 2048-byte-block discs with the host's bytes.
+//! Set `TERNVALE_BOOT_SCENARIO=windows-installer` to boot the Windows 11 ARM64 ISO
+//! (`./scripts/fetch-windows-iso.sh` or `TERNVALE_WINDOWS_ISO`) with virtio-win and no
+//! disk: EDK2 must load the installer first, its loader must print "Press any key to boot
+//! from CD or DVD" (the harness presses Enter), and the boot manager must read `boot.wim`.
 
 mod agent;
 mod common;
@@ -65,6 +73,8 @@ mod uefi_linux;
 mod uefi_linux_acpi;
 mod uefi_linux_tpm;
 mod uefi_lspci;
+mod windows_installer;
+mod windows_media;
 mod windows_profile;
 
 fn main() {
@@ -100,8 +110,10 @@ fn run() -> Result<(), String> {
         "uefi-linux-tpm" => uefi_linux_tpm::run(),
         "installer" => installer::run(),
         "windows-profile" => windows_profile::run(),
+        "windows-media" => windows_media::run(),
+        "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, or windows-profile)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

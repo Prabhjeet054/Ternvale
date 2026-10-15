@@ -33,6 +33,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
     let vm = VmConfig {
         name: "virtio-linux".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: 1,
         ram_mib: 256,
         kernel: root.join("Image"),

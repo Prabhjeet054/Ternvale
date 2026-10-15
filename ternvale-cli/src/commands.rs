@@ -72,6 +72,13 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
             item.path.display()
         ));
     }
+    for device in config.block_devices().iter().filter(|d| d.is_optical()) {
+        line(format!(
+            "  {:<12}{} (ro, optical)",
+            device.role.to_string(),
+            device.path.display()
+        ));
+    }
     for (index, nic) in config.nics.iter().enumerate() {
         line(format!("  nic {index}       {}", nic.backend));
     }

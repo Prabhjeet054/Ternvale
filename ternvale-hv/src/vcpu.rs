@@ -71,6 +71,8 @@ pub enum SysReg {
     MairEl1,
     /// `HV_SYS_REG_VBAR_EL1` (`0xc600`).
     VbarEl1,
+    /// `HV_SYS_REG_SPSR_EL1` (`0xc200`).
+    SpsrEl1,
     /// `HV_SYS_REG_ELR_EL1` (`0xc201`).
     ElrEl1,
     /// `HV_SYS_REG_ESR_EL1` (`0xc290`).
@@ -79,6 +81,8 @@ pub enum SysReg {
     FarEl1,
     /// `HV_SYS_REG_MPIDR_EL1` (`0xc005`).
     MpidrEl1,
+    /// `HV_SYS_REG_ID_AA64DFR0_EL1` (`0xc028`).
+    IdAa64Dfr0El1,
     /// `HV_SYS_REG_CNTV_CTL_EL0` (`0xdf19`).
     CntvCtlEl0,
     /// `HV_SYS_REG_CNTV_CVAL_EL0` (`0xdf1a`).
@@ -95,10 +99,12 @@ impl SysReg {
             Self::TcrEl1 => 0xc102,
             Self::MairEl1 => 0xc510,
             Self::VbarEl1 => 0xc600,
+            Self::SpsrEl1 => 0xc200,
             Self::ElrEl1 => 0xc201,
             Self::EsrEl1 => 0xc290,
             Self::FarEl1 => 0xc300,
             Self::MpidrEl1 => 0xc005,
+            Self::IdAa64Dfr0El1 => 0xc028,
             Self::CntvCtlEl0 => 0xdf19,
             Self::CntvCvalEl0 => 0xdf1a,
         }

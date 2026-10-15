@@ -15,16 +15,18 @@
 //!   transport's `VenHw(<virtio-mmio GUID>, <base>)`.
 //! - Each translated path selects the boot options it prefixes, in file order.
 //!   Options under `PciRoot(0x0)` or a virtio-mmio `VenHw` that no line selects
-//!   are dropped from `BootOrder` (`BootOrderComplete`), so every disk is
-//!   listed: the ISO images first, then the other disks in config order. The
-//!   UEFI shell and other firmware-volume options keep their place after them.
+//!   are dropped from `BootOrder` (`BootOrderComplete`), so every bootable
+//!   device is listed: `iso.installer`, then ISO disks, then the other disks
+//!   in config order. `iso.drivers` is deliberately unlisted, which drops its
+//!   option. The UEFI shell and other firmware-volume options keep their place
+//!   after them.
 //!
 //! TODO(verify): EDK2 builds may differ. The `windows-profile` boot scenario
 //! checks that `BdsDxe` loads the ISO first even though it is the second disk.
 
 use std::path::Path;
 
-use ternvale_config::{VirtioTransport, VmConfig};
+use ternvale_config::{BlockRole, VirtioTransport, VmConfig};
 
 use crate::machine::MachineError;
 use crate::pci::Bdf;
@@ -35,8 +37,9 @@ pub const BOOTORDER_FILE: &str = "bootorder";
 /// PCI devices per bus.
 const PCI_DEVICES: usize = 32;
 
-/// The PCI function config disk `index` gets when disks are attached first,
-/// in order, behind the host bridge at 00:00.0. `None` past the last device.
+/// The PCI function block device `index` ([`VmConfig::block_devices`]) gets
+/// when block devices are attached first, in order, behind the host bridge
+/// at 00:00.0. `None` past the last device.
 #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(index))]
 pub fn pci_disk_bdf(index: usize) -> Option<Bdf> {
     let device = index
@@ -67,24 +70,32 @@ pub fn disk_ofw_path(transport: VirtioTransport, index: usize) -> Result<String,
 }
 
 /// `(name, contents)` of the `bootorder` file for `config`, or `None` when
-/// the profile keeps EDK2's own order or no disk is an ISO image.
+/// the profile keeps EDK2's own order or nothing bootable is an ISO image.
+///
+/// Indices are positions in [`VmConfig::block_devices`]: `iso.installer`
+/// first, then `[[disks]]` that are ISO images, then the other disks.
+/// `iso.drivers` is left out, so EDK2 drops its boot option.
 #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(name = %config.name, profile = %config.profile))]
 pub(crate) fn file(config: &VmConfig) -> Result<Option<(String, Vec<u8>)>, MachineError> {
     if !config.iso_boots_first() {
         tracing::debug!(target: "ternvale::boot", "profile keeps the firmware boot order");
         return Ok(None);
     }
+    let devices = config.block_devices();
     let mut isos = Vec::new();
     let mut others = Vec::new();
-    for (index, disk) in config.disks.iter().enumerate() {
-        if is_iso(&disk.path)? {
-            isos.push(index);
-        } else {
-            others.push(index);
+    for (index, device) in devices.iter().enumerate() {
+        match device.role {
+            BlockRole::Installer => isos.insert(0, index),
+            BlockRole::Drivers => {
+                tracing::info!(target: "ternvale::boot", index, path = %device.path.display(), "driver disc left out of the uefi boot order");
+            }
+            BlockRole::Disk if is_iso(&device.path)? => isos.push(index),
+            BlockRole::Disk => others.push(index),
         }
     }
     if isos.is_empty() {
-        tracing::info!(target: "ternvale::boot", disks = config.disks.len(), "no ISO attached; EDK2 keeps its own boot order");
+        tracing::info!(target: "ternvale::boot", devices = devices.len(), "no ISO attached; EDK2 keeps its own boot order");
         return Ok(None);
     }
     let transport = config.virtio_transport();

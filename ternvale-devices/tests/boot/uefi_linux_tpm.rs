@@ -192,6 +192,7 @@ fn boot_once(
     let vm = VmConfig {
         name: "uefi-linux-tpm".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: CPUS,
         ram_mib: 1024,
         kernel: Default::default(),

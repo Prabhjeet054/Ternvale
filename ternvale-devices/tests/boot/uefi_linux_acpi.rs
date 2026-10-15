@@ -90,6 +90,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
     let vm = VmConfig {
         name: "uefi-linux-acpi".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: 2,
         ram_mib: 512,
         kernel: Default::default(),

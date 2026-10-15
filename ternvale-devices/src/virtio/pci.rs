@@ -301,3 +301,7 @@ mod tests;
 #[cfg(test)]
 #[path = "pci_blk_tests.rs"]
 mod blk_tests;
+
+#[cfg(test)]
+#[path = "pci_optical_tests.rs"]
+mod optical_tests;

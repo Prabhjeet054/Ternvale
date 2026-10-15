@@ -49,6 +49,7 @@ pub fn run() -> Result<(), String> {
     let vm = VmConfig {
         name: "boot-smp".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus,
         ram_mib: 256,
         kernel: root.join("Image"),

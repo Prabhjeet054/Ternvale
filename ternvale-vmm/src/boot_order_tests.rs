@@ -11,9 +11,20 @@ impl Dir {
         std::fs::create_dir_all(&dir).expect("temp dir");
         let mut iso = vec![0u8; 17 * 2048];
         iso[16 * 2048 + 1..16 * 2048 + 6].copy_from_slice(b"CD001");
-        std::fs::write(dir.join("install.iso"), iso).expect("iso");
+        std::fs::write(dir.join("install.iso"), &iso).expect("iso");
+        std::fs::write(dir.join("drivers.iso"), &iso).expect("drivers iso");
         std::fs::write(dir.join("system.img"), vec![0u8; 64 * 1024]).expect("disk");
         Self(dir)
+    }
+
+    /// `config` plus an `[iso]` section with the given slots.
+    fn with_iso(&self, profile: &str, disks: &[&str], installer: bool, drivers: bool) -> VmConfig {
+        let mut config = self.config(profile, disks);
+        config.iso = Some(ternvale_config::IsoSection {
+            installer: installer.then(|| self.0.join("install.iso")),
+            drivers: drivers.then(|| self.0.join("drivers.iso")),
+        });
+        config
     }
 
     fn config(&self, profile: &str, disks: &[&str]) -> VmConfig {
@@ -88,6 +99,32 @@ fn windows_flags_reach_the_vmm_as_acpi_with_tpm2_pci_disks_and_a_bootorder() {
         assert!(pci_disk_bdf(index).is_some(), "disk {index} has a PCI slot");
     }
     assert!(file(&config).expect("file").is_some(), "bootorder");
+}
+
+#[test]
+fn installer_slot_boots_first_and_the_driver_disc_is_left_out() {
+    let dir = Dir::new("slots");
+    let config = dir.with_iso("windows", &["system.img"], true, true);
+    let (_, bytes) = file(&config).expect("file").expect("installer attached");
+    // block_devices: system.img 00:01.0, installer 00:02.0, drivers 00:03.0.
+    assert_eq!(
+        bytes,
+        b"/pci@i0cf8/scsi@2/disk@0,0\n/pci@i0cf8/scsi@1/disk@0,0\0".to_vec()
+    );
+    let config = dir.with_iso("windows", &["install.iso", "system.img"], true, false);
+    let (_, bytes) = file(&config).expect("file").expect("two isos");
+    assert_eq!(
+        bytes,
+        b"/pci@i0cf8/scsi@3/disk@0,0\n/pci@i0cf8/scsi@1/disk@0,0\n/pci@i0cf8/scsi@2/disk@0,0\0"
+            .to_vec(),
+        "installer slot, then the ISO disk, then the other disk"
+    );
+    let drivers_only = dir.with_iso("windows", &["system.img"], false, true);
+    assert_eq!(
+        file(&drivers_only).expect("file"),
+        None,
+        "nothing to boot first"
+    );
 }
 
 #[test]

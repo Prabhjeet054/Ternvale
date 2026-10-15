@@ -15,10 +15,12 @@ mod queue;
 mod rng;
 mod vsock;
 
-pub use attach_disks::{attach_disks, attach_disks_pci};
+pub use attach_disks::{
+    attach_blocks, attach_disks, attach_disks_pci, AttachedBlock, AttachedBlocks, BlkPlacement,
+};
 pub use blk::{
-    AttachedBlk, BlkStats, VirtioBlk, VirtioBlkError, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO,
-    VIRTIO_BLK_ID,
+    AttachedBlk, BlkMedia, BlkStats, VirtioBlk, VirtioBlkError, OPTICAL_BLOCK_SIZE,
+    VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO, VIRTIO_BLK_ID,
 };
 pub use irq::{IrqHook, VirtioIrq};
 pub use mmio::{slot_base, VirtioMmio, VirtioMmioError};

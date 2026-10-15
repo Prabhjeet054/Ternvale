@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use super::bus::{all_ones, PciBus};
 use super::{
     register_name, swizzle, Bdf, HostBridge, IntxLine, IntxPin, LineHook, PciError, PciFunction,
-    PCI_INTX_LINES, PCI_INTX_SPI0,
+    PciIdentity, PCI_INTX_LINES, PCI_INTX_SPI0,
 };
 use crate::lockwatch::Guard;
 use crate::mmio::{MmioBus, MmioDevice};
@@ -113,7 +113,12 @@ impl PciRoot {
             .inspect_err(|error| tracing::error!(target: "ternvale::pci", error = %error, "register pci mmio window failed"))?;
         let functions = self.lock().functions();
         for (bdf, name) in &functions {
-            tracing::debug!(target: "ternvale::pci", %bdf, function = %name, "pci function present");
+            match PciIdentity::read(self, *bdf) {
+                Some(identity) => identity.log(name),
+                None => {
+                    tracing::warn!(target: "ternvale::pci", %bdf, function = %name, "pci function does not answer config reads")
+                }
+            }
         }
         tracing::info!(
             target: "ternvale::pci",

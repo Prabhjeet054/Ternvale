@@ -54,6 +54,7 @@ pub fn run() -> Result<(), String> {
     let vm = VmConfig {
         name: "uefi-acpi".to_string(),
         profile: Default::default(),
+        iso: None,
         cpus: CPUS,
         ram_mib: 512,
         kernel: Default::default(),

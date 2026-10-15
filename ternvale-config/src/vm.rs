@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
-use crate::{Profile, TpmSection, VsockSection};
+use crate::{IsoSection, Profile, TpmSection, VsockSection};
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
@@ -63,6 +63,9 @@ pub struct VmConfig {
     /// Disk images, in guest attachment order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub disks: Vec<Disk>,
+    /// Read-only installer and driver ISOs, attached after `disks`. See [`IsoSection`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iso: Option<IsoSection>,
     /// NICs, in guest attachment order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub nics: Vec<Nic>,
@@ -208,6 +211,9 @@ impl VmConfig {
                 "accepted disk"
             );
         }
+        if let Some(iso) = &self.iso {
+            iso.validate(self)?;
+        }
         if self.boot_disk {
             if self.disks.is_empty() {
                 tracing::error!(
@@ -346,7 +352,7 @@ fn validate_ram(ram_mib: u64) -> Result<(), ConfigError> {
     }
 }
 
-fn require_file(field: &str, path: &Path) -> Result<(), ConfigError> {
+pub(crate) fn require_file(field: &str, path: &Path) -> Result<(), ConfigError> {
     if path.is_file() {
         tracing::debug!(
             target: "ternvale::config",

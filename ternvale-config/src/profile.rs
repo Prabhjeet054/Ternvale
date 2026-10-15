@@ -147,6 +147,7 @@ impl Profile {
             tracing::warn!(target: "ternvale::config", profile = %self, "tpm.backend = \"stub\" fails every TPM command; Windows 11 setup will report that the PC lacks a TPM 2.0");
         }
         warn_small_disks(self, config);
+        warn_missing_drivers(self, config);
         tracing::debug!(
             target: "ternvale::config",
             profile = %self,
@@ -209,6 +210,19 @@ fn warn_small_disks(profile: Profile, config: &VmConfig) {
             minimum_bytes = WINDOWS_MIN_DISK_BYTES,
             "no writable disk of at least 64 GiB; Windows 11 setup needs one to install to"
         ),
+    }
+}
+
+/// Windows has no inbox virtio driver, so Setup lists no disk until it loads
+/// `viostor` from a driver disc.
+fn warn_missing_drivers(profile: Profile, config: &VmConfig) {
+    let iso = config.iso.as_ref();
+    if iso.is_some_and(|iso| iso.installer.is_some() && iso.drivers.is_none()) {
+        tracing::warn!(
+            target: "ternvale::config",
+            %profile,
+            "iso.installer without iso.drivers: Windows Setup has no virtio driver and will list no disk; attach virtio-win (scripts/fetch-virtio-win.sh)"
+        );
     }
 }
 

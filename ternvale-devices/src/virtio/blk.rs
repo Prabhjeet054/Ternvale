@@ -1,6 +1,7 @@
 //! virtio-blk device: request queue, file backend, and I/O thread.
 
 mod backend;
+mod media;
 mod request;
 
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ use super::irq::{IrqHook, VirtioIrq};
 use super::queue::SplitQueue;
 use super::{QueueNotify, VirtioDevice, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 use backend::FileBackend;
+pub use media::{BlkMedia, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE};
 
 /// Virtio block device id.
 pub const VIRTIO_BLK_ID: u32 = 2;
@@ -93,8 +95,8 @@ enum Kick {
 
 /// One virtio-blk device with a dedicated I/O thread.
 pub struct VirtioBlk {
-    capacity: u64,
-    read_only: bool,
+    media: BlkMedia,
+    config: [u8; 24],
     stats: Arc<BlkStats>,
     kick: Option<Sender<Kick>>,
     join: Option<JoinHandle<()>>,
@@ -114,8 +116,33 @@ impl VirtioBlk {
         memory: Arc<Mutex<GuestMemory>>,
         irq: Arc<VirtioIrq>,
     ) -> Result<Self, VirtioBlkError> {
-        let backend = FileBackend::open(path, read_only)?;
+        Self::open_media(path, BlkMedia::Disk { read_only }, memory, irq)
+    }
+
+    /// Open `path` as `media` and start the I/O thread.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip(memory, irq),
+        fields(path = %path.display(), media = media.name())
+    )]
+    pub fn open_media(
+        path: &Path,
+        media: BlkMedia,
+        memory: Arc<Mutex<GuestMemory>>,
+        irq: Arc<VirtioIrq>,
+    ) -> Result<Self, VirtioBlkError> {
+        let backend = FileBackend::open(path, media.read_only())?;
         let capacity = backend.capacity();
+        tracing::debug!(
+            target: "ternvale::virtio::blk",
+            path = %path.display(),
+            media = media.name(),
+            capacity_sectors = capacity,
+            features = format!("{:#x}", media.features()),
+            blk_size = ?media.block_size(),
+            "virtio-blk medium"
+        );
         let mut serial = [0u8; ID_BYTES];
         let name = path
             .file_name()
@@ -135,8 +162,8 @@ impl VirtioBlk {
                 source,
             })?;
         Ok(Self {
-            capacity,
-            read_only,
+            media,
+            config: media.config_space(capacity),
             stats,
             kick: Some(tx),
             join: Some(join),
@@ -157,9 +184,26 @@ impl VirtioBlk {
         memory: Arc<Mutex<GuestMemory>>,
         irq_hook: IrqHook,
     ) -> Result<AttachedBlk, VirtioBlkError> {
+        Self::attach_media(slot, path, BlkMedia::Disk { read_only }, memory, irq_hook)
+    }
+
+    /// Build a virtio-mmio transport on `slot` for `path` opened as `media`.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip(memory, irq_hook),
+        fields(slot, path = %path.display(), media = media.name())
+    )]
+    pub fn attach_media(
+        slot: u32,
+        path: &Path,
+        media: BlkMedia,
+        memory: Arc<Mutex<GuestMemory>>,
+        irq_hook: IrqHook,
+    ) -> Result<AttachedBlk, VirtioBlkError> {
         let irq = VirtioIrq::new();
         irq.set_hook(irq_hook);
-        let blk = Self::open(path, read_only, memory, Arc::clone(&irq))?;
+        let blk = Self::open_media(path, media, memory, Arc::clone(&irq))?;
         let stats = Arc::clone(&blk.stats);
         let base = crate::virtio::slot_base(slot).ok_or_else(|| VirtioBlkError::Open {
             path: path.to_path_buf(),
@@ -186,14 +230,24 @@ impl VirtioBlk {
         path: &Path,
         read_only: bool,
     ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
+        Self::attach_pci_media(attach, path, BlkMedia::Disk { read_only })
+    }
+
+    /// Open `path` as `media` on the next free virtio-pci function of bus 0.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip(attach),
+        fields(path = %path.display(), media = media.name())
+    )]
+    pub fn attach_pci_media(
+        attach: &DeviceAttach,
+        path: &Path,
+        media: BlkMedia,
+    ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
         let irq = VirtioIrq::new();
-        let blk = Self::open(
-            path,
-            read_only,
-            Arc::clone(&attach.memory),
-            Arc::clone(&irq),
-        )
-        .map_err(|error| MachineError::Attach(error.to_string()))?;
+        let blk = Self::open_media(path, media, Arc::clone(&attach.memory), Arc::clone(&irq))
+            .map_err(|error| MachineError::Attach(error.to_string()))?;
         let stats = Arc::clone(&blk.stats);
         let bdf = super::pci::attach_pci(attach, Box::new(blk), irq)?;
         Ok((bdf, stats))
@@ -239,11 +293,7 @@ impl VirtioDevice for VirtioBlk {
     }
 
     fn device_features(&self) -> u64 {
-        let mut features = VIRTIO_BLK_F_FLUSH;
-        if self.read_only {
-            features |= VIRTIO_BLK_F_RO;
-        }
-        features
+        self.media.features()
     }
 
     fn num_queues(&self) -> u16 {
@@ -251,8 +301,7 @@ impl VirtioDevice for VirtioBlk {
     }
 
     fn read_config(&mut self, offset: u64, size: u8) -> u64 {
-        let bytes = self.capacity.to_le_bytes();
-        read_le(&bytes, offset, size)
+        read_le(&self.config, offset, size)
     }
 
     fn notify(&mut self, queue: QueueNotify) {

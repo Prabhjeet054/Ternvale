@@ -131,6 +131,7 @@ fn boot(
     let vm = VmConfig {
         name: format!("uefi-lspci-{label}"),
         profile: Default::default(),
+        iso: None,
         cpus: CPUS,
         ram_mib: 512,
         kernel: Default::default(),
