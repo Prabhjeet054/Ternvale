@@ -715,12 +715,24 @@ dependencies = [
  "ternvale-agent",
  "ternvale-agent-proto",
  "ternvale-config",
+ "ternvale-gpu",
  "ternvale-hv",
  "ternvale-log",
  "ternvale-tpm",
  "ternvale-vmm",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "ternvale-gpu"
+version = "0.1.0"
+dependencies = [
+ "ternvale-devices",
+ "ternvale-vmm",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -14,6 +14,9 @@
 #                       then tshark filters over net.pcap via scripts/check-pcap.sh
 #   devices           — virtio-rng /dev/hwrng samples and a vsock ping/pong on port 5000
 #                       (needs ./scripts/make-devices-initramfs.sh)
+#   gpu               — Linux virtio-gpu + fbdev on virtio-mmio with a 1024x768 scanout:
+#                       fb0 sysfs geometry and fbset, then two rows written through /dev/fb0
+#                       must appear in the host frame (needs ./scripts/make-gpu-initramfs.sh)
 #   agent             — the guest ternvale-agent (same assets) against the host AgentServer:
 #                       handshake, heartbeats, reconnect after a server restart, clipboard /
 #                       resolution requests, and power-off on Shutdown

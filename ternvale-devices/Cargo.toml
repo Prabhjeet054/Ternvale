@@ -44,3 +44,6 @@ ternvale-acpi = { path = "../ternvale-acpi" }
 # firmware-tpm boot scenario: read the TPM identity from the swtpm state file host-side
 # between boots (workspace crate, already built through ternvale-vmm).
 ternvale-tpm = { path = "../ternvale-tpm" }
+# gpu boot scenario: VirtioGpu on virtio-mmio and its host-side frame (workspace crate;
+# it depends on this one, which Cargo allows for dev-dependencies).
+ternvale-gpu = { path = "../ternvale-gpu" }

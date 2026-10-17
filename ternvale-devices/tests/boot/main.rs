@@ -10,6 +10,10 @@
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
 //! Set `TERNVALE_BOOT_SCENARIO=devices` to read /dev/hwrng and ping/pong over vsock
 //! (requires `./scripts/make-devices-initramfs.sh` assets under `test-assets/virtio-devices/`).
+//! Set `TERNVALE_BOOT_SCENARIO=gpu` to boot Linux's virtio-gpu driver on virtio-mmio with a
+//! 1024x768 scanout and check fb0's sysfs geometry, `fbset`, and two rows written through
+//! /dev/fb0 in the host frame (requires `./scripts/make-gpu-initramfs.sh` assets under
+//! `test-assets/virtio-gpu/`).
 //! Set `TERNVALE_BOOT_SCENARIO=agent` to run the guest agent from the same assets against the
 //! host `AgentServer`: handshake, heartbeats, reconnect after a server restart, requests, and
 //! a guest power-off on `Shutdown`.
@@ -60,6 +64,7 @@ mod firmware;
 mod firmware_acpi;
 mod firmware_debug;
 mod firmware_tpm;
+mod gpu;
 mod idle;
 mod initrd;
 mod installer;
@@ -98,6 +103,7 @@ fn run() -> Result<(), String> {
         "pci" => rootfs::run_pci(),
         "net" => net::run(),
         "devices" => devices::run(),
+        "gpu" => gpu::run(),
         "agent" => agent::run(),
         "smp" => smp::run(),
         "firmware" => firmware::run(),
@@ -113,7 +119,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, gpu, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

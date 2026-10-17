@@ -46,6 +46,8 @@ fn class_code(device_id: u32) -> u32 {
     match device_id {
         1 => 0x02_00_00,
         2 => 0x01_00_00,
+        // virtio-gpu: display controller, other (QEMU's virtio-gpu-pci).
+        16 => 0x03_80_00,
         _ => 0xff_00_00,
     }
 }

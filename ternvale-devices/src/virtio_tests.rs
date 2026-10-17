@@ -98,6 +98,17 @@ fn identity_registers_match_virtio_mmio_v2() {
 }
 
 #[test]
+fn shared_memory_regions_read_as_absent() {
+    let mut dev = transport();
+    for id in [0, 1, 7] {
+        dev.write(0x0ac, 4, id);
+        for reg in [0x0b0, 0x0b4, 0x0b8, 0x0bc] {
+            assert_eq!(dev.read(reg, 4), 0xffff_ffff, "shm id {id} reg {reg:#x}");
+        }
+    }
+}
+
+#[test]
 fn features_ok_requires_version_1() {
     let mut dev = transport();
     write_status(&mut dev, STATUS_ACKNOWLEDGE);

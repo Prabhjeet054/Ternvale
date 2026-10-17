@@ -1,0 +1,22 @@
+[package]
+name = "ternvale-gpu"
+description = "virtio-gpu (2D-only profile) for Ternvale guests: control queue and host-side scanout buffers."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed GpuError (library crates use thiserror).
+thiserror = "2"
+# Required project-wide logging facade (target ternvale::gpu).
+tracing = "0.1"
+# GuestMemory, MmioDevice, DeviceAttach and the PCI types (workspace crate).
+ternvale-vmm = { path = "../ternvale-vmm" }
+# VirtioDevice, SplitQueue, VirtioIrq and the virtio-mmio / virtio-pci transports from
+# Steps 19/26 (workspace crate); the GPU reuses them instead of a transport of its own.
+ternvale-devices = { path = "../ternvale-devices" }
+
+[dev-dependencies]
+# Process-wide capture subscriber so tests can assert the DEBUG command and TRACE flush
+# lines (already built for ternvale-log and ternvale-tpm).
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }

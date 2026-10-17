@@ -37,6 +37,16 @@ const QUEUE_DRIVER_LOW: u64 = 0x090;
 const QUEUE_DRIVER_HIGH: u64 = 0x094;
 const QUEUE_DEVICE_LOW: u64 = 0x0a0;
 const QUEUE_DEVICE_HIGH: u64 = 0x0a4;
+const SHM_SEL: u64 = 0x0ac;
+const SHM_LEN_LOW: u64 = 0x0b0;
+const SHM_LEN_HIGH: u64 = 0x0b4;
+const SHM_BASE_LOW: u64 = 0x0b8;
+const SHM_BASE_HIGH: u64 = 0x0bc;
+/// No device here has shared memory regions. virtio 1.2 §4.2.2: reading `SHMLen` for an
+/// unused `SHMSel` ID gives -1; Linux `vm_get_shm_region` treats anything else as a region
+/// (virtio-gpu then fails its probe with -EBUSY reserving a zero-length region at 0).
+/// TODO(verify): the spec text for `SHMBase` of a missing region; -1 matches `SHMLen`.
+const NO_SHM_REGION: u32 = u32::MAX;
 const CONFIG_GENERATION: u64 = 0x0fc;
 const CONFIG: u64 = 0x100;
 
@@ -216,6 +226,7 @@ impl VirtioMmio {
             INTERRUPT_STATUS => core.interrupt.status(),
             STATUS => core.status,
             CONFIG_GENERATION => core.device.config_generation(),
+            SHM_LEN_LOW | SHM_LEN_HIGH | SHM_BASE_LOW | SHM_BASE_HIGH => NO_SHM_REGION,
             _ => {
                 tracing::warn!(
                     target: "ternvale::virtio::mmio",
@@ -264,6 +275,12 @@ impl VirtioMmio {
             QUEUE_DEVICE_HIGH => self
                 .core
                 .set_queue_addr(sel, QueueAddr::Device, true, value),
+            SHM_SEL => tracing::debug!(
+                target: "ternvale::virtio::mmio",
+                name = %self.core.name,
+                shm_id = value,
+                "shared memory region selected; none exist, SHMLen/SHMBase read -1"
+            ),
             _ => tracing::warn!(
                 target: "ternvale::virtio::mmio",
                 name = %self.core.name,
