@@ -309,6 +309,7 @@ impl Gpu2d {
             let copied = self.display.with_frame(index, |frame| {
                 let bytes = scanout::copy_into(frame, resource, state.rect, damage);
                 frame.sequence += 1;
+                frame.updated = Some(started);
                 (bytes, frame.sequence)
             });
             let Some((bytes, sequence)) = copied else {

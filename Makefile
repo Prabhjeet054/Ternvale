@@ -2,10 +2,14 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint sign clean guest-tests
+.PHONY: build test test-hv lint sign clean guest-tests viewer
 
 build:
 	$(CARGO) build --workspace
+
+# Dev viewer for `ternvale run --display window` (Swift/AppKit, needs swiftc).
+viewer:
+	./scripts/build-viewer.sh
 
 test:
 	$(CARGO) test --workspace

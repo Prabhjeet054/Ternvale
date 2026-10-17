@@ -11,6 +11,7 @@ use ternvale_vmm::{VmControl, VmState};
 
 use crate::cli::{Cli, Command};
 use crate::client::{self, Reach};
+use crate::display::DisplayMode;
 use crate::protocol::{Request, Response, MAX_LINE};
 use crate::server::ControlServer;
 
@@ -57,11 +58,40 @@ fn clap_grammar_is_consistent() {
 }
 
 #[test]
+fn run_rejects_bad_display_flags() {
+    for args in [
+        &["ternvale", "run", "vm.toml", "--fps", "0"][..],
+        &["ternvale", "run", "vm.toml", "--fps", "241"],
+        &["ternvale", "run", "vm.toml", "--display", "metal"],
+    ] {
+        assert!(Cli::try_parse_from(args).is_err(), "{args:?}");
+    }
+}
+
+#[test]
 fn parses_every_subcommand() {
     assert_eq!(
         parse(&["ternvale", "run", "vm.toml"]),
         Command::Run {
-            config: "vm.toml".into()
+            config: "vm.toml".into(),
+            display: DisplayMode::None,
+            fps: ternvale_gpu::DEFAULT_FPS,
+        }
+    );
+    assert_eq!(
+        parse(&[
+            "ternvale",
+            "run",
+            "vm.toml",
+            "--display",
+            "window",
+            "--fps",
+            "60"
+        ]),
+        Command::Run {
+            config: "vm.toml".into(),
+            display: DisplayMode::Window,
+            fps: 60,
         }
     );
     assert_eq!(

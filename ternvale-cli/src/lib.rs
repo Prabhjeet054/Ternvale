@@ -20,6 +20,7 @@ pub mod client;
 pub mod commands;
 pub mod diag;
 pub mod disk;
+pub mod display;
 pub mod doctor;
 pub mod logfmt;
 pub mod logs;
@@ -78,7 +79,11 @@ pub fn error_chain(error: &anyhow::Error) -> String {
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
 pub fn dispatch(command: Command) -> Result<ExitCode> {
     match command {
-        Command::Run { config } => run::run(&config),
+        Command::Run {
+            config,
+            display,
+            fps,
+        } => run::run(&config, display, fps),
         Command::Doctor { json, config } => {
             // The log directory is one of the things doctor checks, so a
             // broken one must not stop it.
@@ -110,7 +115,11 @@ fn cli_log() -> Result<ternvale_log::LogGuard> {
 
 fn non_run(command: Command) -> Result<ExitCode> {
     match command {
-        Command::Run { config } => run::run(&config),
+        Command::Run {
+            config,
+            display,
+            fps,
+        } => run::run(&config, display, fps),
         Command::Validate { config } => commands::validate(&config),
         Command::CreateDisk { path, size } => commands::create_disk(&path, &size),
         Command::Status { name, stats, json } => commands::status(&name, stats, json),

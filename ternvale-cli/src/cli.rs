@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::display::DisplayMode;
 use crate::logfmt::Level;
 
 /// Ternvale: an ARM64 VMM on Hypervisor.framework.
@@ -23,6 +24,14 @@ pub enum Command {
     Run {
         /// VM config (TOML).
         config: PathBuf,
+        /// Host display: `none`, or `window` to add a virtio-gpu and show it
+        /// in the dev viewer (build it with `make viewer`).
+        #[arg(long, value_enum, default_value_t = DisplayMode::None)]
+        display: DisplayMode,
+        /// Frame-rate cap for `--display window`.
+        #[arg(long, default_value_t = ternvale_gpu::DEFAULT_FPS,
+            value_parser = clap::value_parser!(u32).range(1..=i64::from(ternvale_gpu::MAX_FPS)))]
+        fps: u32,
     },
     /// Parse and check a VM config without starting anything.
     Validate {

@@ -24,6 +24,9 @@ pub struct Frame {
     pub pixels: Vec<u8>,
     /// Bumped on every `SET_SCANOUT` and on every flush that touched this scanout.
     pub sequence: u64,
+    /// When the `RESOURCE_FLUSH` (or `SET_SCANOUT`) behind `sequence` reached
+    /// the device; the presenter measures flush-to-present latency from here.
+    pub updated: Option<Instant>,
 }
 
 impl Frame {
@@ -118,6 +121,7 @@ pub(crate) fn show(frame: &mut Frame, resource: &Resource, rect: Rect) {
     frame.pixels = vec![0; frame.stride() * rect.height as usize];
     copy_into(frame, resource, rect, rect);
     frame.sequence += 1;
+    frame.updated = Some(Instant::now());
 }
 
 /// Blank `frame` (scanout disabled).
@@ -125,6 +129,7 @@ pub(crate) fn blank(frame: &mut Frame) {
     let sequence = frame.sequence + 1;
     *frame = Frame {
         sequence,
+        updated: Some(Instant::now()),
         ..Frame::default()
     };
 }

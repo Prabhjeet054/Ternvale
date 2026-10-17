@@ -5,11 +5,13 @@
 //! driver discs, are virtio-blk on virtio-mmio slots `0..d` (on PCI 00:01.0
 //! onward with `profile = "windows"`), NICs are
 //! virtio-net on the virtio-mmio slots after them, and `[vsock]` adds
-//! virtio-vsock on the next slot plus the guest agent server.
+//! virtio-vsock on the next slot plus the guest agent server. `--display
+//! window` adds a virtio-gpu after them and shows it in the dev viewer
+//! ([`crate::display`]).
 
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -23,6 +25,7 @@ use ternvale_vmm::{
 };
 
 use crate::diag::{DiagSink, RunManifest, SharedDevices};
+use crate::display::{DisplayMode, DisplayPlan, DisplaySession};
 use crate::paths;
 use crate::server::ControlServer;
 
@@ -33,9 +36,10 @@ pub const FORCED_EXIT: i32 = 2;
 
 const REAPER_POLL: Duration = Duration::from_millis(100);
 
-/// Boot `config_path` and block until the VM stops.
-#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %config_path.display()))]
-pub fn run(config_path: &Path) -> Result<ExitCode> {
+/// Boot `config_path` and block until the VM stops. `mode` and `fps` are
+/// the `--display` / `--fps` flags.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %config_path.display(), display = %mode, fps))]
+pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     let load = || format!("load vm config {}", config_path.display());
     let text = std::fs::read_to_string(config_path).with_context(load)?;
     let config = VmConfig::parse(&text).with_context(load)?;
@@ -70,6 +74,14 @@ pub fn run(config_path: &Path) -> Result<ExitCode> {
     warn_config_problems(&config);
 
     let socket = paths::socket_path(&config.name)?;
+    let plan = match mode {
+        DisplayMode::Window => Some(
+            DisplayPlan::new(&config.name, &socket, fps)
+                .with_context(|| format!("prepare --display window for vm {}", config.name))?,
+        ),
+        DisplayMode::None => None,
+    };
+    let session: Arc<Mutex<Option<DisplaySession>>> = Arc::default();
     let control = Arc::new(VmControl::new(&config.name, config.cpus));
     let vsock = crate::vsock::prepare(&config, &socket)
         .with_context(|| format!("set up vsock for vm {}", config.name))?;
@@ -91,15 +103,18 @@ pub fn run(config_path: &Path) -> Result<ExitCode> {
     let nics: Vec<String> = config.nics.iter().map(|nic| nic.backend.clone()).collect();
     let device = vsock.as_ref().map(|setup| setup.device.clone());
     let transport = config.virtio_transport();
+    let session_slot = Arc::clone(&session);
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
         let wanted = Wanted {
             blocks: &blocks,
             transport,
             nics: &nics,
             vsock: device.as_ref(),
+            display: plan.as_ref(),
         };
-        attach_devices(attach, &wanted, &stats)
+        attach_devices(attach, &wanted, &stats, &session_slot)
     });
+    drop(lockwatch::lock(&session, "display-session").take());
 
     if reaper.join().is_err() {
         tracing::error!(target: "ternvale::cli", "force-stop reaper thread panicked");
@@ -173,17 +188,21 @@ struct Wanted<'a> {
     transport: VirtioTransport,
     nics: &'a [String],
     vsock: Option<&'a VsockConfig>,
+    /// `--display window`: a virtio-gpu after vsock (PCI with `virtio-pci`).
+    display: Option<&'a DisplayPlan>,
 }
 
 /// Block devices first ([`attach_blocks`]: virtio-mmio slots `0..d`, or PCI
 /// 00:01.0 onward for `virtio-pci`, matching the fw_cfg boot order), then NICs
 /// and vsock on the next free virtio-mmio slots. MACs count up from
-/// [`DEFAULT_MAC`]. Each device's counters go into `stats`.
-#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(blocks = wanted.blocks.len(), transport = %wanted.transport, nics = wanted.nics.len(), vsock = wanted.vsock.is_some()))]
+/// [`DEFAULT_MAC`]. Each device's counters go into `stats`. With a display
+/// plan, the virtio-gpu comes last and its viewer session lands in `session`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(blocks = wanted.blocks.len(), transport = %wanted.transport, nics = wanted.nics.len(), vsock = wanted.vsock.is_some(), display = wanted.display.is_some()))]
 fn attach_devices(
     attach: &DeviceAttach,
     wanted: &Wanted<'_>,
     stats: &SharedDevices,
+    session: &Mutex<Option<DisplaySession>>,
 ) -> Result<Attached, MachineError> {
     let (nics, vsock) = (wanted.nics, wanted.vsock);
     let mut stats = lockwatch::lock(stats, "device-stats");
@@ -230,6 +249,16 @@ fn attach_devices(
         tracing::info!(target: "ternvale::cli", slot, cid, uds_dir = %vsock.uds_dir.display(), "attached virtio-vsock");
         stats.vsock = Some(vsock_stats);
         devices.push((base, size, device));
+    }
+    if let Some(plan) = wanted.display {
+        let slot = u32::try_from(mmio_slots + nics.len() + usize::from(vsock.is_some()))
+            .map_err(|_| MachineError::Attach("virtio-gpu slot does not fit in u32".into()))?;
+        let (mapped, display) = crate::display::attach_gpu(attach, wanted.transport, slot)?;
+        devices.extend(mapped);
+        let started = plan
+            .start(display)
+            .map_err(|error| MachineError::Attach(format!("{error:#}")))?;
+        *lockwatch::lock(session, "display-session") = Some(started);
     }
     Ok(devices)
 }

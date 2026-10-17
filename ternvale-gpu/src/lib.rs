@@ -13,9 +13,18 @@
 //! Logs go to `ternvale::gpu`: every command at DEBUG, every flush's timing
 //! and every transfer at TRACE, scanout enable/disable at INFO, bad guest
 //! input at WARN.
+//!
+//! [`Presenter`] (Step 44) streams one scanout to the dev viewer
+//! (`tools/ternvale-viewer`) over a Unix socket in the [`present_protocol`]
+//! format, capped at a frame rate; frame drops and flush-to-present latency
+//! are logged at DEBUG.
 
 mod device;
 mod gpu2d;
+mod present;
+pub mod present_protocol;
+mod present_session;
+mod present_window;
 pub mod protocol;
 mod resource;
 mod scanout;
@@ -29,6 +38,10 @@ pub use device::{
     AttachedGpu, GpuConfig, GpuError, PciGpu, VirtioGpu, CONFIG_LEN, DEFAULT_MODE, VIRTIO_GPU_ID,
 };
 pub use gpu2d::{GpuStats, MAX_DIMENSION, MAX_HOSTMEM};
+pub use present::{
+    PresentConfig, PresentError, PresentStats, Presenter, DEFAULT_FPS, DEFAULT_REPORT_EVERY,
+    MAX_FPS,
+};
 pub use resource::{PixelFormat, BYTES_PER_PIXEL};
 pub use scanout::{Frame, GpuDisplay};
 pub use worker::{CONTROL_QUEUE, CURSOR_QUEUE, MAX_REQUEST};

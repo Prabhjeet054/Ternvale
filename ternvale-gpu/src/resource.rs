@@ -49,6 +49,20 @@ impl PixelFormat {
         })
     }
 
+    /// The guest `format` value (inverse of [`Self::from_wire`]).
+    pub fn to_wire(self) -> u32 {
+        match self {
+            Self::B8g8r8a8 => 1,
+            Self::B8g8r8x8 => 2,
+            Self::A8r8g8b8 => 3,
+            Self::X8r8g8b8 => 4,
+            Self::R8g8b8a8 => 67,
+            Self::X8b8g8r8 => 68,
+            Self::A8b8g8r8 => 121,
+            Self::R8g8b8x8 => 134,
+        }
+    }
+
     /// Short name for logs.
     pub fn name(self) -> &'static str {
         match self {

@@ -688,6 +688,7 @@ dependencies = [
  "ternvale-agent-proto",
  "ternvale-config",
  "ternvale-devices",
+ "ternvale-gpu",
  "ternvale-hv",
  "ternvale-log",
  "ternvale-tpm",

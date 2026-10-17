@@ -41,6 +41,9 @@ ternvale-hv = { path = "../ternvale-hv" }
 # `doctor` swtpm check: the same lookup and capability probe the VMM uses to start it
 # (workspace crate, already built through ternvale-vmm).
 ternvale-tpm = { path = "../ternvale-tpm" }
+# `run --display window`: the virtio-gpu device and the Presenter that streams its
+# frames to the dev viewer (workspace crate).
+ternvale-gpu = { path = "../ternvale-gpu" }
 # Run manifest start time and report file stamps (same features as ternvale-log; already in the tree).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # `doctor` disk-space check: safe statfs wrapper (already in the tree via ternvale-agent),
