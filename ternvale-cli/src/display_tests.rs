@@ -129,7 +129,7 @@ fn session_launches_the_viewer_and_removes_the_socket_on_stop() {
     let args = scratch.0.join("args");
     let viewer = scratch.script("viewer", &format!("echo \"$@\" > {}", args.display()));
     let plan = plan(&scratch, viewer);
-    let session = plan.start(gpu_display()).expect("start");
+    let session = plan.start(gpu_display(), None).expect("start");
     assert!(plan.socket.exists(), "presenter listening");
     drop(session);
     assert!(!plan.socket.exists(), "socket removed");
@@ -147,7 +147,9 @@ fn session_kills_a_viewer_that_does_not_exit() {
         .unwrap_or_else(|e| e.into_inner());
     let scratch = Scratch::new();
     let viewer = scratch.script("stubborn", "trap '' TERM HUP\nexec sleep 30");
-    let session = plan(&scratch, viewer).start(gpu_display()).expect("start");
+    let session = plan(&scratch, viewer)
+        .start(gpu_display(), None)
+        .expect("start");
     let started = Instant::now();
     drop(session);
     let waited = started.elapsed();
@@ -162,7 +164,7 @@ fn session_kills_a_viewer_that_does_not_exit() {
 fn session_reports_a_viewer_that_cannot_launch() {
     let scratch = Scratch::new();
     let plan = plan(&scratch, scratch.0.join("not-there"));
-    let error = plan.start(gpu_display()).err().expect("launch fails");
+    let error = plan.start(gpu_display(), None).err().expect("launch fails");
     assert!(
         format!("{error:#}").contains("launch the dev viewer"),
         "{error:#}"

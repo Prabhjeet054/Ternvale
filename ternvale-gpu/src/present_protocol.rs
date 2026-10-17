@@ -10,12 +10,13 @@
 //!   virtio-gpu `format`; `format` 0 with an empty payload means "no scanout").
 //! - viewer → VMM: fixed [`MESSAGE_LEN`]-byte messages: `HELLO` first (carrying
 //!   the viewer's version), then `PRESENTED` with a frame's `sequence` once it
-//!   is on screen. Step 45 adds input messages here.
+//!   is on screen, and (version 2) the input messages of [`ViewerInput`].
 
 /// `"TVDP"` read as a little-endian u32.
 pub const MAGIC: u32 = u32::from_le_bytes(*b"TVDP");
-/// Wire version; a peer with another version is refused.
-pub const VERSION: u16 = 1;
+/// Wire version; a peer with another version is refused. Version 2 added
+/// input messages.
+pub const VERSION: u16 = 2;
 /// Bytes in a [`FrameHeader`].
 pub const FRAME_HEADER_LEN: usize = 40;
 /// Bytes in every viewer → VMM message.
@@ -26,6 +27,20 @@ pub const KIND_FRAME: u16 = 0x0001;
 pub const KIND_HELLO: u16 = 0x0101;
 /// viewer → VMM: frame `value` (its sequence) is on screen.
 pub const KIND_PRESENTED: u16 = 0x0102;
+/// viewer → VMM: key; `value` = macOS virtual key code (bits 0..16) |
+/// pressed (bit 16).
+pub const KIND_KEY: u16 = 0x0201;
+/// viewer → VMM: absolute pointer; `value` = x (bits 0..32) | y (bits 32..64),
+/// each `0..=POINTER_MAX` across the displayed frame.
+pub const KIND_POINTER: u16 = 0x0202;
+/// viewer → VMM: button; `value` = button (bits 0..8: 0 left, 1 right,
+/// 2 middle) | pressed (bit 8).
+pub const KIND_BUTTON: u16 = 0x0203;
+/// viewer → VMM: wheel clicks; `value` = dx as i32 (bits 0..32, + right) |
+/// dy as i32 (bits 32..64, + up).
+pub const KIND_SCROLL: u16 = 0x0204;
+/// Largest pointer coordinate (matches the tablet's `ABS_X`/`ABS_Y` max).
+pub const POINTER_MAX: u32 = 0x7fff;
 /// Largest width or height a frame may claim (the device's own limit).
 pub const MAX_DIMENSION: u32 = crate::gpu2d::MAX_DIMENSION;
 
@@ -59,6 +74,14 @@ pub enum WireError {
     Kind {
         /// The type field.
         kind: u16,
+    },
+    /// A known message whose value is out of range.
+    #[error("message kind {kind:#06x} has invalid value {value:#x}")]
+    Value {
+        /// The type field.
+        kind: u16,
+        /// The value field.
+        value: u64,
     },
     /// Geometry that does not describe its payload.
     #[error("frame {width}x{height} stride {stride} does not match a {payload_len}-byte payload")]
@@ -150,6 +173,109 @@ pub enum ViewerMessage {
         /// [`FrameHeader::sequence`] of the frame shown.
         sequence: u64,
     },
+    /// Keyboard or pointer input for the guest.
+    Input(ViewerInput),
+}
+
+/// Pointer button in a [`ViewerInput::Button`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerButton {
+    /// Primary.
+    Left,
+    /// Secondary.
+    Right,
+    /// Middle / third.
+    Middle,
+}
+
+/// Input captured by the viewer window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewerInput {
+    /// A key went down or up. Host key repeats are not sent.
+    Key {
+        /// macOS virtual key code (`kVK_*`).
+        mac_keycode: u16,
+        /// Down (true) or up.
+        pressed: bool,
+    },
+    /// Pointer moved, in `0..=POINTER_MAX` across the frame on screen.
+    Pointer {
+        /// Left to right.
+        x: u32,
+        /// Top to bottom.
+        y: u32,
+    },
+    /// A button went down or up.
+    Button {
+        /// Which button.
+        button: PointerButton,
+        /// Down (true) or up.
+        pressed: bool,
+    },
+    /// Wheel clicks.
+    Scroll {
+        /// Positive scrolls right.
+        dx: i32,
+        /// Positive scrolls up.
+        dy: i32,
+    },
+}
+
+impl ViewerInput {
+    fn wire(self) -> (u16, u64) {
+        match self {
+            Self::Key {
+                mac_keycode,
+                pressed,
+            } => (KIND_KEY, u64::from(mac_keycode) | u64::from(pressed) << 16),
+            Self::Pointer { x, y } => (KIND_POINTER, u64::from(x) | u64::from(y) << 32),
+            Self::Button { button, pressed } => {
+                let index = match button {
+                    PointerButton::Left => 0u64,
+                    PointerButton::Right => 1,
+                    PointerButton::Middle => 2,
+                };
+                (KIND_BUTTON, index | u64::from(pressed) << 8)
+            }
+            Self::Scroll { dx, dy } => (
+                KIND_SCROLL,
+                u64::from(dx as u32) | u64::from(dy as u32) << 32,
+            ),
+        }
+    }
+
+    fn parse(kind: u16, value: u64) -> Option<Result<Self, WireError>> {
+        let bad = Err(WireError::Value { kind, value });
+        let input = match kind {
+            KIND_KEY if value >> 17 == 0 => Self::Key {
+                mac_keycode: value as u16,
+                pressed: value >> 16 & 1 == 1,
+            },
+            KIND_POINTER => {
+                let (x, y) = (value as u32, (value >> 32) as u32);
+                if x > POINTER_MAX || y > POINTER_MAX {
+                    return Some(bad);
+                }
+                Self::Pointer { x, y }
+            }
+            KIND_BUTTON if value >> 9 == 0 => Self::Button {
+                button: match value & 0xff {
+                    0 => PointerButton::Left,
+                    1 => PointerButton::Right,
+                    2 => PointerButton::Middle,
+                    _ => return Some(bad),
+                },
+                pressed: value >> 8 & 1 == 1,
+            },
+            KIND_SCROLL => Self::Scroll {
+                dx: value as u32 as i32,
+                dy: (value >> 32) as u32 as i32,
+            },
+            KIND_KEY | KIND_BUTTON => return Some(bad),
+            _ => return None,
+        };
+        Some(Ok(input))
+    }
 }
 
 impl ViewerMessage {
@@ -158,6 +284,7 @@ impl ViewerMessage {
         let (kind, value) = match *self {
             Self::Hello { version } => (KIND_HELLO, u64::from(version)),
             Self::Presented { sequence } => (KIND_PRESENTED, sequence),
+            Self::Input(input) => input.wire(),
         };
         let mut out = [0u8; MESSAGE_LEN];
         out[0..4].copy_from_slice(&MAGIC.to_le_bytes());
@@ -176,7 +303,10 @@ impl ViewerMessage {
                 version: u16::try_from(value).unwrap_or(u16::MAX),
             }),
             KIND_PRESENTED => Ok(Self::Presented { sequence: value }),
-            kind => Err(WireError::Kind { kind }),
+            kind => match ViewerInput::parse(kind, value) {
+                Some(input) => input.map(Self::Input),
+                None => Err(WireError::Kind { kind }),
+            },
         }
     }
 }

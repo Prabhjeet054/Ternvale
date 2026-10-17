@@ -5,18 +5,22 @@
 // Wire format: ternvale-gpu/src/present_protocol.rs (keep the two in sync).
 // Frames arrive one at a time; once a frame is committed to the window server
 // and the next display refresh has passed, we answer PRESENTED so the VMM can
-// send the next one and log flush-to-present latency. Needs macOS 14
+// send the next one and log flush-to-present latency. Keyboard and mouse
+// input in the window goes back to the VMM (input.swift). Needs macOS 14
 // (NSView.displayLink).
 //
-// Usage: ternvale-viewer --socket <path> [--title <text>] [--headless [--frames N]]
+// Usage: ternvale-viewer --socket <path> [--title <text>]
+//                        [--headless [--frames N] [--script-input]]
 // --headless prints one line per frame (with an FNV-1a hash of the pixels)
-// instead of opening a window; tests use it.
+// instead of opening a window; --script-input then sends a fixed input
+// sequence after the first frame. Tests use both. TERNVALE_VIEWER_SELFTEST
+// drives the real window from a script (selftest.swift).
 
 import AppKit
 import Darwin
 
 let wireMagic: UInt32 = 0x5044_5654  // "TVDP" read little-endian
-let wireVersion: UInt16 = 1
+let wireVersion: UInt16 = 2
 let kindFrame: UInt16 = 0x0001
 let kindHello: UInt16 = 0x0101
 let kindPresented: UInt16 = 0x0102
@@ -37,6 +41,7 @@ struct Options {
     var title = "Ternvale"
     var headless = false
     var frames = 0
+    var scriptInput = false
 }
 
 func parseOptions() -> Options {
@@ -54,8 +59,9 @@ func parseOptions() -> Options {
         case "--frames":
             guard let n = Int(value(arg)), n >= 0 else { fail("--frames needs a count") }
             options.frames = n
+        case "--script-input": options.scriptInput = true
         default:
-            fail("unknown argument \(arg)\nusage: ternvale-viewer --socket <path> [--title <text>] [--headless [--frames N]]")
+            fail("unknown argument \(arg)\nusage: ternvale-viewer --socket <path> [--title <text>] [--headless [--frames N] [--script-input]]")
         }
     }
     if options.socket.isEmpty { fail("--socket <path> is required") }
@@ -196,23 +202,24 @@ func fnv1a(_ bytes: [UInt8]) -> UInt64 {
     return hash
 }
 
-func runHeadless(_ link: Link, frames: Int) -> Never {
+func runHeadless(_ link: Link, frames: Int, scriptInput: Bool) -> Never {
     var count = 0
     while let (h, pixels) = readFrame(link) {
         print("frame sequence=\(h.sequence) width=\(h.width) height=\(h.height) format=\(h.format) bytes=\(pixels.count) fnv1a=\(String(format: "%016llx", fnv1a(pixels)))")
         fflush(stdout)
         guard link.send(kind: kindPresented, value: h.sequence) else { fail("presenter went away") }
         count += 1
+        if scriptInput && count == 1 { sendScriptedInput(InputSender(link: link)) }
         if frames > 0 && count >= frames { exit(0) }
     }
     exit(frames > 0 && count < frames ? 1 : 0)
 }
 
-final class Viewer: NSObject, NSApplicationDelegate {
+final class Viewer: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let link: Link
     let title: String
     var window: NSWindow!
-    var surface: NSView!
+    var surface: SurfaceView!
     var shown: (UInt32, UInt32) = (0, 0)
     var refresh: CADisplayLink?
     var pendingAck: UInt64?
@@ -234,20 +241,31 @@ final class Viewer: NSObject, NSApplicationDelegate {
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "\(title) — waiting for scanout"
-        surface = NSView()
+        surface = SurfaceView()
+        surface.input = InputSender(link: link)
         surface.wantsLayer = true
         surface.layer?.backgroundColor = NSColor.black.cgColor
         surface.layer?.contentsGravity = .resizeAspect
         surface.layer?.magnificationFilter = .nearest
         window.contentView = surface
+        window.delegate = self
+        window.acceptsMouseMovedEvents = true
+        window.makeFirstResponder(surface)
         window.center()
-        window.makeKeyAndOrderFront(nil)
+        if SelfTest.requested {
+            // Don't take focus: whatever the person at the keyboard types would
+            // land in the guest and garble the scripted input.
+            window.orderFrontRegardless()
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
         let refresh = surface.displayLink(target: self, selector: #selector(onRefresh(_:)))
         refresh.add(to: .main, forMode: .common)
         refresh.isPaused = true
         self.refresh = refresh
-        NSApp.activate(ignoringOtherApps: true)
+        if !SelfTest.requested { NSApp.activate(ignoringOtherApps: true) }
         Thread { self.pump() }.start()
+        SelfTest.startIfRequested(window: window, surface: surface)
     }
 
     /// First display refresh after a frame was committed: the window server has
@@ -264,6 +282,9 @@ final class Viewer: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// Keys and buttons held when focus leaves would never see their release.
+    func windowDidResignKey(_ notification: Notification) { surface.input?.releaseAll() }
+
     /// Reader thread: at most one frame is in flight, so frames never queue up here.
     func pump() {
         while let (h, pixels) = readFrame(link) {
@@ -277,6 +298,7 @@ final class Viewer: NSObject, NSApplicationDelegate {
     func show(_ h: FrameHeader, _ image: CGImage?) {
         if (h.width, h.height) != shown {
             shown = (h.width, h.height)
+            surface.frameSize = CGSize(width: CGFloat(h.width), height: CGFloat(h.height))
             window.title = h.width > 0 ? "\(title) — \(h.width)×\(h.height)" : "\(title) — no scanout"
             if h.width > 0 {
                 var size = NSSize(width: CGFloat(h.width), height: CGFloat(h.height))
@@ -304,7 +326,7 @@ signal(SIGPIPE, SIG_IGN)
 let options = parseOptions()
 let link = Link(path: options.socket)
 guard link.send(kind: kindHello, value: UInt64(wireVersion)) else { fail("could not greet the presenter") }
-if options.headless { runHeadless(link, frames: options.frames) }
+if options.headless { runHeadless(link, frames: options.frames, scriptInput: options.scriptInput) }
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 let viewer = Viewer(link: link, title: options.title)

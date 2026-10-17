@@ -46,22 +46,22 @@ pub(super) fn socket_path() -> PathBuf {
     ))
 }
 
-struct FakeViewer(UnixStream);
+pub(super) struct FakeViewer(pub(super) UnixStream);
 
 impl FakeViewer {
-    fn hello(stream: UnixStream) -> Self {
+    pub(super) fn hello(stream: UnixStream) -> Self {
         let mut viewer = Self(stream);
         viewer.send(ViewerMessage::Hello { version: VERSION });
         viewer
     }
 
-    fn send(&mut self, message: ViewerMessage) {
+    pub(super) fn send(&mut self, message: ViewerMessage) {
         self.0
             .write_all(&message.encode())
             .expect("send to presenter");
     }
 
-    fn frame(&mut self) -> (FrameHeader, Vec<u8>) {
+    pub(super) fn frame(&mut self) -> (FrameHeader, Vec<u8>) {
         self.0
             .set_read_timeout(Some(Duration::from_secs(5)))
             .expect("timeout");
@@ -73,7 +73,7 @@ impl FakeViewer {
         (header, pixels)
     }
 
-    fn ack(&mut self, header: &FrameHeader) {
+    pub(super) fn ack(&mut self, header: &FrameHeader) {
         self.send(ViewerMessage::Presented {
             sequence: header.sequence,
         });
@@ -81,7 +81,7 @@ impl FakeViewer {
 }
 
 /// Run a session on this thread (so its logs are captured) against `viewer`.
-fn session(
+pub(super) fn session(
     fps: u32,
     display: &GpuDisplay,
     viewer: impl FnOnce(UnixStream) + Send + 'static,
@@ -98,14 +98,29 @@ fn session_with(
     display: &GpuDisplay,
     viewer: impl FnOnce(UnixStream) + Send + 'static,
 ) -> (Result<&'static str, String>, String, PresentStats) {
+    session_input(config, display, None, viewer)
+}
+
+pub(super) fn session_input(
+    config: PresentConfig,
+    display: &GpuDisplay,
+    input: Option<&dyn InputTarget>,
+    viewer: impl FnOnce(UnixStream) + Send + 'static,
+) -> (Result<&'static str, String>, String, PresentStats) {
     let _spawn = spawn_lock();
     let (ours, theirs) = UnixStream::pair().expect("socket pair");
     let peer = std::thread::spawn(move || viewer(theirs));
     let stats = PresentStats::default();
     let stop = AtomicBool::new(false);
-    let (result, logs) = test_log::capture(|| {
-        present_session::serve(ours, display, config, &stats, &stop).map_err(|e| e.to_string())
-    });
+    let serving = Serving {
+        display,
+        config,
+        stats: &stats,
+        stop: &stop,
+        input,
+    };
+    let (result, logs) =
+        test_log::capture(|| present_session::serve(ours, &serving).map_err(|e| e.to_string()));
     peer.join().expect("fake viewer");
     (result, logs, stats)
 }

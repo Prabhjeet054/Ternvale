@@ -19,6 +19,13 @@ pub use virtio::{
     VIRTIO_VSOCK_F_STREAM, VIRTIO_VSOCK_ID, VSOCK_HDR_LEN,
 };
 pub use virtio::{
+    input_type_name, mac_to_linux_key, AttachedInput, InputError, InputEvent, InputKind, InputSink,
+    InputStats, VirtioInput, ABS_MAX_VALUE, ABS_X, ABS_Y, BTN_LEFT, BTN_MIDDLE, BTN_RIGHT,
+    CFG_ABS_INFO, CFG_EV_BITS, CFG_ID_DEVIDS, CFG_ID_NAME, CFG_ID_SERIAL, CFG_PROP_BITS, CFG_UNSET,
+    EV_ABS, EV_KEY, EV_REL, EV_REP, EV_SYN, INPUT_EVENTQ, INPUT_MAX_PENDING, INPUT_STATUSQ,
+    REL_HWHEEL, REL_WHEEL, SYN_REPORT, VIRTIO_INPUT_ID,
+};
+pub use virtio::{
     open_backend, summarize_frame, AttachedNet, LoopbackBackend, NetBackend, NetError, NetStats,
     PacketKind, PacketSummary, PcapWriter, VirtioNet, DEFAULT_MAC, GATEWAY_IP, GATEWAY_MAC,
     MAX_FRAME, NET_HDR_LEN, PCAP_ENV, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF,

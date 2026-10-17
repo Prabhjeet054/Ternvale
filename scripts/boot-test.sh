@@ -17,6 +17,11 @@
 #   gpu               — Linux virtio-gpu + fbdev on virtio-mmio with a 1024x768 scanout:
 #                       fb0 sysfs geometry and fbset, then two rows written through /dev/fb0
 #                       must appear in the host frame (needs ./scripts/make-gpu-initramfs.sh)
+#   input             — virtio-input keyboard and tablet on virtio-mmio (same assets): the
+#                       guest lists both evdev devices, and key / pointer / button / wheel
+#                       events injected from the host arrive on them unchanged
+#   getty             — the same VM with a getty on the framebuffer console (tty1): a login
+#                       name and a shell command typed on the virtio-input keyboard must run
 #   agent             — the guest ternvale-agent (same assets) against the host AgentServer:
 #                       handshake, heartbeats, reconnect after a server restart, clipboard /
 #                       resolution requests, and power-off on Shutdown

@@ -21,6 +21,7 @@ pub mod commands;
 pub mod diag;
 pub mod disk;
 pub mod display;
+pub mod display_input;
 pub mod doctor;
 pub mod logfmt;
 pub mod logs;

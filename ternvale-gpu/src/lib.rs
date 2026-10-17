@@ -17,7 +17,8 @@
 //! [`Presenter`] (Step 44) streams one scanout to the dev viewer
 //! (`tools/ternvale-viewer`) over a Unix socket in the [`present_protocol`]
 //! format, capped at a frame rate; frame drops and flush-to-present latency
-//! are logged at DEBUG.
+//! are logged at DEBUG. Keyboard and pointer input from the viewer (wire
+//! version 2) goes to an [`InputTarget`] as it arrives.
 
 mod device;
 mod gpu2d;
@@ -39,9 +40,10 @@ pub use device::{
 };
 pub use gpu2d::{GpuStats, MAX_DIMENSION, MAX_HOSTMEM};
 pub use present::{
-    PresentConfig, PresentError, PresentStats, Presenter, DEFAULT_FPS, DEFAULT_REPORT_EVERY,
-    MAX_FPS,
+    InputTarget, PresentConfig, PresentError, PresentStats, Presenter, DEFAULT_FPS,
+    DEFAULT_REPORT_EVERY, MAX_FPS,
 };
+pub use present_protocol::{PointerButton, ViewerInput};
 pub use resource::{PixelFormat, BYTES_PER_PIXEL};
 pub use scanout::{Frame, GpuDisplay};
 pub use worker::{CONTROL_QUEUE, CURSOR_QUEUE, MAX_REQUEST};

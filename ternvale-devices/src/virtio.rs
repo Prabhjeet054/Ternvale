@@ -7,6 +7,7 @@
 mod attach_disks;
 mod blk;
 mod core;
+mod input;
 mod irq;
 mod mmio;
 mod net;
@@ -21,6 +22,13 @@ pub use attach_disks::{
 pub use blk::{
     AttachedBlk, BlkMedia, BlkStats, VirtioBlk, VirtioBlkError, OPTICAL_BLOCK_SIZE,
     VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO, VIRTIO_BLK_ID,
+};
+pub use input::{
+    input_type_name, mac_to_linux_key, AttachedInput, InputError, InputEvent, InputKind, InputSink,
+    InputStats, VirtioInput, ABS_MAX_VALUE, ABS_X, ABS_Y, BTN_LEFT, BTN_MIDDLE, BTN_RIGHT,
+    CFG_ABS_INFO, CFG_EV_BITS, CFG_ID_DEVIDS, CFG_ID_NAME, CFG_ID_SERIAL, CFG_PROP_BITS, CFG_UNSET,
+    EV_ABS, EV_KEY, EV_REL, EV_REP, EV_SYN, INPUT_EVENTQ, INPUT_STATUSQ,
+    MAX_PENDING as INPUT_MAX_PENDING, REL_HWHEEL, REL_WHEEL, SYN_REPORT, VIRTIO_INPUT_ID,
 };
 pub use irq::{IrqHook, VirtioIrq};
 pub use mmio::{slot_base, VirtioMmio, VirtioMmioError};

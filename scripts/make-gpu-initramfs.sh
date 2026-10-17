@@ -13,6 +13,19 @@
 # attributes and `fbset`, unbinds fbcon so nothing else draws, writes two known rows
 # through /dev/fb0 (rows 300 and 301), and prints "gpu-check done".
 #
+# The same initramfs serves the virtio-input scenario (Step 45): virtio_input and evdev
+# are loaded too, and /bin/input-check lists every evdev device ("input eventN name=...
+# ev=... key=... abs=... rel=..."), reads 8 events from the keyboard and 9 from the
+# tablet (found by name) while the host injects them after "input-check ready", and
+# dumps the raw 24-byte input_event records with `od` between "input-check keyboard",
+# "input-check tablet" and "input-check done".
+#
+# With `ternvale.getty` on the kernel command line, /init also keeps a busybox getty on
+# tty1 (the framebuffer console). Its login program, /bin/ternvale-login, prints
+# "ternvale getty login name=<typed name>" on the serial console and starts a shell on
+# tty1, so keyboard input from the viewer is visible on both. /bin/pointer-check N dumps
+# the next N tablet events like input-check does.
+#
 # Usage:
 #   ./scripts/make-gpu-initramfs.sh [OUT_DIR]
 set -euo pipefail
@@ -90,7 +103,7 @@ PY
 mod_dir=$(grep -m1 '/modules.dep$' "${tmp}/files" | sed 's|/modules.dep$||')
 [[ -n "${mod_dir}" ]] || { log "modules.dep not found in linux-virt"; exit 1; }
 tar -xOf "${tmp}/linux-virt.apk" "${mod_dir}/modules.dep" >"${tmp}/modules.dep"
-python3 - "${tmp}/modules.dep" virtio_mmio virtio_gpu >"${tmp}/order" <<'PY'
+python3 - "${tmp}/modules.dep" virtio_mmio virtio_gpu virtio_input evdev >"${tmp}/order" <<'PY'
 import sys
 deps = {}
 for line in open(sys.argv[1]):
@@ -146,6 +159,12 @@ while [ ! -e /sys/class/graphics/fb0 ] && [ "$i" -lt 100 ]; do
   i=$((i + 1))
 done
 echo "ternvale gpu ready fb0=$(cat /sys/class/graphics/fb0/name 2>/dev/null || echo missing)"
+case " $(cat /proc/cmdline) " in
+  *" ternvale.getty "*)
+    (while :; do setsid /bin/busybox getty -l /bin/ternvale-login 0 tty1 linux; sleep 1; done) &
+    echo "ternvale getty on tty1"
+    ;;
+esac
 exec setsid sh -c 'exec sh -i' </dev/console >/dev/console 2>&1
 INIT
 chmod 755 "${tmp}/initrd/init"
@@ -184,6 +203,72 @@ echo "gpu-check readback row 301: $(dd if=/dev/fb0 bs="${stride}" skip=301 count
 echo "gpu-check done"
 CHECK
 chmod 755 "${tmp}/initrd/bin/gpu-check"
+
+# Event counts match the reports the boot harness (tests/boot/input.rs) injects.
+cat >"${tmp}/initrd/bin/input-check" <<'CHECK'
+#!/bin/busybox sh
+kbd=""
+tab=""
+for d in /sys/class/input/event*; do
+  e=$(basename "${d}")
+  c="${d}/device/capabilities"
+  n=$(cat "${d}/device/name")
+  echo "input ${e} name=${n} ev=$(cat ${c}/ev) key=$(cat ${c}/key | tr ' ' '_') abs=$(cat ${c}/abs) rel=$(cat ${c}/rel)"
+  case "${n}" in
+    *Keyboard*) kbd=/dev/input/${e} ;;
+    *Tablet*) tab=/dev/input/${e} ;;
+  esac
+done
+if [ -z "${kbd}" ] || [ -z "${tab}" ]; then
+  echo "input-check missing kbd=${kbd} tab=${tab}"
+  echo "input-check done"
+  exit 1
+fi
+dd if="${kbd}" of=/tmp/kbd bs=24 count=8 2>/dev/null &
+k=$!
+dd if="${tab}" of=/tmp/tab bs=24 count=9 2>/dev/null &
+t=$!
+sleep 1
+echo "input-check ready"
+wait ${k}
+wait ${t}
+echo "input-check keyboard"
+od -An -tx1 -v /tmp/kbd
+echo "input-check tablet"
+od -An -tx1 -v /tmp/tab
+echo "input-check done"
+CHECK
+chmod 755 "${tmp}/initrd/bin/input-check"
+
+# getty runs this as `ternvale-login -- <name>` once a login name is typed on tty1.
+cat >"${tmp}/initrd/bin/ternvale-login" <<'LOGIN'
+#!/bin/busybox sh
+for arg in "$@"; do name="${arg}"; done
+echo "ternvale getty login name=${name}" >/dev/ttyAMA0
+echo "Welcome to Ternvale, ${name}"
+exec sh -i
+LOGIN
+chmod 755 "${tmp}/initrd/bin/ternvale-login"
+
+# Prints "pointer-check ready", then dumps the next N tablet events (raw 24-byte
+# input_event records) between "pointer-check events" and "pointer-check done".
+cat >"${tmp}/initrd/bin/pointer-check" <<'CHECK'
+#!/bin/busybox sh
+tab=""
+for d in /sys/class/input/event*; do
+  case "$(cat ${d}/device/name)" in *Tablet*) tab=/dev/input/$(basename ${d}) ;; esac
+done
+[ -n "${tab}" ] || { echo "pointer-check no tablet"; echo "pointer-check done"; exit 1; }
+timeout 60 dd if="${tab}" of=/tmp/ptr bs=24 count="${1:-3}" 2>/dev/null &
+p=$!
+sleep 1
+echo "pointer-check ready"
+wait ${p}
+echo "pointer-check events"
+od -An -tx1 -v /tmp/ptr
+echo "pointer-check done"
+CHECK
+chmod 755 "${tmp}/initrd/bin/pointer-check"
 
 (
     cd "${tmp}/initrd"

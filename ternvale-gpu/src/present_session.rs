@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-use crate::present::{PresentConfig, PresentStats};
+use crate::present::{InputTarget, PresentConfig, PresentStats, Serving};
 use crate::present_protocol::{FrameHeader, ViewerMessage, WireError, MESSAGE_LEN, VERSION};
 use crate::present_window::LatencyWindow;
 use crate::scanout::GpuDisplay;
@@ -70,11 +70,15 @@ struct InFlight {
 /// Serve one viewer until it leaves, misbehaves or `stop` is set.
 pub(crate) fn serve(
     mut stream: UnixStream,
-    display: &GpuDisplay,
-    config: PresentConfig,
-    stats: &PresentStats,
-    stop: &AtomicBool,
+    serving: &Serving<'_>,
 ) -> Result<&'static str, SessionError> {
+    let Serving {
+        display,
+        config,
+        stats,
+        stop,
+        input,
+    } = *serving;
     stream
         .set_nonblocking(false)
         .map_err(io("make viewer socket blocking"))?;
@@ -97,20 +101,22 @@ pub(crate) fn serve(
     set_timeout("frame write", stream.set_write_timeout(Some(WRITE_TIMEOUT)));
     let reader = stream.try_clone().map_err(io("clone viewer socket"))?;
     let (tx, rx) = mpsc::channel();
-    let acks = std::thread::Builder::new()
-        .name("ternvale-gpu-viewer-rx".into())
-        .spawn(move || read_messages(reader, &tx))
-        .map_err(io("spawn viewer reader thread"))?;
-    let result = stream_frames(&mut stream, &rx, display, config, stats, stop);
-    if let Err(e) = stream.shutdown(Shutdown::Both) {
-        if e.kind() != ErrorKind::NotConnected {
-            tracing::debug!(target: "ternvale::gpu", error = %e, "shutdown of viewer socket failed");
+    std::thread::scope(|scope| {
+        let acks = std::thread::Builder::new()
+            .name("ternvale-gpu-viewer-rx".into())
+            .spawn_scoped(scope, move || read_messages(reader, &tx, input, stats))
+            .map_err(io("spawn viewer reader thread"))?;
+        let result = stream_frames(&mut stream, &rx, display, config, stats, stop);
+        if let Err(e) = stream.shutdown(Shutdown::Both) {
+            if e.kind() != ErrorKind::NotConnected {
+                tracing::debug!(target: "ternvale::gpu", error = %e, "shutdown of viewer socket failed");
+            }
         }
-    }
-    if acks.join().is_err() {
-        tracing::error!(target: "ternvale::gpu", "display viewer reader thread panicked");
-    }
-    result
+        if acks.join().is_err() {
+            tracing::error!(target: "ternvale::gpu", "display viewer reader thread panicked");
+        }
+        result
+    })
 }
 
 /// macOS answers `setsockopt` with `EINVAL` once the peer has closed; the
@@ -122,11 +128,29 @@ fn set_timeout(which: &'static str, result: std::io::Result<()>) {
     }
 }
 
-fn read_messages(mut stream: UnixStream, tx: &Sender<Event>) {
+/// Read viewer messages; input goes straight to `input` (not through the
+/// frame loop, which may be waiting out an FPS tick), the rest to `tx`.
+fn read_messages(
+    mut stream: UnixStream,
+    tx: &Sender<Event>,
+    input: Option<&dyn InputTarget>,
+    stats: &PresentStats,
+) {
     let mut buf = [0u8; MESSAGE_LEN];
     loop {
         let event = match stream.read_exact(&mut buf) {
-            Ok(()) => Event::Message(ViewerMessage::decode(&buf), Instant::now()),
+            Ok(()) => match ViewerMessage::decode(&buf) {
+                Ok(ViewerMessage::Input(event)) => {
+                    stats.inputs.fetch_add(1, Ordering::Relaxed);
+                    tracing::trace!(target: "ternvale::gpu", input = ?event,
+                        forwarded = input.is_some(), "viewer input");
+                    if let Some(target) = input {
+                        target.deliver(event);
+                    }
+                    continue;
+                }
+                decoded => Event::Message(decoded, Instant::now()),
+            },
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => Event::Closed(None),
             Err(e) => Event::Closed(Some(e)),
         };
@@ -292,6 +316,7 @@ fn on_message(
         ViewerMessage::Hello { version } => {
             tracing::warn!(target: "ternvale::gpu", version, "display viewer repeated its hello; ignoring")
         }
+        ViewerMessage::Input(_) => {}
     }
 }
 

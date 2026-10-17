@@ -188,7 +188,8 @@ struct Wanted<'a> {
     transport: VirtioTransport,
     nics: &'a [String],
     vsock: Option<&'a VsockConfig>,
-    /// `--display window`: a virtio-gpu after vsock (PCI with `virtio-pci`).
+    /// `--display window`: a virtio-gpu after vsock, then a virtio-input
+    /// keyboard and tablet (all PCI with `virtio-pci`).
     display: Option<&'a DisplayPlan>,
 }
 
@@ -255,8 +256,11 @@ fn attach_devices(
             .map_err(|_| MachineError::Attach("virtio-gpu slot does not fit in u32".into()))?;
         let (mapped, display) = crate::display::attach_gpu(attach, wanted.transport, slot)?;
         devices.extend(mapped);
+        let (mapped, input) =
+            crate::display_input::attach_input(attach, wanted.transport, slot + 1)?;
+        devices.extend(mapped);
         let started = plan
-            .start(display)
+            .start(display, Some(input))
             .map_err(|error| MachineError::Attach(format!("{error:#}")))?;
         *lockwatch::lock(session, "display-session") = Some(started);
     }

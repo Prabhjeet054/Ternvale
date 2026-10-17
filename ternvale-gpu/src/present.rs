@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use crate::present_protocol::ViewerInput;
 use crate::present_session;
 use crate::scanout::GpuDisplay;
 
@@ -95,6 +96,16 @@ pub struct PresentStats {
     pub latency_max_us: AtomicU64,
     /// Frames counted in `latency_sum_us`.
     pub latency_samples: AtomicU64,
+    /// Input messages received from viewers.
+    pub inputs: AtomicU64,
+}
+
+/// Where viewer input goes (the VM's virtio-input devices). Called on the
+/// presenter's socket reader thread as each message arrives, so it must not
+/// block for long.
+pub trait InputTarget: Send + Sync {
+    /// Forward one input message.
+    fn deliver(&self, input: ViewerInput);
 }
 
 impl PresentStats {
@@ -122,12 +133,25 @@ pub struct Presenter {
 
 impl Presenter {
     /// Listen on `socket` (replacing a stale file) and start serving viewers.
+    /// Viewer input is discarded.
     #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all,
         fields(socket = %socket.display(), fps = config.fps, scanout = config.scanout))]
     pub fn start(
         display: GpuDisplay,
         socket: &Path,
         config: PresentConfig,
+    ) -> Result<Self, PresentError> {
+        Self::start_with_input(display, socket, config, None)
+    }
+
+    /// [`Presenter::start`], forwarding viewer input to `input`.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all,
+        fields(socket = %socket.display(), fps = config.fps, input = input.is_some()))]
+    pub fn start_with_input(
+        display: GpuDisplay,
+        socket: &Path,
+        config: PresentConfig,
+        input: Option<Arc<dyn InputTarget>>,
     ) -> Result<Self, PresentError> {
         if config.fps == 0 || config.fps > MAX_FPS {
             return Err(PresentError::Config(format!(
@@ -164,7 +188,16 @@ impl Presenter {
             let (stop, stats) = (stop.clone(), stats.clone());
             std::thread::Builder::new()
                 .name("ternvale-gpu-present".into())
-                .spawn(move || listen(&listener, &display, config, &stats, &stop))
+                .spawn(move || {
+                    let serving = Serving {
+                        display: &display,
+                        config,
+                        stats: &stats,
+                        stop: &stop,
+                        input: input.as_deref(),
+                    };
+                    listen(&listener, &serving)
+                })
                 .map_err(PresentError::Spawn)?
         };
         tracing::info!(target: "ternvale::gpu", socket = %socket.display(), fps = config.fps,
@@ -215,23 +248,27 @@ impl Drop for Presenter {
             latency_samples = s.latency_samples.load(Ordering::Relaxed),
             avg_flush_to_present_us = s.average_latency_us().unwrap_or(0),
             max_flush_to_present_us = s.latency_max_us.load(Ordering::Relaxed),
+            inputs = s.inputs.load(Ordering::Relaxed),
             "display presenter stopped");
     }
 }
 
+/// What a viewer session works with.
+pub(crate) struct Serving<'a> {
+    pub(crate) display: &'a GpuDisplay,
+    pub(crate) config: PresentConfig,
+    pub(crate) stats: &'a PresentStats,
+    pub(crate) stop: &'a AtomicBool,
+    pub(crate) input: Option<&'a dyn InputTarget>,
+}
+
 /// Accept viewers one after another until stopped.
-fn listen(
-    listener: &UnixListener,
-    display: &GpuDisplay,
-    config: PresentConfig,
-    stats: &PresentStats,
-    stop: &AtomicBool,
-) {
-    while !stop.load(Ordering::Relaxed) {
+fn listen(listener: &UnixListener, serving: &Serving<'_>) {
+    while !serving.stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
                 tracing::info!(target: "ternvale::gpu", "display viewer connected");
-                match present_session::serve(stream, display, config, stats, stop) {
+                match present_session::serve(stream, serving) {
                     Ok(why) => {
                         tracing::info!(target: "ternvale::gpu", reason = why, "display viewer disconnected")
                     }
@@ -252,6 +289,10 @@ fn listen(
 #[cfg(test)]
 #[path = "present_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "present_input_tests.rs"]
+mod input_tests;
 
 #[cfg(test)]
 #[path = "present_viewer_tests.rs"]

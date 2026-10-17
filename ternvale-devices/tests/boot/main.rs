@@ -14,6 +14,12 @@
 //! 1024x768 scanout and check fb0's sysfs geometry, `fbset`, and two rows written through
 //! /dev/fb0 in the host frame (requires `./scripts/make-gpu-initramfs.sh` assets under
 //! `test-assets/virtio-gpu/`).
+//! Set `TERNVALE_BOOT_SCENARIO=input` to add a virtio-input keyboard and tablet to that VM,
+//! check the guest's evdev view of both, and inject key, pointer, button and wheel events
+//! from the host that the guest must read back unchanged (same assets).
+//! Set `TERNVALE_BOOT_SCENARIO=getty` to boot the same assets with `ternvale.getty`: a getty on
+//! the framebuffer console must take a login name and a shell command typed on the virtio-input
+//! keyboard (macOS key codes through the viewer keymap); both report on the serial console.
 //! Set `TERNVALE_BOOT_SCENARIO=agent` to run the guest agent from the same assets against the
 //! host `AgentServer`: handshake, heartbeats, reconnect after a server restart, requests, and
 //! a guest power-off on `Shutdown`.
@@ -64,9 +70,11 @@ mod firmware;
 mod firmware_acpi;
 mod firmware_debug;
 mod firmware_tpm;
+mod getty;
 mod gpu;
 mod idle;
 mod initrd;
+mod input;
 mod installer;
 mod net;
 mod pci;
@@ -104,6 +112,8 @@ fn run() -> Result<(), String> {
         "net" => net::run(),
         "devices" => devices::run(),
         "gpu" => gpu::run(),
+        "input" => input::run(),
+        "getty" => getty::run(),
         "agent" => agent::run(),
         "smp" => smp::run(),
         "firmware" => firmware::run(),
@@ -119,7 +129,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, gpu, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, gpu, input, getty, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

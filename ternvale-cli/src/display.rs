@@ -4,16 +4,18 @@
 //! The run adds a virtio-gpu (next virtio-mmio slot, or PCI with
 //! `profile = "windows"`), starts a [`Presenter`] on
 //! `<run dir>/<name>.display.sock` capped at `--fps`, and launches the viewer
-//! pointed at it. Closing the window leaves the VM running; stopping the VM
-//! closes the socket and the viewer exits.
+//! pointed at it. A virtio-input keyboard and tablet follow the GPU and take
+//! the window's input ([`crate::display_input`]). Closing the window leaves
+//! the VM running; stopping the VM closes the socket and the viewer exits.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use ternvale_config::VirtioTransport;
-use ternvale_gpu::{GpuConfig, GpuDisplay, PresentConfig, Presenter, VirtioGpu};
+use ternvale_gpu::{GpuConfig, GpuDisplay, InputTarget, PresentConfig, Presenter, VirtioGpu};
 use ternvale_vmm::{DeviceAttach, MachineError, MmioDevice};
 
 use crate::paths::{MAX_SOCKET_PATH, RUN_DIR_ENV};
@@ -128,14 +130,19 @@ impl DisplayPlan {
         })
     }
 
-    /// Start presenting `display` and launch the viewer.
-    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = %self.name))]
-    pub fn start(&self, display: GpuDisplay) -> Result<DisplaySession> {
+    /// Start presenting `display`, forwarding window input to `input`, and
+    /// launch the viewer.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = %self.name, input = input.is_some()))]
+    pub fn start(
+        &self,
+        display: GpuDisplay,
+        input: Option<Arc<dyn InputTarget>>,
+    ) -> Result<DisplaySession> {
         let config = PresentConfig {
             fps: self.fps,
             ..PresentConfig::default()
         };
-        let presenter = Presenter::start(display, &self.socket, config)
+        let presenter = Presenter::start_with_input(display, &self.socket, config, input)
             .with_context(|| format!("start the display presenter on {}", self.socket.display()))?;
         let viewer = Command::new(&self.viewer)
             .arg("--socket")
@@ -211,7 +218,7 @@ pub fn attach_gpu(
     let gpu = VirtioGpu::attach(
         slot,
         GpuConfig::default(),
-        std::sync::Arc::clone(&attach.memory),
+        Arc::clone(&attach.memory),
         attach.virtio_irq_hook(slot),
     )
     .map_err(|error| MachineError::Attach(format!("virtio-gpu: {error}")))?;
