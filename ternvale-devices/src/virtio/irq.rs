@@ -7,9 +7,21 @@ use std::sync::{Arc, Mutex};
 pub type IrqHook = Arc<dyn Fn(bool) + Send + Sync>;
 
 /// Interrupt status bits shared by the MMIO transport and the device worker.
+///
+/// `raise` runs on device threads while `ack` runs on the vCPU. Each updates `bits`
+/// and then re-syncs the line to the current bits under the `line` lock, so the
+/// last sync always sees both updates: the line can never be left low while an
+/// interrupt is pending (a lost interrupt stalls the queue for good) or high
+/// with nothing pending.
 pub struct VirtioIrq {
     bits: AtomicU32,
-    hook: Mutex<Option<IrqHook>>,
+    line: Mutex<Line>,
+}
+
+struct Line {
+    hook: Option<IrqHook>,
+    /// Level last given to the hook.
+    level: bool,
 }
 
 impl VirtioIrq {
@@ -18,14 +30,18 @@ impl VirtioIrq {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             bits: AtomicU32::new(0),
-            hook: Mutex::new(None),
+            line: Mutex::new(Line {
+                hook: None,
+                level: false,
+            }),
         })
     }
 
     /// Install the GIC (or test) callback.
     #[tracing::instrument(level = "debug", target = "ternvale::virtio::mmio", skip(self, hook))]
     pub fn set_hook(&self, hook: IrqHook) {
-        *ternvale_vmm::lockwatch::lock(&self.hook, "virtio-irq-hook") = Some(hook);
+        ternvale_vmm::lockwatch::lock(&self.line, "virtio-irq-line").hook = Some(hook);
+        self.sync_line();
     }
 
     /// Current interrupt-status register value.
@@ -52,7 +68,7 @@ impl VirtioIrq {
             "virtio interrupt raised"
         );
         if prev == 0 {
-            self.call_hook(true);
+            self.sync_line();
         }
     }
 
@@ -80,7 +96,7 @@ impl VirtioIrq {
                         "virtio interrupt ack"
                     );
                     if prev != 0 && next == 0 {
-                        self.call_hook(false);
+                        self.sync_line();
                     }
                     return;
                 }
@@ -89,10 +105,22 @@ impl VirtioIrq {
         }
     }
 
-    fn call_hook(&self, level: bool) {
-        let hook = ternvale_vmm::lockwatch::lock(&self.hook, "virtio-irq-hook").clone();
-        if let Some(hook) = hook {
-            hook(level);
+    /// Drive the line to match the status bits as they are now.
+    fn sync_line(&self) {
+        let mut line = ternvale_vmm::lockwatch::lock(&self.line, "virtio-irq-line");
+        let level = self.bits.load(Ordering::Acquire) != 0;
+        if line.level == level {
+            return;
         }
+        let Some(hook) = line.hook.clone() else {
+            return;
+        };
+        line.level = level;
+        tracing::trace!(target: "ternvale::virtio::mmio", level, "virtio interrupt line");
+        hook(level);
     }
 }
+
+#[cfg(test)]
+#[path = "irq_tests.rs"]
+mod tests;

@@ -1,0 +1,35 @@
+#!/bin/sh
+# /sbin/init of the desktop rootfs (scripts/make-desktop-rootfs.sh). The initramfs has
+# already loaded virtio_mmio, virtio_blk and ext4, mounted /dev/vda and moved /proc,
+# /sys and /dev here before switch_root.
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin HOME=/root TERM=linux
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sys /sys 2>/dev/null
+mount -t devtmpfs dev /dev 2>/dev/null
+mkdir -p /dev/pts /dev/shm /tmp /run /var/log
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /dev/shm
+mount -t tmpfs tmpfs /tmp
+mount -t tmpfs tmpfs /run
+hostname ternvale-desktop
+echo "ternvale desktop rootfs ready kernel=$(uname -r)"
+
+for m in virtio_gpu virtio_input evdev; do
+  modprobe "${m}" || echo "ternvale desktop modprobe ${m} failed"
+done
+i=0
+until [ -e /dev/dri/card0 ] && [ "$(ls /dev/input/event* 2>/dev/null | wc -l)" -ge 2 ]; do
+  i=$((i + 1))
+  [ "${i}" -gt 100 ] && break
+  sleep 0.1
+done
+echo "ternvale desktop devices card0=$([ -e /dev/dri/card0 ] && echo yes || echo no)" \
+  "fb0=$(cat /sys/class/graphics/fb0/name 2>/dev/null || echo none)" \
+  "input=$(ls /dev/input/ 2>/dev/null | tr '\n' ' ')"
+
+case " $(cat /proc/cmdline) " in
+  *" ternvale.nodesktop "*) echo "ternvale desktop skipped (ternvale.nodesktop)" ;;
+  *) setsid /usr/local/bin/ternvale-desktop >/var/log/ternvale-desktop.log 2>&1 & ;;
+esac
+
+exec setsid sh -c 'exec sh -i' </dev/console >/dev/console 2>&1

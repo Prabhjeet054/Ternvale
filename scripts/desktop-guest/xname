@@ -1,0 +1,13 @@
+#!/bin/sh
+# Prints the name of X window <id>, or of its first named child: twm reparents each
+# client into an unnamed frame, and pointer queries return the frame. Prints
+# nothing for an unnamed window without named children (the root, for example).
+export DISPLAY=:0
+id="$1"
+[ -n "${id}" ] || exit 0
+name=$(xdotool getwindowname "${id}" 2>/dev/null)
+if [ -z "${name}" ]; then
+  name=$(xwininfo -id "${id}" -children 2>/dev/null |
+    sed -n 's/^ *0x[0-9a-f]* "\(.*\)": .*/\1/p' | head -n 1)
+fi
+printf '%s\n' "${name}"

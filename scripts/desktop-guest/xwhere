@@ -1,0 +1,9 @@
+#!/bin/sh
+# Prints where X thinks the pointer is, on the serial console:
+#   xwhere x=<x> y=<y> window=<window under it, or root> focus=<focused window>
+# twm focuses the window under the pointer, so focus follows the pointer too.
+export DISPLAY=:0
+eval "$(xdotool getmouselocation --shell 2>/dev/null)"
+under=$(xname "${WINDOW:-}")
+focus=$(xname "$(xdotool getwindowfocus 2>/dev/null)")
+echo "xwhere x=${X:-?} y=${Y:-?} window=${under:-root} focus=${focus:-none}" >/dev/ttyAMA0

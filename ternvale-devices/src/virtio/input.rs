@@ -3,6 +3,8 @@
 //!
 //! Queue 0 (eventq) carries 8-byte `virtio_input_event`s to the guest. The
 //! host fills it through an [`InputSink`] from its own thread, never the vCPU.
+//! An eventq kick never makes the vCPU wait for that thread (see
+//! `Shared::kick_eventq`).
 //! Queue 1 (statusq) carries guest events such as keyboard LEDs; they are
 //! logged and completed. Only `VIRTIO_F_VERSION_1` is offered.
 
@@ -11,7 +13,7 @@ mod config;
 mod keymap;
 mod sink;
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ternvale_vmm::pci::Bdf;
@@ -90,6 +92,8 @@ impl VirtioInput {
                 irq,
                 stats: Arc::default(),
                 state: Mutex::new(State::default()),
+                kick: AtomicBool::new(false),
+                kicked: Mutex::new(None),
             }),
             select: 0,
             subsel: 0,
@@ -292,12 +296,7 @@ impl VirtioDevice for VirtioInput {
     fn notify(&mut self, notify: QueueNotify) {
         let device = self.shared.kind.short();
         match notify.index {
-            INPUT_EVENTQ => {
-                let shared = Arc::clone(&self.shared);
-                let mut state = shared.lock_state();
-                Self::bind(&mut state.eventq, &notify, device);
-                shared.flush(&mut state);
-            }
+            INPUT_EVENTQ => self.shared.kick_eventq(notify),
             INPUT_STATUSQ => {
                 Self::bind(&mut self.statusq, &notify, device);
                 self.serve_status();
@@ -324,3 +323,7 @@ impl VirtioDevice for VirtioInput {
 #[cfg(test)]
 #[path = "input_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "input_sink_tests.rs"]
+mod sink_tests;

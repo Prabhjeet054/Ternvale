@@ -22,6 +22,8 @@
 #                       events injected from the host arrive on them unchanged
 #   getty             — the same VM with a getty on the framebuffer console (tty1): a login
 #                       name and a shell command typed on the virtio-input keyboard must run
+#   desktop           — Xorg + twm + xterm from scripts/make-desktop-rootfs.sh on virtio-gpu and
+#                       virtio-input: typing into the xterm, 1:1 pointer moves, and a click
 #   agent             — the guest ternvale-agent (same assets) against the host AgentServer:
 #                       handshake, heartbeats, reconnect after a server restart, clipboard /
 #                       resolution requests, and power-off on Shutdown

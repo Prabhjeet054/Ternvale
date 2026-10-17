@@ -4,22 +4,27 @@
 //! the vCPU. A report (events plus `SYN_REPORT`) is queued all-or-nothing and
 //! written into the guest's eventq buffers right away. The rest waits in a
 //! bounded backlog, which the next eventq kick flushes. When the backlog is
-//! full or the driver has not bound the eventq, the whole report is dropped.
+//! full or the driver has not bound the eventq, the whole report is dropped,
+//! except a release of a key or button whose press was queued: dropping it
+//! would leave the key held in the guest (and Linux turns its next press into
+//! an autorepeat, which X ignores).
 //! Lock order: device state, then guest memory.
 
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::collections::{BTreeSet, VecDeque};
+use std::sync::atomic::{fence, AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, TryLockError, Weak};
 use std::time::{Duration, Instant};
 
 use ternvale_vmm::GuestMemory;
 
 use super::super::irq::VirtioIrq;
 use super::super::queue::SplitQueue;
+use super::super::QueueNotify;
 use super::codes::{self, InputEvent, ABS_MAX_VALUE, ABS_X, ABS_Y, REL_HWHEEL, REL_WHEEL};
 use super::config::InputKind;
 
-/// Most events held for the guest before reports are dropped.
+/// Most events held for the guest before reports are dropped. Releases of held
+/// keys may exceed it by two events (release and `SYN_REPORT`) per held key.
 pub const MAX_PENDING: usize = 64;
 
 const INT_VRING: u32 = 1;
@@ -60,7 +65,32 @@ struct DropLog {
 pub(super) struct State {
     pub(super) eventq: Option<(QueueKey, SplitQueue)>,
     pending: VecDeque<InputEvent>,
+    /// Keys and buttons whose press was queued and release was not.
+    held: BTreeSet<u16>,
     drops: DropLog,
+}
+
+impl State {
+    /// Every event is a release of a held key (`SYN_REPORT` aside).
+    fn releases_held_keys(&self, report: &[InputEvent]) -> bool {
+        let mut keys = report
+            .iter()
+            .filter(|e| e.ev_type != codes::EV_SYN)
+            .peekable();
+        keys.peek().is_some()
+            && keys
+                .all(|e| e.ev_type == codes::EV_KEY && e.value == 0 && self.held.contains(&e.code))
+    }
+
+    fn track_keys(&mut self, report: &[InputEvent]) {
+        for event in report.iter().filter(|e| e.ev_type == codes::EV_KEY) {
+            if event.value == 0 {
+                self.held.remove(&event.code);
+            } else {
+                self.held.insert(event.code);
+            }
+        }
+    }
 }
 
 pub(super) struct Shared {
@@ -69,6 +99,9 @@ pub(super) struct Shared {
     pub(super) irq: Arc<VirtioIrq>,
     pub(super) stats: Arc<InputStats>,
     pub(super) state: Mutex<State>,
+    /// An eventq kick not yet served, and its queue addresses.
+    pub(super) kick: AtomicBool,
+    pub(super) kicked: Mutex<Option<QueueNotify>>,
 }
 
 impl Shared {
@@ -76,12 +109,57 @@ impl Shared {
         ternvale_vmm::lockwatch::lock(&self.state, "virtio-input")
     }
 
+    /// The driver kicked eventq (vCPU thread). Never waits for the state lock,
+    /// which a host thread may hold while it waits for guest memory: the
+    /// holder serves the kick when it unlocks ([`Shared::serve_kicks`]).
+    pub(super) fn kick_eventq(&self, notify: QueueNotify) {
+        *ternvale_vmm::lockwatch::lock(&self.kicked, "virtio-input-kick") = Some(notify);
+        self.kick.store(true, Ordering::SeqCst);
+        self.serve_kicks();
+    }
+
+    /// Bind and flush for a pending kick, unless another thread holds the
+    /// state lock. Every holder calls this after unlocking.
+    pub(super) fn serve_kicks(&self) {
+        fence(Ordering::SeqCst);
+        while self.kick.load(Ordering::SeqCst) {
+            let mut state = match self.state.try_lock() {
+                Ok(state) => state,
+                Err(TryLockError::WouldBlock) => {
+                    tracing::trace!(
+                        target: "ternvale::virtio::input",
+                        device = self.kind.short(),
+                        "virtio-input eventq kick left to the state lock holder"
+                    );
+                    return;
+                }
+                Err(TryLockError::Poisoned(poisoned)) => {
+                    tracing::warn!(target: "ternvale::virtio::input", device = self.kind.short(), "virtio-input state lock was poisoned; continuing");
+                    poisoned.into_inner()
+                }
+            };
+            if !self.kick.swap(false, Ordering::SeqCst) {
+                return;
+            }
+            let notify = ternvale_vmm::lockwatch::lock(&self.kicked, "virtio-input-kick").take();
+            if let Some(notify) = notify {
+                super::VirtioInput::bind(&mut state.eventq, &notify, self.kind.short());
+            }
+            self.flush(&mut state);
+            drop(state);
+            fence(Ordering::SeqCst);
+        }
+    }
+
     /// Discard the queue binding and backlog (device reset).
     pub(super) fn reset(&self) {
         let mut state = self.lock_state();
         let pending = state.pending.len();
+        self.kick.store(false, Ordering::SeqCst);
+        ternvale_vmm::lockwatch::lock(&self.kicked, "virtio-input-kick").take();
         state.eventq = None;
         state.pending.clear();
+        state.held.clear();
         tracing::debug!(
             target: "ternvale::virtio::input",
             device = self.kind.short(),
@@ -99,6 +177,9 @@ impl Shared {
             return;
         };
         let mut completed = false;
+        // Logged after guest memory is unlocked: other devices wait for it.
+        let trace = tracing::enabled!(target: "ternvale::virtio::input", tracing::Level::TRACE);
+        let mut injected = Vec::new();
         let mut mem = ternvale_vmm::lockwatch::lock(&self.memory, "guest-memory");
         while let Some(event) = pending.front().copied() {
             let next = queue.chains(&mem).next();
@@ -125,18 +206,25 @@ impl Shared {
             pending.pop_front();
             completed |= queue.add_used(&mut mem, chain.head, 8);
             self.stats.injected.fetch_add(1, Ordering::Relaxed);
+            if trace {
+                injected.push((event, chain.head));
+            }
+        }
+        let notify = completed && queue.notification_needed(&mem);
+        drop(mem);
+        if notify {
+            self.irq.raise(INT_VRING);
+        }
+        for (event, head) in injected {
             tracing::trace!(
                 target: "ternvale::virtio::input",
                 device = self.kind.short(),
                 ev_type = codes::type_name(event.ev_type),
                 code = %format!("{:#x}", event.code),
                 value = event.value as i32,
-                head = chain.head,
+                head,
                 "virtio-input event injected"
             );
-        }
-        if completed && queue.notification_needed(&mem) {
-            self.irq.raise(INT_VRING);
         }
     }
 
@@ -231,7 +319,12 @@ impl InputSink {
             return false;
         };
         let shared = &shared;
+        shared.serve_kicks();
         let mut state = shared.lock_state();
+        if state.pending.len() + report.len() > MAX_PENDING {
+            // Buffers the guest re-posted since the last kick may be waiting.
+            shared.flush(&mut state);
+        }
         let reason = if let Some(bad) = events
             .iter()
             .find(|e| !shared.kind.supports(e.ev_type, e.code))
@@ -247,17 +340,32 @@ impl InputSink {
         } else if state.eventq.is_none() {
             Some("driver not ready")
         } else if state.pending.len() + report.len() > MAX_PENDING {
-            Some("queue full")
+            if state.releases_held_keys(&report) {
+                tracing::debug!(
+                    target: "ternvale::virtio::input",
+                    device = shared.kind.short(),
+                    pending = state.pending.len(),
+                    "virtio-input backlog full; queuing a held key's release anyway"
+                );
+                None
+            } else {
+                Some("queue full")
+            }
         } else {
             None
         };
-        if let Some(reason) = reason {
+        let queued = if let Some(reason) = reason {
             shared.drop_report(&mut state, &report, reason);
-            return false;
-        }
-        state.pending.extend(report);
-        shared.flush(&mut state);
-        true
+            false
+        } else {
+            state.track_keys(&report);
+            state.pending.extend(report);
+            shared.flush(&mut state);
+            true
+        };
+        drop(state);
+        shared.serve_kicks();
+        queued
     }
 
     /// Key or button press/release.

@@ -208,7 +208,7 @@ fn type_session(serial: &Path, keyboard: &Keyboard, cancel: &AtomicBool) -> Resu
     type_text(&sink, TYPED)
 }
 
-fn type_text(sink: &InputSink, text: &str) -> Result<(), String> {
+pub fn type_text(sink: &InputSink, text: &str) -> Result<(), String> {
     let shift = mac_to_linux_key(KVK_SHIFT).ok_or("no Linux key for kVK_Shift")?;
     for ch in text.chars() {
         let (kvk, shifted) = mac_key(ch).ok_or_else(|| format!("no macOS key for {ch:?}"))?;

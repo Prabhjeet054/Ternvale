@@ -1,0 +1,22 @@
+#!/bin/sh
+# xtrack N: prints "xtrack ready", then each new X pointer position as
+# "xtrack x=<x> y=<y>" until N positions have been seen (or 30 s pass), then
+# "xtrack done seen=<count>". All on the serial console, for the desktop boot test.
+export DISPLAY=:0
+want="${1:-1}"
+seen=0
+i=0
+eval "$(xdotool getmouselocation --shell 2>/dev/null)"
+last="${X},${Y}"
+echo "xtrack ready" >/dev/ttyAMA0
+while [ "${seen}" -lt "${want}" ] && [ "${i}" -lt 600 ]; do
+  eval "$(xdotool getmouselocation --shell 2>/dev/null)"
+  if [ "${X},${Y}" != "${last}" ]; then
+    last="${X},${Y}"
+    seen=$((seen + 1))
+    echo "xtrack x=${X} y=${Y}" >/dev/ttyAMA0
+  fi
+  i=$((i + 1))
+  sleep 0.05
+done
+echo "xtrack done seen=${seen}" >/dev/ttyAMA0

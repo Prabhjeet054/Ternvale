@@ -12,7 +12,7 @@ use crate::virtio::{QueueNotify, VirtioDevice, VirtioMmio};
 
 const BASE: u64 = 0x4000_0000;
 const BUF: u64 = BASE + 0x4000;
-const WRITE: u16 = 2;
+pub(super) const WRITE: u16 = 2;
 
 /// `(desc, avail, used)` for queue `index`.
 fn ring(index: u16) -> (u64, u64, u64) {
@@ -20,16 +20,16 @@ fn ring(index: u16) -> (u64, u64, u64) {
     (at, at + 0x400, at + 0x800)
 }
 
-struct Fx {
-    memory: Arc<Mutex<GuestMemory>>,
-    raised: Arc<AtomicBool>,
-    dev: VirtioInput,
-    sink: InputSink,
+pub(super) struct Fx {
+    pub(super) memory: Arc<Mutex<GuestMemory>>,
+    pub(super) raised: Arc<AtomicBool>,
+    pub(super) dev: VirtioInput,
+    pub(super) sink: InputSink,
     published: [u16; 2],
 }
 
 impl Fx {
-    fn new(kind: InputKind) -> Self {
+    pub(super) fn new(kind: InputKind) -> Self {
         let mut mem = GuestMemory::new().expect("memory");
         mem.add_region(BASE, HOST_PAGE_SIZE * 2).expect("region");
         let memory = Arc::new(Mutex::new(mem));
@@ -49,7 +49,7 @@ impl Fx {
     }
 
     /// Post one 8-byte buffer per descriptor `first..first+count` on `queue`.
-    fn post(&mut self, queue: u16, first: u16, count: u16, flags: u16) {
+    pub(super) fn post(&mut self, queue: u16, first: u16, count: u16, flags: u16) {
         let (desc, avail, _) = ring(queue);
         let mut mem = self.memory.lock().expect("mem");
         for i in first..first + count {
@@ -67,7 +67,7 @@ impl Fx {
             .expect("idx");
     }
 
-    fn kick(&mut self, queue: u16) {
+    pub(super) fn kick(&mut self, queue: u16) {
         let (desc, avail, used) = ring(queue);
         self.dev.notify(QueueNotify {
             index: queue,
@@ -79,7 +79,7 @@ impl Fx {
         });
     }
 
-    fn used(&self, queue: u16, slot: u16) -> (u32, u32) {
+    pub(super) fn used(&self, queue: u16, slot: u16) -> (u32, u32) {
         let (_, _, used) = ring(queue);
         let mem = self.memory.lock().expect("mem");
         let at = used + 4 + u64::from(slot) * 8;
@@ -89,7 +89,7 @@ impl Fx {
         )
     }
 
-    fn used_idx(&self, queue: u16) -> u16 {
+    pub(super) fn used_idx(&self, queue: u16) -> u16 {
         let (_, _, used) = ring(queue);
         self.memory
             .lock()
@@ -98,7 +98,7 @@ impl Fx {
             .expect("idx")
     }
 
-    fn event(&self, queue: u16, index: u16) -> InputEvent {
+    pub(super) fn event(&self, queue: u16, index: u16) -> InputEvent {
         let mut bytes = [0u8; 8];
         let mem = self.memory.lock().expect("mem");
         mem.read_bytes(buf(queue, index), &mut bytes).expect("read");

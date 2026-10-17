@@ -1,0 +1,13 @@
+#!/bin/sh
+# Grabs the pointer, waits up to 30 s for one click, and prints on the serial console
+# which window was clicked:
+#   xclick ready
+#   xclick window=<name>      (or "xclick none" on timeout)
+export DISPLAY=:0
+echo "xclick ready" >/dev/ttyAMA0
+id=$(timeout 30 xdotool selectwindow 2>/dev/null)
+if [ -n "${id}" ]; then
+  echo "xclick window=$(xname "${id}")" >/dev/ttyAMA0
+else
+  echo "xclick none" >/dev/ttyAMA0
+fi

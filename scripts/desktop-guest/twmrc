@@ -1,0 +1,39 @@
+# twm for the Ternvale desktop test image. Focus follows the pointer (twm's
+# default), so keys go to the window under the guest cursor. The menu's XTerm
+# opens at a fixed place with a fixed title, so tests can find and use it.
+NoGrabServer
+RandomPlacement
+DecorateTransients
+RestartPreviousState
+TitleFont "-misc-fixed-bold-r-normal--13-*-*-*-*-*-*-*"
+MenuFont "-misc-fixed-medium-r-normal--13-*-*-*-*-*-*-*"
+IconFont "-misc-fixed-medium-r-normal--13-*-*-*-*-*-*-*"
+BorderWidth 2
+Color
+{
+    BorderColor "#4c566a"
+    DefaultBackground "#3b4252"
+    DefaultForeground "#eceff4"
+    TitleBackground "#3b4252"
+    TitleForeground "#eceff4"
+    MenuBackground "#3b4252"
+    MenuForeground "#eceff4"
+    MenuTitleBackground "#88c0d0"
+    MenuTitleForeground "#2e3440"
+}
+
+Button1 = : root : f.menu "ternvale"
+Button1 = : title : f.function "move-or-raise"
+Button2 = : title : f.lower
+Button3 = : title : f.resize
+
+Function "move-or-raise" { f.move f.deltastop f.raise }
+
+menu "ternvale"
+{
+    "Ternvale"  f.title
+    "XTerm"     f.exec "exec xterm -title menu-xterm -geometry 60x16+700+420 &"
+    "Refresh"   f.refresh
+    "Restart"   f.restart
+    "Exit twm"  f.quit
+}

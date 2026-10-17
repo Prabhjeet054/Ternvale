@@ -13,6 +13,12 @@
 //   type <text>        US layout; `\n` is Return, `\\` a backslash
 //   move <gx> <gy>     pointer to the centre of guest pixel (gx, gy)
 //   click              left button down + up where the pointer is
+//   press / release    left button down / up; moves in between are drags
+//   keygap <us>        pause after each key event (default 8000)
+//   stress-move <n> <gap_us> <gx> <gy>
+//                      n moves along a figure-eight over the whole frame, gap_us
+//                      apart, then one move to (gx, gy)
+//   click-burst <n> <gap_us>   n left clicks where the pointer is
 //   frame-info         prints window number and geometry (for screencapture -l)
 // Every step is echoed to stderr as "ternvale-viewer: selftest ...".
 
@@ -44,6 +50,8 @@ final class SelfTest {
     let surface: SurfaceView
     private var pointer = NSPoint.zero
     private var shiftDown = false
+    private var buttonDown = false
+    private var keyGap = selftestKeyGap
 
     init(window: NSWindow, surface: SurfaceView) {
         self.window = window
@@ -89,6 +97,20 @@ final class SelfTest {
                 guard parts.count == 2 else { fail("selftest: move needs <gx> <gy>, got '\(arg)'") }
                 move(gx: parts[0], gy: parts[1])
             case "click": click()
+            case "press": button(down: true)
+            case "release": button(down: false)
+            case "keygap":
+                guard let us = useconds_t(arg) else { fail("selftest: bad keygap '\(arg)'") }
+                keyGap = us
+                selftestNote("keygap us=\(us)")
+            case "stress-move":
+                let parts = arg.split(separator: " ").compactMap { Double($0) }
+                guard parts.count == 4, parts[0] >= 1 else { fail("selftest: stress-move needs <n> <gap_us> <gx> <gy>") }
+                stressMove(count: Int(parts[0]), gap: useconds_t(parts[1]), end: (parts[2], parts[3]))
+            case "click-burst":
+                let parts = arg.split(separator: " ").compactMap { Int($0) }
+                guard parts.count == 2, parts[0] >= 1, parts[1] >= 0 else { fail("selftest: click-burst needs <n> <gap_us>") }
+                clickBurst(count: parts[0], gap: useconds_t(parts[1]))
             case "frame-info": onMain { self.frameInfo() }
             default: fail("selftest: unknown command '\(cmd)'")
             }
@@ -130,7 +152,8 @@ final class SelfTest {
             postKey(.keyUp, code, chars)
         }
         if shiftDown { setShift(false) }
-        selftestNote("typed chars=\(text.count) text=\(text.debugDescription)")
+        let shown = text.count > 80 ? String(text.prefix(60)) + "...(\(text.count) chars)" : text
+        selftestNote("typed chars=\(text.count) text=\(shown.debugDescription)")
     }
 
     private func setShift(_ down: Bool) {
@@ -152,7 +175,7 @@ final class SelfTest {
             else { fail("selftest: could not build key event code=\(code)") }
             self.window.sendEvent(event)
         }
-        usleep(selftestKeyGap)
+        if keyGap > 0 { usleep(keyGap) }
     }
 
     /// Window coordinates of the centre of guest pixel (gx, gy) in the
@@ -171,7 +194,7 @@ final class SelfTest {
         onMain {
             guard self.surface.frameSize.width > 0 else { fail("selftest: move before the first scanout") }
             self.pointer = self.windowPoint(gx: gx, gy: gy)
-            self.postMouse(.mouseMoved)
+            self.postMouse(self.buttonDown ? .leftMouseDragged : .mouseMoved)
             selftestNote(String(format: "move gx=%.0f gy=%.0f window_x=%.2f window_y=%.2f", gx, gy,
                                 self.pointer.x, self.pointer.y))
         }
@@ -185,6 +208,49 @@ final class SelfTest {
         }
         selftestNote("click")
         usleep(selftestKeyGap)
+    }
+
+    private func button(down: Bool) {
+        onMain {
+            self.buttonDown = down
+            self.postMouse(down ? .leftMouseDown : .leftMouseUp)
+        }
+        selftestNote(down ? "press" : "release")
+        usleep(selftestKeyGap)
+    }
+
+    /// Rapid pointer motion: `count` moves along a figure-eight spanning the frame.
+    private func stressMove(count: Int, gap: useconds_t, end: (Double, Double)) {
+        let started = ProcessInfo.processInfo.systemUptime
+        let size = onMain { self.surface.frameSize }
+        guard size.width > 0 else { fail("selftest: stress-move before the first scanout") }
+        for i in 0..<count {
+            let t = Double(i) / Double(count) * 2 * Double.pi
+            let gx = (Double(size.width) - 1) * (0.5 + 0.48 * sin(t))
+            let gy = (Double(size.height) - 1) * (0.5 + 0.48 * sin(2 * t))
+            onMain {
+                self.pointer = self.windowPoint(gx: gx.rounded(), gy: gy.rounded())
+                self.postMouse(self.buttonDown ? .leftMouseDragged : .mouseMoved)
+            }
+            if gap > 0 { usleep(gap) }
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        selftestNote(String(format: "stress-move done moves=%d elapsed_ms=%.0f rate_hz=%.0f", count,
+                            elapsed * 1000, Double(count) / max(elapsed, 1e-6)))
+        move(gx: end.0, gy: end.1)
+    }
+
+    private func clickBurst(count: Int, gap: useconds_t) {
+        let started = ProcessInfo.processInfo.systemUptime
+        for _ in 0..<count {
+            onMain {
+                self.postMouse(.leftMouseDown)
+                self.postMouse(.leftMouseUp)
+            }
+            if gap > 0 { usleep(gap) }
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        selftestNote(String(format: "click-burst done clicks=%d elapsed_ms=%.0f", count, elapsed * 1000))
     }
 
     private func postMouse(_ type: NSEvent.EventType) {

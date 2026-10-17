@@ -20,6 +20,10 @@
 //! Set `TERNVALE_BOOT_SCENARIO=getty` to boot the same assets with `ternvale.getty`: a getty on
 //! the framebuffer console must take a login name and a shell command typed on the virtio-input
 //! keyboard (macOS key codes through the viewer keymap); both report on the serial console.
+//! Set `TERNVALE_BOOT_SCENARIO=desktop` to boot the Xorg + twm desktop image from
+//! `scripts/make-desktop-rootfs.sh` (virtio-blk root, virtio-gpu, virtio-input keyboard and
+//! tablet): a command typed into its xterm must run, tablet moves must put the X pointer on
+//! the same pixels, and a click must reach the xterm.
 //! Set `TERNVALE_BOOT_SCENARIO=agent` to run the guest agent from the same assets against the
 //! host `AgentServer`: handshake, heartbeats, reconnect after a server restart, requests, and
 //! a guest power-off on `Shutdown`.
@@ -64,6 +68,7 @@
 mod agent;
 mod common;
 mod cpio;
+mod desktop;
 mod devices;
 mod fat;
 mod firmware;
@@ -114,6 +119,7 @@ fn run() -> Result<(), String> {
         "gpu" => gpu::run(),
         "input" => input::run(),
         "getty" => getty::run(),
+        "desktop" => desktop::run(),
         "agent" => agent::run(),
         "smp" => smp::run(),
         "firmware" => firmware::run(),
@@ -129,7 +135,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, gpu, input, getty, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }
