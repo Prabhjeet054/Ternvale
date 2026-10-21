@@ -106,6 +106,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         firmware_tables: None,
         vsock: None,
         tpm: None,
+        usb: None,
     }
 }
 
@@ -259,6 +260,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         firmware_tables: None,
         vsock: None,
         tpm: None,
+        usb: None,
     }
 }
 

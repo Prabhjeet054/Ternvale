@@ -108,6 +108,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         firmware_tables: Some(FirmwareTables::Acpi),
         vsock: None,
         tpm: None,
+        usb: None,
     };
     tracing::info!(target: "ternvale::boot", esp = %esp.display(), serial = %serial_log.display(), "uefi linux acpi boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

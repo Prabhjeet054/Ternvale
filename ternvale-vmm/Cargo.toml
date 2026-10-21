@@ -19,6 +19,7 @@ ternvale-acpi = { path = "../ternvale-acpi" }
 # TPM 2.0 CRB register model registered on the MMIO bus, and its swtpm / stub
 # command backends.
 ternvale-tpm = { path = "../ternvale-tpm" }
+ternvale-usb = { path = "../ternvale-usb" }
 # VmConfig is the orchestrator's input document.
 ternvale-config = { path = "../ternvale-config" }
 # Map, unmap, and rejected GPA access logs.

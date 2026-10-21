@@ -16,7 +16,7 @@ mod pci_node;
 use crate::memory::{GuestMemory, MemoryError};
 use crate::platform::{
     GIC_DIST_BASE, GIC_DIST_SIZE, GIC_REDIST_BASE, GIC_REDIST_SIZE, UART_BASE, VIRTIO_MMIO_BASE,
-    VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
+    VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE, XHCI_BASE,
 };
 
 /// PL011 register block. QEMU's `VIRT_UART` size, not the 16 KiB reservation.
@@ -27,6 +27,10 @@ const APB_HZ: u32 = 24_000_000;
 pub const VIRTIO_SPI0: u32 = 0x10;
 /// GIC SPI, level-high. QEMU's PL011 interrupt.
 pub const UART_SPI: u32 = 1;
+/// GIC SPI for the platform xHCI device (must match [`crate::usb::USB_SPI`]).
+pub const USB_SPI: u32 = 7;
+/// xHCI MMIO length exposed in the DTB `reg` (must match `ternvale_usb::MMIO_SIZE`).
+const XHCI_MMIO_LEN: u64 = 0x5000;
 /// Architected timer PPIs, level-high, in `arm,armv8-timer` order: secure
 /// physical, non-secure physical, virtual, hypervisor. Same cells as QEMU virt
 /// `gic-version=3`. The ACPI GTDT is built from these too.
@@ -60,6 +64,8 @@ pub struct GuestFdt {
     /// With `fw_cfg`, also add the `tcg,tpm-tis-mmio` node EDK2 finds the
     /// TPM CRB by. False when the VM has `[tpm] enabled = false`.
     pub tpm: bool,
+    /// Platform `generic-xhci` node. False when `[usb] enabled = false`.
+    pub usb: bool,
 }
 
 /// Building or installing the DTB failed.
@@ -120,6 +126,9 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     firmware_node::rtc(&mut w, clock)?;
     apb_clock(&mut w, clock)?;
     virtio(&mut w)?;
+    if fdt.usb {
+        xhci(&mut w, gic)?;
+    }
     pci_node::pcie(&mut w, gic)?;
     if fdt.firmware {
         firmware_node::flash(&mut w)?;
@@ -132,7 +141,15 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     }
     w.end_node(root)?;
     let blob = w.finish()?;
-    tracing::info!(target: "ternvale::boot", bytes = blob.len(), firmware = fdt.firmware, fw_cfg = fdt.fw_cfg, tpm = fdt.fw_cfg && fdt.tpm, "built guest dtb");
+    tracing::info!(
+        target: "ternvale::boot",
+        bytes = blob.len(),
+        firmware = fdt.firmware,
+        fw_cfg = fdt.fw_cfg,
+        tpm = fdt.fw_cfg && fdt.tpm,
+        usb = fdt.usb,
+        "built guest dtb"
+    );
     Ok(blob)
 }
 
@@ -280,6 +297,15 @@ fn uart(w: &mut FdtWriter, clock: u32) -> FdtWriterResult<()> {
         "clock-names",
         vec!["uartclk".to_string(), "apb_pclk".to_string()],
     )?;
+    w.end_node(node)
+}
+
+fn xhci(w: &mut FdtWriter, gic: u32) -> FdtWriterResult<()> {
+    let node = w.begin_node(&format!("xhci@{:x}", XHCI_BASE))?;
+    w.property_string("compatible", "generic-xhci")?;
+    w.property_array_u32("reg", &reg(XHCI_BASE, XHCI_MMIO_LEN))?;
+    w.property_u32("interrupt-parent", gic)?;
+    w.property_array_u32("interrupts", &[0, USB_SPI, IRQ_LEVEL_HIGH])?;
     w.end_node(node)
 }
 

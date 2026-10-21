@@ -777,6 +777,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ternvale-usb"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ternvale-vmm"
 version = "0.1.0"
 dependencies = [
@@ -787,6 +796,7 @@ dependencies = [
  "ternvale-hv",
  "ternvale-log",
  "ternvale-tpm",
+ "ternvale-usb",
  "thiserror",
  "tracing",
  "tracing-subscriber",

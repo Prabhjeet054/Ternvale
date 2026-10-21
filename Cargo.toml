@@ -7,6 +7,7 @@ members = [
     "ternvale-acpi",
     "ternvale-tpm",
     "ternvale-gpu",
+    "ternvale-usb",
     "ternvale-vmm",
     "ternvale-devices",
     "ternvale-cli",

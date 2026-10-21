@@ -181,6 +181,16 @@ fn reference_asl() -> String {
                 }})
             }}
         }}
+        Device (XHC0)
+        {{
+            Name (_HID, "PNP0D10")
+            Name (_UID, Zero)
+            Name (_CRS, ResourceTemplate ()
+            {{
+                Memory32Fixed (ReadWrite, 0x091C0000, 0x00005000)
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Shared, ,, ) {{ 0x27 }}
+            }})
+        }}
         Device (TPM2)
         {{
             Name (_HID, "MSFT0101")

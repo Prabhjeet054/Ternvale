@@ -55,6 +55,10 @@ pub const TPM_CRB_BASE: u64 = 0x0914_0000;
 /// TPM reservation: the `0x5000` CRB window rounded up to host pages. The
 /// device decodes only the first `0x5000` bytes.
 pub const TPM_CRB_SIZE: u64 = 0x8000;
+/// Virtual xHCI host controller MMIO (decodes `ternvale_usb::MMIO_SIZE`).
+pub const XHCI_BASE: u64 = 0x091c_0000;
+/// xHCI reservation rounded up to host pages.
+pub const XHCI_SIZE: u64 = 0x8000;
 /// First virtio-mmio slot. QEMU `VIRT_MMIO`.
 pub const VIRTIO_MMIO_BASE: u64 = 0x0a00_0000;
 /// Slots in the virtio-mmio window.
@@ -142,6 +146,7 @@ impl Layout {
             region("fw-cfg", FW_CFG_BASE, FW_CFG_SIZE),
             region("acpi", ACPI_BASE, ACPI_SIZE),
             region("tpm-crb", TPM_CRB_BASE, TPM_CRB_SIZE),
+            region("xhci", XHCI_BASE, XHCI_SIZE),
             region("virtio-mmio", VIRTIO_MMIO_BASE, VIRTIO_MMIO_SIZE),
             region("pcie-mmio", PCIE_MMIO_BASE, PCIE_MMIO_SIZE),
             region("pcie-ecam", PCIE_ECAM_BASE, PCIE_ECAM_SIZE),

@@ -48,6 +48,7 @@ pub(super) fn dtb(cpus: u32) -> Vec<Node> {
         firmware: true,
         fw_cfg: false,
         tpm: false,
+        usb: false,
     };
     nodes(&build_fdt(&fdt).expect("dtb"))
 }

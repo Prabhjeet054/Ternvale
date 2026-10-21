@@ -264,7 +264,7 @@ impl Machine {
                 "some config disks or nics were not attached through DeviceAttach"
             );
         }
-        let dtb = inputs.dtb(&cmdline, config.cpus, ram_size)?;
+        let dtb = inputs.dtb(&cmdline, config, ram_size)?;
         control.diagnostics().set_dtb(&dtb);
         let serial: attach::SharedSerial = Arc::new(Mutex::new(serial));
         let irq_level = Arc::new(AtomicBool::new(false));
@@ -293,6 +293,7 @@ impl Machine {
             bus.register(base, size, device)?;
         }
         crate::tpm::register(&mut bus, config, control.diagnostics())?;
+        let _usb_input = crate::usb::register(&mut bus, Arc::clone(&memory), &attached, config)?;
         attached.pci.register(&mut bus)?;
         // PCI functions (and their guest-memory handles) must die with the bus, before the VM.
         drop(attached);

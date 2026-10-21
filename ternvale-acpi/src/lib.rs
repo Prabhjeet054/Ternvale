@@ -38,12 +38,13 @@ mod spcr;
 mod tables;
 mod tpm2;
 mod verify;
+mod xhci;
 mod xsdt;
 
 pub use compare::{compare, render_markdown, signature_diff, Row};
 pub use config::{
     ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GicConfig, PciConfig, TimerConfig, TpmConfig,
-    UartConfig, MAX_CPUS,
+    UartConfig, UsbConfig, MAX_CPUS,
 };
 pub use dbg2::{dbg2, DBG2_REVISION, DBG2_SIGNATURE, PORT_SERIAL, SUBTYPE_PL011};
 pub use decode::{

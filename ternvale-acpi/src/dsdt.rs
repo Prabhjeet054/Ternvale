@@ -14,6 +14,7 @@ use crate::config::AcpiConfig;
 use crate::pci_root::pci_root;
 use crate::sdt::{table, SdtHeader};
 use crate::tpm2::tpm_device;
+use crate::xhci::xhci_device;
 use crate::AcpiError;
 
 /// DSDT signature.
@@ -26,6 +27,9 @@ pub const DSDT_REVISION: u8 = 2;
 #[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(tpm = config.tpm.is_some()))]
 pub fn dsdt(config: &AcpiConfig) -> Result<Vec<u8>, AcpiError> {
     let mut devices = pci_root(config)?;
+    if let Some(usb) = &config.usb {
+        devices.extend(xhci_device(usb)?);
+    }
     if let Some(tpm) = &config.tpm {
         devices.extend(tpm_device(tpm)?);
     }
@@ -49,11 +53,11 @@ mod tests {
         assert_eq!(header.length as usize, bytes.len());
         assert_eq!(byte_sum(&bytes), 0);
         let body = &bytes[SDT_HEADER_LEN..];
-        let devices = [
-            pci_root(&config).expect("pci0"),
-            tpm_device(config.tpm.as_ref().expect("tpm")).expect("tpm2"),
-        ]
-        .concat();
+        let mut devices = pci_root(&config).expect("pci0");
+        if let Some(usb) = &config.usb {
+            devices.extend(xhci_device(usb).expect("xhc0"));
+        }
+        devices.extend(tpm_device(config.tpm.as_ref().expect("tpm")).expect("tpm2"));
         assert_eq!(body, scope("\\_SB", &devices).expect("scope").as_slice());
         assert_eq!(body[0], crate::aml::SCOPE_OP);
         let name_end = body.len() - devices.len();

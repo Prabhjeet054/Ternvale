@@ -162,6 +162,7 @@ fn dtb_and_acpi_agree() {
         firmware: true,
         fw_cfg: false,
         tpm: false,
+        usb: false,
     };
     let dts = dtc_dts(&build_fdt(&fdt).expect("dtb"));
 

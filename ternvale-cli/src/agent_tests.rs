@@ -53,6 +53,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         firmware_tables: None,
         vsock,
         tpm: None,
+        usb: None,
     }
 }
 

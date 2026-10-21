@@ -26,6 +26,7 @@ mod rtc;
 mod serial;
 mod smp;
 mod tpm;
+mod usb;
 mod vcpu;
 mod watchdog;
 
@@ -68,6 +69,7 @@ pub use smp::{dt_cpu_reg, mpidr, CpuPower, MPIDR_AFFINITY_MASK, MPIDR_RES1};
 /// The deadlock detector every mutex in this crate and `ternvale-devices` goes through.
 pub use ternvale_log::lockwatch;
 pub use tpm::TPM_DEVICE_NAME;
+pub use usb::{USB_SPI, XHCI_DEVICE_NAME};
 pub use vcpu::{process_cpu_ms, ExitReason, Vcpu, VcpuError, VcpuStats, VcpuStatsSource, VcpuStop};
 
 #[cfg(test)]

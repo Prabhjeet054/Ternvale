@@ -12,10 +12,11 @@
 
 use ternvale_acpi::{
     AcpiConfig, AcpiError, DumpedTable, EcamConfig, GicConfig, PciConfig, PsciConduit, TimerConfig,
-    TpmConfig, UartConfig,
+    TpmConfig, UartConfig, UsbConfig,
 };
 use ternvale_config::VmConfig;
 use ternvale_tpm::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE};
+use ternvale_usb::MMIO_SIZE as XHCI_MMIO_SIZE;
 
 use crate::fdt::{PL011_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI};
 use crate::gic_redist::REDIST_STRIDE;
@@ -23,8 +24,9 @@ use crate::machine::MachineError;
 use crate::pci::{ECAM_BUSES, PCI_INTX_SPI0};
 use crate::platform::{
     Layout, ACPI_BASE, ACPI_SIZE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, PCIE_ECAM_BASE,
-    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, TPM_CRB_BASE, UART_BASE,
+    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, TPM_CRB_BASE, UART_BASE, XHCI_BASE,
 };
+use crate::usb::USB_SPI;
 
 /// DTB SPI of each swizzled INTx line, as `fdt_pci` writes them.
 const INTX_SPIS: [u32; 4] = [
@@ -78,6 +80,11 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
             crb_len: CRB_WINDOW_SIZE as u32,
             control_area: TPM_CRB_BASE + CONTROL_AREA_OFFSET,
         }),
+        usb: Some(UsbConfig {
+            mmio_base: XHCI_BASE,
+            mmio_len: XHCI_MMIO_SIZE as u32,
+            spi: USB_SPI,
+        }),
     }
 }
 
@@ -89,6 +96,10 @@ pub fn vm_acpi_config(config: &VmConfig) -> AcpiConfig {
     if !config.tpm_enabled() {
         tracing::debug!(target: "ternvale::acpi", "tpm disabled; no TPM2 table or \\_SB.TPM2");
         acpi.tpm = None;
+    }
+    if !config.usb_enabled() {
+        tracing::debug!(target: "ternvale::acpi", "usb disabled; no \\_SB.XHC0");
+        acpi.usb = None;
     }
     acpi
 }

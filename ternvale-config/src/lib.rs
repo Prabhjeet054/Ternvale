@@ -8,6 +8,7 @@ mod firmware_tables;
 mod iso;
 mod profile;
 mod tpm;
+mod usb;
 mod vm;
 mod vsock;
 
@@ -19,6 +20,7 @@ pub use profile::{
     WINDOWS_MIN_RAM_MIB,
 };
 pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
+pub use usb::UsbSection;
 pub use vm::{default_nvram_path, Disk, Nic, VmConfig};
 pub use vsock::{VsockSection, MAX_UDS_DIR};
 

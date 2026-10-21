@@ -27,6 +27,8 @@ pub const MEMORY32_FIXED_TAG: u8 = 0x86;
 pub const MEMORY32_READ_WRITE: u8 = 0x01;
 /// Small item End Tag (type 0xF, length 1).
 pub const END_TAG: u8 = 0x79;
+/// Large item tag of the Extended Interrupt Descriptor (ACPI 6.4.3.6).
+pub const EXTENDED_INTERRUPT_TAG: u8 = 0x89;
 /// Resource type: memory range.
 pub const RESOURCE_MEMORY: u8 = 0;
 /// Resource type: bus number range.
@@ -152,6 +154,24 @@ pub fn memory32_fixed(base: u64, len: u64) -> Result<Vec<u8>, AcpiError> {
     out.extend_from_slice(&base32.to_le_bytes());
     out.extend_from_slice(&len32.to_le_bytes());
     Ok(out)
+}
+
+/// Extended Interrupt descriptor for one level-high GIC GSIV (ACPI 6.4.3.6.2).
+#[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(gsiv))]
+pub fn extended_interrupt(gsiv: u32) -> Result<Vec<u8>, AcpiError> {
+    // Consumer, level-triggered, active high (matches iasl `Interrupt(..., Level, ActiveHigh, ...)`).
+    const FLAGS: u8 = 0x09;
+    Ok(vec![
+        EXTENDED_INTERRUPT_TAG,
+        0x06,
+        0x00,
+        FLAGS,
+        0x01,
+        (gsiv & 0xff) as u8,
+        ((gsiv >> 8) & 0xff) as u8,
+        ((gsiv >> 16) & 0xff) as u8,
+        ((gsiv >> 24) & 0xff) as u8,
+    ])
 }
 
 /// `ResourceTemplate () { descriptors }`: a Buffer holding the descriptors

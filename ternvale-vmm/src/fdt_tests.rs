@@ -16,6 +16,7 @@ fn sample() -> GuestFdt {
         firmware: false,
         fw_cfg: false,
         tpm: false,
+        usb: false,
     }
 }
 

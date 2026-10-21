@@ -84,6 +84,7 @@ fn boot_once(
         firmware_tables: Some(FirmwareTables::Fdt),
         vsock: None,
         tpm: None,
+        usb: None,
     };
     tracing::info!(target: "ternvale::boot", serial = %serial_log.display(), nvram = %nvram.display(), "firmware boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

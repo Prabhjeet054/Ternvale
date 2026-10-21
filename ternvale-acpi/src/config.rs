@@ -45,6 +45,19 @@ pub struct AcpiConfig {
     /// TPM 2.0 CRB window (TPM2 table, DSDT `\_SB.TPM2`). `None`: the VM
     /// has no TPM, so neither the table nor the device exists.
     pub tpm: Option<TpmConfig>,
+    /// Platform xHCI MMIO (`\_SB.XHC0`). `None` when `[usb] enabled = false`.
+    pub usb: Option<UsbConfig>,
+}
+
+/// Virtual xHCI host controller window and its GIC SPI (DTB index).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsbConfig {
+    /// MMIO base (`_CRS` `Memory32Fixed`).
+    pub mmio_base: u64,
+    /// Decoded MMIO length.
+    pub mmio_len: u32,
+    /// DTB SPI index (GSIV = [`spi_gsiv`]).
+    pub spi: u32,
 }
 
 /// The TPM's Command Response Buffer interface.
@@ -185,21 +198,33 @@ impl AcpiConfig {
         if let Some(spi) = pci.intx_spis.iter().find(|spi| spi_gsiv(**spi) > SPI_LAST) {
             return fail(format!("pci INTx SPI {spi} is past INTID {SPI_LAST}"));
         }
-        let Some(tpm) = self.tpm else {
-            return Ok(());
-        };
-        let tpm_end = tpm.crb_base.checked_add(u64::from(tpm.crb_len));
-        if tpm.crb_len == 0 || tpm_end.is_none_or(|end| end > 1 << 32) {
-            return fail(format!(
-                "tpm crb window {:#x}+{:#x} is empty or passes 4 GiB",
-                tpm.crb_base, tpm.crb_len
-            ));
+        if let Some(tpm) = self.tpm {
+            let tpm_end = tpm.crb_base.checked_add(u64::from(tpm.crb_len));
+            if tpm.crb_len == 0 || tpm_end.is_none_or(|end| end > 1 << 32) {
+                return fail(format!(
+                    "tpm crb window {:#x}+{:#x} is empty or passes 4 GiB",
+                    tpm.crb_base, tpm.crb_len
+                ));
+            }
+            if tpm.control_area < tpm.crb_base || tpm_end.is_none_or(|end| tpm.control_area >= end)
+            {
+                return fail(format!(
+                    "tpm control area {:#x} is outside the crb window {:#x}+{:#x}",
+                    tpm.control_area, tpm.crb_base, tpm.crb_len
+                ));
+            }
         }
-        if tpm.control_area < tpm.crb_base || tpm_end.is_none_or(|end| tpm.control_area >= end) {
-            return fail(format!(
-                "tpm control area {:#x} is outside the crb window {:#x}+{:#x}",
-                tpm.control_area, tpm.crb_base, tpm.crb_len
-            ));
+        if let Some(usb) = &self.usb {
+            let end = usb.mmio_base.checked_add(u64::from(usb.mmio_len));
+            if usb.mmio_len == 0 || end.is_none_or(|end| end > 1 << 32) {
+                return fail(format!(
+                    "usb mmio window {:#x}+{:#x} is empty or passes 4 GiB",
+                    usb.mmio_base, usb.mmio_len
+                ));
+            }
+            if spi_gsiv(usb.spi) > SPI_LAST {
+                return fail(format!("usb SPI {} is past INTID {SPI_LAST}", usb.spi));
+            }
         }
         Ok(())
     }
@@ -245,6 +270,11 @@ pub(crate) mod tests {
                 crb_len: 0x5000,
                 control_area: 0x0914_0040,
             }),
+            usb: Some(UsbConfig {
+                mmio_base: 0x091c_0000,
+                mmio_len: 0x5000,
+                spi: 7,
+            }),
         }
     }
 
@@ -252,6 +282,7 @@ pub(crate) mod tests {
     pub(crate) fn sample_without_tpm(cpus: u32) -> AcpiConfig {
         AcpiConfig {
             tpm: None,
+            usb: None,
             ..sample(cpus)
         }
     }
