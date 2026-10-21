@@ -11,7 +11,7 @@ use ternvale_devices::{Buffer, QueueNotify, SplitQueue, VirtioIrq};
 use ternvale_devices::{VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 use ternvale_vmm::GuestMemory;
 
-use crate::gpu2d::Gpu2d;
+use crate::engine::GpuEngine;
 use crate::protocol;
 
 /// Queue 0: `controlq` (virtio 1.2 §5.7.2).
@@ -37,7 +37,7 @@ type Bound = ((u16, u64, u64, u64), SplitQueue);
 /// Worker loop; returns when the device is dropped.
 pub fn run(
     rx: Receiver<Kick>,
-    mut gpu: Gpu2d,
+    mut gpu: GpuEngine,
     memory: Arc<Mutex<GuestMemory>>,
     irq: Arc<VirtioIrq>,
 ) {
@@ -81,7 +81,12 @@ pub fn run(
 }
 
 /// Answer every published chain on `index`. `true` if any chain completed.
-pub fn serve(index: u16, queue: &mut SplitQueue, mem: &mut GuestMemory, gpu: &mut Gpu2d) -> bool {
+pub fn serve(
+    index: u16,
+    queue: &mut SplitQueue,
+    mem: &mut GuestMemory,
+    gpu: &mut GpuEngine,
+) -> bool {
     let chains: Vec<_> = queue.chains(mem).collect();
     let mut completed = false;
     for chain in chains {

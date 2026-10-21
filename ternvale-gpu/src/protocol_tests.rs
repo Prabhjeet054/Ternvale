@@ -70,14 +70,14 @@ fn every_2d_opcode_parses_from_wire_bytes() {
 
 #[test]
 fn header_fields_parse_and_unknown_types_are_unsupported() {
-    let mut bytes = testutil::hdr(0x0109, FLAG_FENCE, 0xdead_beef_0102);
+    let mut bytes = testutil::hdr(0x0111, FLAG_FENCE, 0xdead_beef_0102);
     bytes[16..20].copy_from_slice(&5u32.to_le_bytes());
     bytes[20] = 3;
     let (hdr, command) = parse(&bytes).expect("parse");
     assert_eq!(
         hdr,
         CtrlHdr {
-            kind: 0x0109,
+            kind: 0x0111,
             flags: FLAG_FENCE,
             fence_id: 0xdead_beef_0102,
             ctx_id: 5,

@@ -23,6 +23,26 @@ pub const CMD_TRANSFER_TO_HOST_2D: u32 = 0x0105;
 pub const CMD_RESOURCE_ATTACH_BACKING: u32 = 0x0106;
 /// `VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING`.
 pub const CMD_RESOURCE_DETACH_BACKING: u32 = 0x0107;
+/// `VIRTIO_GPU_CMD_GET_CAPSET_INFO`.
+pub const CMD_GET_CAPSET_INFO: u32 = 0x0108;
+/// `VIRTIO_GPU_CMD_GET_CAPSET`.
+pub const CMD_GET_CAPSET: u32 = 0x0109;
+/// `VIRTIO_GPU_CMD_RESOURCE_CREATE_BLOB`.
+pub const CMD_RESOURCE_CREATE_BLOB: u32 = 0x010c;
+/// `VIRTIO_GPU_CMD_CTX_CREATE`.
+pub const CMD_CTX_CREATE: u32 = 0x0200;
+/// `VIRTIO_GPU_CMD_CTX_DESTROY`.
+pub const CMD_CTX_DESTROY: u32 = 0x0201;
+/// `VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE`.
+pub const CMD_CTX_ATTACH_RESOURCE: u32 = 0x0202;
+/// `VIRTIO_GPU_CMD_CTX_DETACH_RESOURCE`.
+pub const CMD_CTX_DETACH_RESOURCE: u32 = 0x0203;
+/// `VIRTIO_GPU_CMD_SUBMIT_3D`.
+pub const CMD_SUBMIT_3D: u32 = 0x0206;
+/// `VIRTIO_GPU_CMD_RESOURCE_MAP_BLOB`.
+pub const CMD_RESOURCE_MAP_BLOB: u32 = 0x0207;
+/// `VIRTIO_GPU_CMD_RESOURCE_UNMAP_BLOB`.
+pub const CMD_RESOURCE_UNMAP_BLOB: u32 = 0x0208;
 /// `VIRTIO_GPU_CMD_UPDATE_CURSOR` (cursorq).
 pub const CMD_UPDATE_CURSOR: u32 = 0x0300;
 /// `VIRTIO_GPU_CMD_MOVE_CURSOR` (cursorq).
@@ -32,6 +52,10 @@ pub const CMD_MOVE_CURSOR: u32 = 0x0301;
 pub const RESP_OK_NODATA: u32 = 0x1100;
 /// `VIRTIO_GPU_RESP_OK_DISPLAY_INFO`.
 pub const RESP_OK_DISPLAY_INFO: u32 = 0x1101;
+/// `VIRTIO_GPU_RESP_OK_CAPSET_INFO`.
+pub const RESP_OK_CAPSET_INFO: u32 = 0x1102;
+/// `VIRTIO_GPU_RESP_OK_CAPSET`.
+pub const RESP_OK_CAPSET: u32 = 0x1103;
 /// `VIRTIO_GPU_RESP_ERR_UNSPEC`.
 pub const RESP_ERR_UNSPEC: u32 = 0x1200;
 /// `VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY`.
@@ -186,6 +210,71 @@ pub enum Command {
     },
     /// A type this 2D device does not implement (3D, capsets, EDID, blobs, cursor).
     Unsupported,
+    /// `GET_CAPSET_INFO` (`gpu3d` only).
+    #[cfg(feature = "gpu3d")]
+    GetCapsetInfo {
+        /// Capset index (0-based).
+        capset_index: u32,
+    },
+    /// `GET_CAPSET` (`gpu3d` only).
+    #[cfg(feature = "gpu3d")]
+    GetCapset {
+        /// Capset id.
+        capset_id: u32,
+        /// Capset version.
+        capset_version: u32,
+    },
+    /// `RESOURCE_CREATE_BLOB` (`gpu3d` only).
+    #[cfg(feature = "gpu3d")]
+    ResourceCreateBlob {
+        /// Resource id.
+        resource_id: u32,
+        /// `VIRTIO_GPU_BLOB_MEM_*`.
+        blob_mem: u32,
+        /// `VIRTIO_GPU_BLOB_FLAG_*`.
+        blob_flags: u32,
+        /// Guest mem entries following the fixed body.
+        entries: Vec<MemEntry>,
+        /// Opaque blob id from the guest.
+        blob_id: u64,
+        /// Blob size in bytes.
+        size: u64,
+    },
+    /// `CTX_CREATE` (`gpu3d` only).
+    #[cfg(feature = "gpu3d")]
+    CtxCreate {
+        /// Name length.
+        nlen: u32,
+        /// `context_init` (capset id in low byte when `CONTEXT_INIT` is negotiated).
+        context_init: u32,
+        /// Debug name bytes (up to 64).
+        debug_name: [u8; 64],
+    },
+    /// `CTX_DESTROY` (`gpu3d` only).
+    #[cfg(feature = "gpu3d")]
+    CtxDestroy,
+    /// `CTX_ATTACH_RESOURCE` / `CTX_DETACH_RESOURCE` (`gpu3d` only).
+    #[cfg(feature = "gpu3d")]
+    CtxResource {
+        /// Target resource.
+        resource_id: u32,
+    },
+    /// `SUBMIT_3D` (`gpu3d` only): venus protocol bytes follow the fixed body.
+    #[cfg(feature = "gpu3d")]
+    Submit3d {
+        /// Payload size in bytes (after the 8-byte body).
+        size: u32,
+        /// Venus / rutabaga payload.
+        payload: Vec<u8>,
+    },
+    /// `RESOURCE_MAP_BLOB` / `RESOURCE_UNMAP_BLOB` (`gpu3d` only).
+    #[cfg(feature = "gpu3d")]
+    BlobMap {
+        /// Target resource.
+        resource_id: u32,
+        /// Offset within the blob.
+        offset: u64,
+    },
 }
 
 /// Why a request could not be parsed. Answered with `RESP_ERR_UNSPEC`
@@ -216,10 +305,22 @@ pub enum ParseError {
         /// Cap.
         max: u32,
     },
+    /// `SUBMIT_3D` payload above the cap (`gpu3d`).
+    #[cfg(feature = "gpu3d")]
+    #[error("submit_3d payload is {size} bytes, more than {max}")]
+    SubmitTooLarge {
+        /// Guest size.
+        size: u32,
+        /// Cap.
+        max: usize,
+    },
 }
 
 /// Most backing entries one `RESOURCE_ATTACH_BACKING` may list (QEMU's cap).
 pub const MAX_BACKING_ENTRIES: u32 = 16 * 1024;
+/// Largest `SUBMIT_3D` payload accepted on the control queue (`gpu3d`).
+#[cfg(feature = "gpu3d")]
+pub const MAX_SUBMIT_3D: usize = 4 * 1024 * 1024;
 
 /// Human name of a command or response type, for logs.
 pub fn type_name(kind: u32) -> &'static str {
@@ -243,6 +344,8 @@ pub fn type_name(kind: u32) -> &'static str {
         CMD_MOVE_CURSOR => "MOVE_CURSOR",
         RESP_OK_NODATA => "OK_NODATA",
         RESP_OK_DISPLAY_INFO => "OK_DISPLAY_INFO",
+        RESP_OK_CAPSET_INFO => "OK_CAPSET_INFO",
+        RESP_OK_CAPSET => "OK_CAPSET",
         RESP_ERR_UNSPEC => "ERR_UNSPEC",
         RESP_ERR_OUT_OF_MEMORY => "ERR_OUT_OF_MEMORY",
         RESP_ERR_INVALID_SCANOUT_ID => "ERR_INVALID_SCANOUT_ID",
@@ -371,6 +474,100 @@ pub fn parse(bytes: &[u8]) -> Result<(CtrlHdr, Command), ParseError> {
             need(8)?;
             Command::ResourceDetachBacking {
                 resource_id: le32(body, 0),
+            }
+        }
+        #[cfg(feature = "gpu3d")]
+        CMD_GET_CAPSET_INFO => {
+            need(4)?;
+            Command::GetCapsetInfo {
+                capset_index: le32(body, 0),
+            }
+        }
+        #[cfg(feature = "gpu3d")]
+        CMD_GET_CAPSET => {
+            need(8)?;
+            Command::GetCapset {
+                capset_id: le32(body, 0),
+                capset_version: le32(body, 4),
+            }
+        }
+        #[cfg(feature = "gpu3d")]
+        CMD_RESOURCE_CREATE_BLOB => {
+            need(32)?;
+            let resource_id = le32(body, 0);
+            let blob_mem = le32(body, 4);
+            let blob_flags = le32(body, 8);
+            let count = le32(body, 12);
+            let blob_id = le64(body, 16);
+            let size = le64(body, 24);
+            if count > MAX_BACKING_ENTRIES {
+                return Err(ParseError::TooManyEntries {
+                    entries: count,
+                    max: MAX_BACKING_ENTRIES,
+                });
+            }
+            need(32 + count as usize * MEM_ENTRY_LEN)?;
+            let entries = (0..count as usize)
+                .map(|i| {
+                    let at = 32 + i * MEM_ENTRY_LEN;
+                    MemEntry {
+                        addr: le64(body, at),
+                        len: le32(body, at + 8),
+                    }
+                })
+                .collect();
+            Command::ResourceCreateBlob {
+                resource_id,
+                blob_mem,
+                blob_flags,
+                entries,
+                blob_id,
+                size,
+            }
+        }
+        #[cfg(feature = "gpu3d")]
+        CMD_CTX_CREATE => {
+            need(72)?;
+            let nlen = le32(body, 0);
+            let context_init = le32(body, 4);
+            let mut debug_name = [0u8; 64];
+            debug_name.copy_from_slice(&body[8..72]);
+            Command::CtxCreate {
+                nlen,
+                context_init,
+                debug_name,
+            }
+        }
+        #[cfg(feature = "gpu3d")]
+        CMD_CTX_DESTROY => Command::CtxDestroy,
+        #[cfg(feature = "gpu3d")]
+        CMD_CTX_ATTACH_RESOURCE | CMD_CTX_DETACH_RESOURCE => {
+            need(8)?;
+            Command::CtxResource {
+                resource_id: le32(body, 0),
+            }
+        }
+        #[cfg(feature = "gpu3d")]
+        CMD_SUBMIT_3D => {
+            need(8)?;
+            let size = le32(body, 0);
+            let payload_len = size as usize;
+            if payload_len > MAX_SUBMIT_3D {
+                return Err(ParseError::SubmitTooLarge {
+                    size,
+                    max: MAX_SUBMIT_3D,
+                });
+            }
+            need(8 + payload_len)?;
+            let payload = body[8..8 + payload_len].to_vec();
+            Command::Submit3d { size, payload }
+        }
+        #[cfg(feature = "gpu3d")]
+        CMD_RESOURCE_MAP_BLOB | CMD_RESOURCE_UNMAP_BLOB => {
+            need(16)?;
+            Command::BlobMap {
+                resource_id: le32(body, 0),
+                offset: le64(body, 8),
             }
         }
         _ => Command::Unsupported,

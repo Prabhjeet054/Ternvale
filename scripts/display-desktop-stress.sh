@@ -47,7 +47,7 @@ log() { printf 'desktop-stress: %s\n' "$*" >&2; }
 for f in Image initramfs.cpio rootfs.ext4; do
     [[ -f "$assets/$f" ]] || { log "missing $assets/$f; run scripts/make-desktop-rootfs.sh"; exit 1; }
 done
-(cd "$root" && cargo build -p ternvale-cli --quiet)
+"$root/scripts/ternvale-cli-build.sh" --quiet
 "$root/scripts/build-viewer.sh"
 mkdir -p "$out" "$run_dir"
 cp -c "$assets/rootfs.ext4" "$out/rootfs.ext4" 2>/dev/null || cp "$assets/rootfs.ext4" "$out/rootfs.ext4"

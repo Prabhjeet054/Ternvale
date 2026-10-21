@@ -30,6 +30,11 @@ guest="${script_dir}/desktop-guest"
 packages="alpine-baselayout busybox busybox-binsh musl-utils kmod
 xorg-server xf86-video-fbdev xf86-input-evdev xkeyboard-config xkbcomp
 font-misc-misc font-cursor-misc twm xterm xdotool xprop xsetroot xwd xdpyinfo xwininfo"
+# Optional Mesa/Vulkan stack for Venus gpu3d tests (./scripts/display-desktop-venus.sh).
+if [[ "${VENUS:-0}" == 1 ]]; then
+    packages="${packages} mesa mesa-gl mesa-egl mesa-dri-gallium mesa-gles
+vulkan-loader vulkan-tools mesa-demos"
+fi
 
 log() {
     printf 'make-desktop-rootfs: %s\n' "$*" >&2
@@ -39,7 +44,7 @@ for tool in docker python3 gzip cpio; do
     command -v "${tool}" >/dev/null 2>&1 || { log "missing required tool: ${tool}"; exit 1; }
 done
 docker info >/dev/null 2>&1 || { log "docker is not reachable; start Docker Desktop and retry"; exit 1; }
-for f in init ternvale-desktop xwhere xclickwait xname xtrack twmrc; do
+for f in init ternvale-desktop ternvale-3d-probe xwhere xclickwait xname xtrack twmrc; do
     [[ -f "${guest}/${f}" ]] || { log "missing ${guest}/${f}"; exit 1; }
 done
 
@@ -78,7 +83,7 @@ chroot /mnt depmod "${kver}"
 chroot /mnt mkfontdir /usr/share/fonts/misc 2>/dev/null || true
 mkdir -p /mnt/usr/local/bin /mnt/root
 install -m 755 /guest/init /mnt/sbin/init
-install -m 755 /guest/ternvale-desktop /guest/xwhere /guest/xclickwait /guest/xname /guest/xtrack /mnt/usr/local/bin/
+install -m 755 /guest/ternvale-desktop /guest/ternvale-3d-probe /guest/xwhere /guest/xclickwait /guest/xname /guest/xtrack /mnt/usr/local/bin/
 install -m 644 /guest/twmrc /mnt/root/.twmrc
 echo ternvale-desktop >/mnt/etc/hostname
 cp /mnt/boot/vmlinuz-virt /mnt/boot/config-* /kernel/

@@ -29,10 +29,12 @@ done
 
 driver=modesetting
 swcursor=true
+venus_probe=false
 for arg in $(cat /proc/cmdline); do
   case "${arg}" in
     ternvale.xdriver=*) driver="${arg#ternvale.xdriver=}" ;;
     ternvale.hwcursor) swcursor=false ;;
+    ternvale.venus) venus_probe=true ;;
   esac
 done
 case "${driver}" in
@@ -107,5 +109,10 @@ until xdotool search --onlyvisible --name ternvale-xterm >/dev/null 2>&1; do
 done
 geometry=$(xdotool getdisplaygeometry | tr ' ' x)
 say "ready driver=${driver} swcursor=${swcursor} screen=${geometry} keyboard=${kbd} tablet=${tab}"
+if [ "${venus_probe}" = true ]; then
+  export MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu
+  export MESA_VK_DRIVER=venus
+  /usr/local/bin/ternvale-3d-probe &
+fi
 wait "${xorg}"
 say "Xorg exited status=$?"

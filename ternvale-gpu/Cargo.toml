@@ -15,6 +15,14 @@ ternvale-vmm = { path = "../ternvale-vmm" }
 # VirtioDevice, SplitQueue, VirtioIrq and the virtio-mmio / virtio-pci transports from
 # Steps 19/26 (workspace crate); the GPU reuses them instead of a transport of its own.
 ternvale-devices = { path = "../ternvale-devices" }
+# Optional: load libvirglrenderer at runtime for Venus SUBMIT_3D (gpu3d).
+libloading = { version = "0.8", optional = true }
+
+[features]
+default = []
+# Venus virtio-gpu 3D commands (capsets, blobs, contexts, SUBMIT_3D). 2D scanout stays the default
+# build; enable for Mesa Venus guests once host virglrenderer/rutabaga_gfx is linked (see gpu3d/).
+gpu3d = ["dep:libloading"]
 
 [dev-dependencies]
 # Process-wide capture subscriber so tests can assert the DEBUG command and TRACE flush

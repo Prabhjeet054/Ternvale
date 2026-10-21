@@ -8,7 +8,8 @@ use ternvale_devices::SplitQueue;
 use ternvale_vmm::GuestMemory;
 
 use super::{serve, CONTROL_QUEUE, CURSOR_QUEUE};
-use crate::gpu2d::{Gpu2d, GpuStats};
+use crate::engine::GpuEngine;
+use crate::gpu2d::GpuStats;
 use crate::protocol::{self, CMD_RESOURCE_ATTACH_BACKING};
 use crate::scanout::GpuDisplay;
 use crate::test_log;
@@ -25,7 +26,7 @@ const H: u32 = 8;
 struct Rig {
     mem: GuestMemory,
     queue: SplitQueue,
-    gpu: Gpu2d,
+    gpu: GpuEngine,
     display: GpuDisplay,
     stats: Arc<GpuStats>,
     published: u16,
@@ -43,7 +44,7 @@ impl Rig {
         Self {
             mem,
             queue: SplitQueue::new(QUEUE_SIZE, DESC, AVAIL, USED, false, false),
-            gpu: Gpu2d::new(display.clone(), Arc::clone(&stats)),
+            gpu: GpuEngine::new(display.clone(), Arc::clone(&stats)),
             display,
             stats,
             published: 0,

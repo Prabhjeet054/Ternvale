@@ -14,15 +14,37 @@ use ternvale_devices::{IrqHook, QueueNotify, VirtioDevice, VirtioIrq, VirtioMmio
 use ternvale_vmm::pci::Bdf;
 use ternvale_vmm::{DeviceAttach, GuestMemory, MachineError, MmioDevice};
 
-use crate::gpu2d::{Gpu2d, GpuStats, MAX_DIMENSION};
+use crate::engine::GpuEngine;
+use crate::gpu2d::{GpuStats, MAX_DIMENSION};
+#[cfg(feature = "gpu3d")]
+use crate::gpu3d::CAPSET_COUNT;
 use crate::protocol::MAX_SCANOUTS;
 use crate::scanout::GpuDisplay;
 use crate::worker::{self, Kick};
 
 /// `VIRTIO_ID_GPU`.
 pub const VIRTIO_GPU_ID: u32 = 16;
-/// `sizeof(struct virtio_gpu_config)`.
+/// `sizeof(struct virtio_gpu_config)` without `blob_alignment` (2D-only).
 pub const CONFIG_LEN: u64 = 16;
+/// Full `virtio_gpu_config` including `blob_alignment` (`gpu3d`).
+#[cfg(feature = "gpu3d")]
+pub const CONFIG_LEN_3D: u64 = 20;
+/// Page alignment for blob resources (`gpu3d`).
+#[cfg(feature = "gpu3d")]
+pub const BLOB_ALIGNMENT: u32 = 4096;
+
+/// `VIRTIO_GPU_F_VIRGL` (bit 0).
+#[cfg(feature = "gpu3d")]
+pub const F_VIRGL: u64 = 1 << 0;
+/// `VIRTIO_GPU_F_RESOURCE_BLOB` (bit 3).
+#[cfg(feature = "gpu3d")]
+pub const F_RESOURCE_BLOB: u64 = 1 << 3;
+/// `VIRTIO_GPU_F_CONTEXT_INIT` (bit 4).
+#[cfg(feature = "gpu3d")]
+pub const F_CONTEXT_INIT: u64 = 1 << 4;
+/// `VIRTIO_GPU_F_BLOB_ALIGNMENT` (bit 5).
+#[cfg(feature = "gpu3d")]
+pub const F_BLOB_ALIGNMENT: u64 = 1 << 5;
 /// Mode a scanout reports when the config does not choose one.
 pub const DEFAULT_MODE: (u32, u32) = (1280, 800);
 
@@ -123,13 +145,19 @@ impl VirtioGpu {
         config.validate()?;
         let display = GpuDisplay::new(&config.modes);
         let stats = Arc::new(GpuStats::default());
-        let gpu = Gpu2d::new(display.clone(), Arc::clone(&stats));
+        let gpu = GpuEngine::new(display.clone(), Arc::clone(&stats));
         let (tx, rx) = mpsc::channel();
         let join = std::thread::Builder::new()
             .name("ternvale-virtio-gpu".into())
             .spawn(move || worker::run(rx, gpu, memory, irq))
             .map_err(GpuError::Spawn)?;
-        tracing::info!(target: "ternvale::gpu", scanouts = config.modes.len(), modes = ?config.modes, "virtio-gpu device ready (2d only, no cursor)");
+        tracing::info!(
+            target: "ternvale::gpu",
+            scanouts = config.modes.len(),
+            modes = ?config.modes,
+            gpu3d = cfg!(feature = "gpu3d"),
+            "virtio-gpu device ready (no cursor)"
+        );
         Ok(Self {
             config,
             events_read: 0,
@@ -208,12 +236,32 @@ impl VirtioGpu {
         }
     }
 
-    fn config_bytes(&self) -> [u8; CONFIG_LEN as usize] {
-        let mut out = [0u8; CONFIG_LEN as usize];
+    fn config_len(&self) -> u64 {
+        #[cfg(feature = "gpu3d")]
+        {
+            CONFIG_LEN_3D
+        }
+        #[cfg(not(feature = "gpu3d"))]
+        {
+            CONFIG_LEN
+        }
+    }
+
+    fn config_bytes(&self) -> Vec<u8> {
+        let len = self.config_len() as usize;
+        let mut out = vec![0u8; len];
         out[0..4].copy_from_slice(&self.events_read.to_le_bytes());
         // events_clear (4..8) reads as 0.
         out[8..12].copy_from_slice(&(self.config.modes.len() as u32).to_le_bytes());
-        // num_capsets (12..16) is 0: no 3D.
+        #[cfg(feature = "gpu3d")]
+        {
+            out[12..16].copy_from_slice(&CAPSET_COUNT.to_le_bytes());
+            out[16..20].copy_from_slice(&BLOB_ALIGNMENT.to_le_bytes());
+        }
+        #[cfg(not(feature = "gpu3d"))]
+        {
+            // num_capsets (12..16) is 0: no 3D.
+        }
         out
     }
 }
@@ -234,14 +282,26 @@ impl VirtioDevice for VirtioGpu {
         VIRTIO_GPU_ID
     }
 
+    fn device_features(&self) -> u64 {
+        #[cfg(feature = "gpu3d")]
+        {
+            F_VIRGL | F_RESOURCE_BLOB | F_CONTEXT_INIT | F_BLOB_ALIGNMENT
+        }
+        #[cfg(not(feature = "gpu3d"))]
+        {
+            0
+        }
+    }
+
     fn num_queues(&self) -> u16 {
         2
     }
 
     fn read_config(&mut self, offset: u64, size: u8) -> u64 {
         let bytes = self.config_bytes();
+        let config_len = self.config_len();
         let value = match offset.checked_add(u64::from(size)) {
-            Some(end) if end <= CONFIG_LEN && matches!(size, 1 | 2 | 4 | 8) => {
+            Some(end) if end <= config_len && matches!(size, 1 | 2 | 4 | 8) => {
                 let mut word = [0u8; 8];
                 word[..usize::from(size)].copy_from_slice(&bytes[offset as usize..end as usize]);
                 u64::from_le_bytes(word)

@@ -32,6 +32,12 @@ pub struct GpuStats {
     pub flushes: AtomicU64,
     /// Bytes copied from guest backing by `TRANSFER_TO_HOST_2D`.
     pub transferred: AtomicU64,
+    /// 3D contexts created (`gpu3d`).
+    #[cfg(feature = "gpu3d")]
+    pub contexts: AtomicU64,
+    /// `SUBMIT_3D` commands received (`gpu3d`).
+    #[cfg(feature = "gpu3d")]
+    pub submits: AtomicU64,
 }
 
 impl GpuStats {
@@ -43,6 +49,16 @@ impl GpuStats {
             self.errors.load(Ordering::Relaxed),
             self.flushes.load(Ordering::Relaxed),
             self.transferred.load(Ordering::Relaxed),
+        ]
+    }
+
+    /// `(contexts, submits)` when `gpu3d` is enabled.
+    #[cfg(feature = "gpu3d")]
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
+    pub fn snapshot_3d(&self) -> [u64; 2] {
+        [
+            self.contexts.load(Ordering::Relaxed),
+            self.submits.load(Ordering::Relaxed),
         ]
     }
 }
@@ -135,6 +151,18 @@ impl Gpu2d {
                 entries,
             } => self.attach(mem, resource_id, entries),
             Command::ResourceDetachBacking { resource_id } => self.detach(resource_id),
+            #[cfg(feature = "gpu3d")]
+            Command::GetCapsetInfo { .. }
+            | Command::GetCapset { .. }
+            | Command::ResourceCreateBlob { .. }
+            | Command::CtxCreate { .. }
+            | Command::CtxDestroy
+            | Command::CtxResource { .. }
+            | Command::Submit3d { .. }
+            | Command::BlobMap { .. } => Err((
+                protocol::RESP_ERR_UNSPEC,
+                "3d command on 2d path (internal error)".to_string(),
+            )),
             Command::Unsupported => Err((
                 protocol::RESP_ERR_UNSPEC,
                 "not implemented by the 2D-only device".to_string(),
@@ -165,6 +193,8 @@ impl Gpu2d {
         };
         let kind = match error {
             ParseError::TooManyEntries { .. } => protocol::RESP_ERR_INVALID_PARAMETER,
+            #[cfg(feature = "gpu3d")]
+            ParseError::SubmitTooLarge { .. } => protocol::RESP_ERR_INVALID_PARAMETER,
             _ => protocol::RESP_ERR_UNSPEC,
         };
         protocol::response_hdr(&hdr, kind).to_vec()

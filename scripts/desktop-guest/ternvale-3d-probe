@@ -1,0 +1,59 @@
+#!/bin/sh
+# Log Vulkan and OpenGL renderer strings on the serial console (for Venus / gpu3d tests).
+# Expects DISPLAY=:0 and Mesa/Vulkan userspace (see scripts/make-desktop-rootfs.sh VENUS=1).
+export PATH=/usr/local/bin:/usr/bin:/bin
+export DISPLAY="${DISPLAY:-:0}"
+
+log() {
+    printf 'ternvale 3d probe: %s\n' "$*" >/dev/ttyAMA0 2>/dev/null || printf 'ternvale 3d probe: %s\n' "$*"
+}
+
+software() {
+    case "$1" in
+        *llvmpipe* | *softpipe* | *lavapipe* | *SwiftShader* | *software*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+log "start display=$DISPLAY"
+
+if command -v vulkaninfo >/dev/null 2>&1; then
+    vk=$(vulkaninfo --summary 2>/dev/null | sed -n 's/^deviceName[[:space:]]*=[[:space:]]*//p' | head -1)
+    [ -n "$vk" ] || vk=$(vulkaninfo 2>/dev/null | sed -n 's/^[[:space:]]*deviceName = //p' | head -1)
+    log "vulkan_device=${vk:-unknown}"
+    if software "$vk"; then
+        log "vulkan_software_fallback=yes"
+    else
+        log "vulkan_software_fallback=no"
+    fi
+else
+    log "vulkan_device=missing-vulkaninfo"
+fi
+
+if command -v glxinfo >/dev/null 2>&1; then
+    gl=$(glxinfo -B 2>/dev/null | sed -n 's/OpenGL renderer string: //p' | head -1)
+    log "opengl_renderer=${gl:-unknown}"
+    if software "$gl"; then
+        log "opengl_software_fallback=yes"
+    else
+        log "opengl_software_fallback=no"
+    fi
+else
+    log "opengl_renderer=missing-glxinfo"
+fi
+
+if command -v glxgears >/dev/null 2>&1; then
+    log "glxgears=starting"
+    timeout 8 glxgears -info 2>/dev/null | while read -r line; do
+        case "$line" in
+            *FPS*) log "glxgears_${line// /_}" ;;
+        esac
+    done
+    log "glxgears=done"
+else
+    log "glxgears=missing"
+fi
+
+log "finished"

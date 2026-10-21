@@ -167,17 +167,38 @@ fn virtio_mmio_identity_config_and_a_frame_end_to_end() {
     assert_eq!(reg(0x004), 2, "virtio-mmio v2");
     assert_eq!(reg(0x008), u64::from(VIRTIO_GPU_ID));
     set(0x014, 0);
+    #[cfg(not(feature = "gpu3d"))]
     assert_eq!(reg(0x010), 0, "no 2D-profile feature bits");
-    set(0x014, 1);
-    assert_eq!(reg(0x010), 1, "VIRTIO_F_VERSION_1");
+    #[cfg(feature = "gpu3d")]
+    {
+        use crate::device::{F_CONTEXT_INIT, F_RESOURCE_BLOB, F_VIRGL};
+        let low = reg(0x010);
+        set(0x014, 1);
+        let offered = low | (reg(0x010) << 32);
+        assert_ne!(offered & F_VIRGL, 0);
+        assert_ne!(offered & F_RESOURCE_BLOB, 0);
+        assert_ne!(offered & F_CONTEXT_INIT, 0);
+    }
+    #[cfg(not(feature = "gpu3d"))]
+    {
+        set(0x014, 1);
+        assert_eq!(reg(0x010), 1, "VIRTIO_F_VERSION_1");
+    }
     for (queue, max) in [(0, 256), (1, 256), (2, 0)] {
         set(0x030, queue);
         assert_eq!(reg(0x034), max, "queue {queue} max size");
     }
+    #[cfg(not(feature = "gpu3d"))]
     assert_eq!(
         [reg(0x100), reg(0x104), reg(0x108), reg(0x10c)],
         [0, 0, 1, 0],
         "events_read, events_clear, num_scanouts, num_capsets"
+    );
+    #[cfg(feature = "gpu3d")]
+    assert_eq!(
+        [reg(0x100), reg(0x104), reg(0x108), reg(0x10c), reg(0x110)],
+        [0, 0, 1, 1, u64::from(crate::device::BLOB_ALIGNMENT)],
+        "events_read, events_clear, num_scanouts, num_capsets, blob_alignment"
     );
     assert_eq!(bus.read(base + 0x108, 1), 1, "byte access to num_scanouts");
 
@@ -317,5 +338,87 @@ fn virtio_pci_identity_class_and_a_frame_end_to_end() {
         display.frame(1).expect("frame").format,
         None,
         "scanout 1 never set"
+    );
+}
+
+#[cfg(feature = "gpu3d")]
+#[test]
+fn virtio_mmio_gpu3d_features_and_venus_capset() {
+    use crate::device::{BLOB_ALIGNMENT, F_CONTEXT_INIT, F_RESOURCE_BLOB, F_VIRGL};
+    use crate::gpu3d::CAPSET_VENUS;
+    use crate::protocol::{CMD_GET_CAPSET, CMD_GET_CAPSET_INFO, RESP_OK_CAPSET};
+
+    let memory = testutil::memory();
+    let hook: ternvale_devices::IrqHook = Arc::new(|_| {});
+    let gpu =
+        VirtioGpu::attach(SLOT, GpuConfig::default(), Arc::clone(&memory), hook).expect("attach");
+    let mut bus = MmioBus::new();
+    bus.register(gpu.base, gpu.size, gpu.device)
+        .expect("register");
+    let bus = Bus::new(bus);
+    let base = gpu.base;
+    let reg = |offset: u64| bus.read(base + offset, 4);
+    let set = |offset: u64, value: u64| bus.write(base + offset, 4, value);
+
+    set(0x014, 0);
+    let low = reg(0x010);
+    set(0x014, 1);
+    let high = reg(0x010);
+    let offered = low | (high << 32);
+    assert_ne!(offered & F_VIRGL, 0);
+    assert_ne!(offered & F_RESOURCE_BLOB, 0);
+    assert_ne!(offered & F_CONTEXT_INIT, 0);
+    assert_eq!(
+        [reg(0x108), reg(0x10c), reg(0x110)],
+        [1, 1, u64::from(BLOB_ALIGNMENT)],
+        "num_scanouts, num_capsets, blob_alignment"
+    );
+
+    set(0x070, u64::from(STATUS_ACKNOWLEDGE));
+    set(0x070, u64::from(STATUS_ACKNOWLEDGE | STATUS_DRIVER));
+    set(0x024, 1);
+    set(0x020, 1);
+    set(0x070, u64::from(FEATURES_OK));
+    set(0x070, u64::from(FEATURES_OK | STATUS_DRIVER_OK));
+
+    let mut control = Driver::new(Arc::clone(&memory), 0);
+    set(0x030, 0);
+    set(0x038, u64::from(QUEUE_SIZE));
+    for (offset, addr) in [
+        (0x080, control.desc_addr()),
+        (0x090, control.avail_addr()),
+        (0x0a0, control.used_addr()),
+    ] {
+        set(offset, addr & 0xffff_ffff);
+        set(offset + 4, addr >> 32);
+    }
+    set(0x044, 1);
+    let kick = |q: u16| set(0x050, u64::from(q));
+
+    let mut req = vec![0u8; protocol::HDR_LEN + 4];
+    req[0..4].copy_from_slice(&CMD_GET_CAPSET_INFO.to_le_bytes());
+    let info = exchange(&mut control, &kick, &req, 36);
+    assert_eq!(
+        u32::from_le_bytes(
+            info[protocol::HDR_LEN..protocol::HDR_LEN + 4]
+                .try_into()
+                .unwrap()
+        ),
+        CAPSET_VENUS
+    );
+
+    let mut req2 = vec![0u8; protocol::HDR_LEN + 8];
+    req2[0..4].copy_from_slice(&CMD_GET_CAPSET.to_le_bytes());
+    req2[protocol::HDR_LEN..protocol::HDR_LEN + 4].copy_from_slice(&CAPSET_VENUS.to_le_bytes());
+    req2[protocol::HDR_LEN + 4..protocol::HDR_LEN + 8].copy_from_slice(&1u32.to_le_bytes());
+    let cap = exchange(
+        &mut control,
+        &kick,
+        &req2,
+        (protocol::HDR_LEN + crate::gpu3d::VENUS_CAPSET_BYTES) as u32,
+    );
+    assert_eq!(
+        u32::from_le_bytes(cap[0..4].try_into().unwrap()),
+        RESP_OK_CAPSET
     );
 }
