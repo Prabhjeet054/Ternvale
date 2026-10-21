@@ -103,6 +103,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
     let nics: Vec<String> = config.nics.iter().map(|nic| nic.backend.clone()).collect();
     let device = vsock.as_ref().map(|setup| setup.device.clone());
     let transport = config.virtio_transport();
+    let audio = config.audio_enabled();
     let session_slot = Arc::clone(&session);
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
         let wanted = Wanted {
@@ -111,6 +112,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
             nics: &nics,
             vsock: device.as_ref(),
             display: plan.as_ref(),
+            audio,
         };
         attach_devices(attach, &wanted, &stats, &session_slot)
     });
@@ -191,6 +193,8 @@ struct Wanted<'a> {
     /// `--display window`: a virtio-gpu after vsock, then a virtio-input
     /// keyboard and tablet (all PCI with `virtio-pci`).
     display: Option<&'a DisplayPlan>,
+    /// Attach virtio-sound on the next free virtio-mmio slot.
+    audio: bool,
 }
 
 /// Block devices first ([`attach_blocks`]: virtio-mmio slots `0..d`, or PCI
@@ -263,6 +267,23 @@ fn attach_devices(
             .start(display, Some(input))
             .map_err(|error| MachineError::Attach(format!("{error:#}")))?;
         *lockwatch::lock(session, "display-session") = Some(started);
+    }
+    if wanted.audio {
+        let slot = u32::try_from(
+            mmio_slots
+                + nics.len()
+                + usize::from(vsock.is_some())
+                + usize::from(wanted.display.is_some()) * 3,
+        )
+        .map_err(|_| MachineError::Attach("virtio-sound slot does not fit in u32".into()))?;
+        let (base, size, device) = ternvale_devices::VirtioSound::attach(
+            slot,
+            Arc::clone(&attach.memory),
+            attach.virtio_irq_hook(slot),
+        )
+        .map_err(|error| MachineError::Attach(format!("virtio-sound: {error}")))?;
+        tracing::info!(target: "ternvale::virtio::sound", slot, base = %format!("{base:#x}"), "attached virtio-sound (output)");
+        devices.push((base, size, device));
     }
     Ok(devices)
 }

@@ -1,0 +1,11 @@
+[package]
+name = "ternvale-audio-host"
+description = "Host audio playback for Ternvale (CoreAudio via cpal)."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+cpal = "0.15"
+thiserror = "2"
+tracing = "0.1"

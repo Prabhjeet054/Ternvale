@@ -107,6 +107,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         vsock: None,
         tpm: None,
         usb: None,
+        audio: None,
     }
 }
 
@@ -261,6 +262,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         vsock: None,
         tpm: None,
         usb: None,
+        audio: None,
     }
 }
 

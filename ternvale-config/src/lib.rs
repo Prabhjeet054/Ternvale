@@ -3,6 +3,7 @@
 //! The on-disk format is TOML, parsed with serde. [`VmConfig::from_toml`] rejects
 //! unknown fields and runs validation before returning.
 
+mod audio;
 mod error;
 mod firmware_tables;
 mod iso;
@@ -12,6 +13,7 @@ mod usb;
 mod vm;
 mod vsock;
 
+pub use audio::AudioSection;
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
 pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BYTES};

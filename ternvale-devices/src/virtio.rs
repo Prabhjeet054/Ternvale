@@ -14,6 +14,7 @@ mod net;
 mod pci;
 mod queue;
 mod rng;
+mod sound;
 mod vsock;
 
 pub use attach_disks::{
@@ -43,6 +44,7 @@ pub use net::{VmnetBackend, VMNET_SHARED_MODE};
 pub use pci::{attach_pci, VirtioPci, VIRTIO_PCI_DEVICE_BASE, VIRTIO_PCI_VENDOR_ID};
 pub use queue::{Buffer, Chain, SplitQueue};
 pub use rng::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
+pub use sound::{AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};
 pub use vsock::{
     guest_socket_path, host_socket_path, op_name as vsock_op_name, AttachedVsock, CidLease,
     VirtioVsock, VsockConfig, VsockCounters, VsockError, VsockHeader, VsockStats, FIRST_GUEST_CID,

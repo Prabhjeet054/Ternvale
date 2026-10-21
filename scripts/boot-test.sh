@@ -14,6 +14,8 @@
 #                       then tshark filters over net.pcap via scripts/check-pcap.sh
 #   devices           — virtio-rng /dev/hwrng samples and a vsock ping/pong on port 5000
 #                       (needs ./scripts/make-devices-initramfs.sh)
+#   audio             — virtio_snd + speaker-test 440 Hz sine (needs ./scripts/make-audio-initramfs.sh);
+#                       see ./scripts/audio-boot-check.sh
 #   gpu               — Linux virtio-gpu + fbdev on virtio-mmio with a 1024x768 scanout:
 #                       fb0 sysfs geometry and fbset, then two rows written through /dev/fb0
 #                       must appear in the host frame (needs ./scripts/make-gpu-initramfs.sh)

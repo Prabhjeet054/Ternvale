@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
-use crate::{IsoSection, Profile, TpmSection, UsbSection, VsockSection};
+use crate::{AudioSection, IsoSection, Profile, TpmSection, UsbSection, VsockSection};
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
@@ -91,6 +91,9 @@ pub struct VmConfig {
     /// Virtual xHCI + HID keyboard/mouse; unset means enabled. See [`UsbSection`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usb: Option<UsbSection>,
+    /// virtio-sound playback to CoreAudio; unset means enabled. See [`AudioSection`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<AudioSection>,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -254,6 +257,7 @@ impl VmConfig {
         self.tpm_section()
             .validate(self.effective_firmware_tables())?;
         self.usb_section().validate()?;
+        self.audio_section().validate()?;
         tracing::debug!(target: "ternvale::config", name = %self.name, "VM config is valid");
         Ok(())
     }

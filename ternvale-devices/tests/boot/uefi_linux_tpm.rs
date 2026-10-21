@@ -219,6 +219,7 @@ fn boot_once(
             enabled: tpm,
         }),
         usb: None,
+        audio: None,
     };
     tracing::info!(target: "ternvale::boot", boot, tpm, serial = %serial_log.display(), "uefi linux tpm boot");
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;

@@ -39,6 +39,7 @@ pub use virtio::{
     VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
 };
 pub use virtio::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
+pub use virtio::{AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};
 #[cfg(feature = "vmnet")]
 pub use virtio::{VmnetBackend, VMNET_SHARED_MODE};
 

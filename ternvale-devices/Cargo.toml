@@ -31,6 +31,7 @@ ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 # BlockDevice / VirtioTransport: attach_blocks places a config's disks and [iso] slots
 # (workspace crate, already built through ternvale-vmm).
 ternvale-config = { path = "../ternvale-config" }
+ternvale-audio-host = { path = "../ternvale-audio-host" }
 
 [dev-dependencies]
 # AgentServer tests run the real agent loop over a Unix socket.

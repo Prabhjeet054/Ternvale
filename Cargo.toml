@@ -9,6 +9,7 @@ members = [
     "ternvale-gpu",
     "ternvale-usb",
     "ternvale-usb-host",
+    "ternvale-audio-host",
     "ternvale-vmm",
     "ternvale-devices",
     "ternvale-cli",

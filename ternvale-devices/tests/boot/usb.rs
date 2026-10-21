@@ -1,7 +1,7 @@
 //! Direct Linux boot: virtual xHCI visible in `lsusb` (keyboard VID 0627).
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ternvale_config::VmConfig;
 use ternvale_devices::{Pl011, Step};
@@ -54,6 +54,7 @@ pub fn run() -> Result<(), String> {
         vsock: None,
         tpm: None,
         usb: None,
+        audio: None,
     };
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));

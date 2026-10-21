@@ -91,6 +91,7 @@ fn boot(firmware: &Path, serial_log: &Path, log_dir: &Path, host_log: &Path) -> 
         vsock: None,
         tpm: None,
         usb: None,
+        audio: None,
     };
     tracing::info!(
         target: "ternvale::boot",

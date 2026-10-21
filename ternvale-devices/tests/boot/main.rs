@@ -8,6 +8,8 @@
 //! disk (also needs `./scripts/make-pci-assets.sh`; the kernel has `virtio_pci` built in).
 //! Set `TERNVALE_BOOT_SCENARIO=net` to ping the loopback gateway over virtio-net
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
+//! Set `TERNVALE_BOOT_SCENARIO=audio` to load virtio_snd and play a 440 Hz sine through
+//! speaker-test (needs `./scripts/make-audio-initramfs.sh` under `test-assets/virtio-audio/`).
 //! Set `TERNVALE_BOOT_SCENARIO=devices` to read /dev/hwrng and ping/pong over vsock
 //! (requires `./scripts/make-devices-initramfs.sh` assets under `test-assets/virtio-devices/`).
 //! Set `TERNVALE_BOOT_SCENARIO=gpu` to boot Linux's virtio-gpu driver on virtio-mmio with a
@@ -66,6 +68,7 @@
 //! from CD or DVD" (the harness presses Enter), and the boot manager must read `boot.wim`.
 
 mod agent;
+mod audio;
 mod common;
 mod cpio;
 mod desktop;
@@ -117,6 +120,7 @@ fn run() -> Result<(), String> {
         "pci" => rootfs::run_pci(),
         "net" => net::run(),
         "devices" => devices::run(),
+        "audio" => audio::run(),
         "usb" => usb::run(),
         "gpu" => gpu::run(),
         "input" => input::run(),
@@ -137,7 +141,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, usb, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, usb, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

@@ -54,6 +54,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         vsock,
         tpm: None,
         usb: None,
+        audio: None,
     }
 }
 

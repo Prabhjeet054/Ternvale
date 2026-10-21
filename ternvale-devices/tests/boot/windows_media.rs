@@ -268,6 +268,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         vsock: None,
         tpm: None,
         usb: None,
+        audio: None,
     };
     vm.validate()
         .map_err(|err| format!("linux config: {err}"))?;
