@@ -13,8 +13,11 @@ mod command;
 mod event;
 mod guest_mem;
 mod hid;
+mod host;
 mod input;
+mod input_ctx;
 mod mem;
+mod passthrough;
 mod regs;
 mod slots;
 mod transfer;
@@ -23,11 +26,15 @@ mod xhci;
 
 pub use guest_mem::{GuestMemoryAccess, MemError};
 pub use hid::{BootKeyboardReport, BootMouseReport, HidKind};
+pub use host::{HostUsbBackend, HostUsbError, UsbControlSetup};
 pub use input::{InputError, UsbInput, UsbInputStats};
+pub use passthrough::{ControlJob, PassthroughBinding, PassthroughWorker};
 pub use regs::{MAX_SLOTS, MMIO_SIZE, NUM_PORTS};
 pub use trb::{type_name as trb_type_name, Trb, TRB_SIZE};
-pub use xhci::{attach_shared, Xhci, XhciError};
+pub use xhci::{attach_shared, attach_shared_with_passthrough, Xhci, XhciError};
 
+#[cfg(test)]
+mod host_tests;
 #[cfg(test)]
 mod xhci_tests;
 

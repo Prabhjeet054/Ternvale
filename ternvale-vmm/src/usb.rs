@@ -3,7 +3,11 @@
 use std::sync::{Arc, Mutex};
 
 use ternvale_config::VmConfig;
-use ternvale_usb::{attach_shared, GuestMemoryAccess, MemError, UsbInput, Xhci, MMIO_SIZE};
+use ternvale_usb::{
+    attach_shared_with_passthrough, GuestMemoryAccess, MemError, PassthroughBinding, UsbInput,
+    Xhci, MMIO_SIZE,
+};
+use ternvale_usb_host::claim_devices;
 
 use crate::machine::MachineError;
 use crate::memory::GuestMemory;
@@ -87,8 +91,23 @@ pub(crate) fn register(
     let adapter: Arc<Mutex<dyn GuestMemoryAccess + Send>> =
         Arc::new(Mutex::new(GuestMemAdapter(Arc::clone(&memory))));
     let irq = attach.spi_hook(USB_SPI);
-    let (inner, input) = attach_shared(XHCI_BASE, adapter, irq)
-        .map_err(|error| MachineError::Attach(format!("xhci: {error}")))?;
+    let usb_cfg = config.usb_section();
+    let port_entries = usb_cfg.passthrough_ports();
+    let claimed = claim_devices(&usb_cfg.passthrough);
+    let bindings: Vec<PassthroughBinding> = claimed
+        .into_iter()
+        .map(|(entry, backend)| {
+            let port = port_entries
+                .iter()
+                .find(|(_, vid, pid)| *vid == entry.vendor_id && *pid == entry.product_id)
+                .map(|(port, _, _)| *port)
+                .unwrap_or(3);
+            PassthroughBinding { port, backend }
+        })
+        .collect();
+    let (inner, input) =
+        attach_shared_with_passthrough(XHCI_BASE, adapter, irq, &port_entries, bindings)
+            .map_err(|error| MachineError::Attach(format!("xhci: {error}")))?;
     bus.register(XHCI_BASE, MMIO_SIZE, Box::new(XhciDevice { inner }))?;
     tracing::info!(
         target: "ternvale::usb",

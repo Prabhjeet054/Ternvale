@@ -9,8 +9,8 @@ pub const MMIO_SIZE: u64 = 0x5000;
 pub const CAPLENGTH: u8 = 0x20;
 pub const HCIVERSION: u16 = 0x0100;
 
-/// Root hub port count (virtual keyboard + mouse).
-pub const NUM_PORTS: u8 = 2;
+/// Root hub port count (virtual HID + passthrough ports).
+pub const NUM_PORTS: u8 = 4;
 /// Device slot contexts the controller offers (slot 0 unused by guests).
 pub const MAX_SLOTS: u8 = 8;
 /// One interrupter (event ring).

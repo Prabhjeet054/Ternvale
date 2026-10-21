@@ -14,6 +14,8 @@ pub struct EpRing {
     pub max_packet: u16,
     /// Endpoint is configured and active.
     pub enabled: bool,
+    /// Waiting on the passthrough worker for this ring.
+    pub passthrough_busy: bool,
 }
 
 /// One device slot (xHCI slot id 1..=MAX_SLOTS).
@@ -23,12 +25,20 @@ pub struct Slot {
     pub port: u8,
     /// USB device address.
     pub address: u8,
-    /// Attached HID kind, if any.
+    /// Attached HID kind, if any (virtual devices only).
     pub hid: Option<HidKind>,
+    /// When true, control/bulk transfers are forwarded to a host USB backend.
+    pub passthrough: bool,
     /// EP0 default control pipe.
     pub ep0: EpRing,
-    /// Interrupt IN (EP1).
+    /// Interrupt IN (EP1) — legacy single-endpoint path for virtual HID.
     pub ep_in: EpRing,
+    /// Per-DCI transfer rings (index = device context index).
+    pub ep_by_dci: Vec<EpRing>,
+    /// USB endpoint address per DCI (`0x81`, `0x02`, …).
+    pub endpoint_addr: Vec<u8>,
+    /// EP0 ring walk is waiting on the passthrough worker.
+    pub ep0_passthrough_busy: bool,
     /// Pending IN report for HID interrupt endpoint.
     pub pending_in: Vec<u8>,
 }
@@ -39,11 +49,15 @@ impl Default for Slot {
             port: 0,
             address: 0,
             hid: None,
+            passthrough: false,
             ep0: EpRing::default(),
             ep_in: EpRing {
                 max_packet: 8,
                 ..EpRing::default()
             },
+            ep_by_dci: vec![EpRing::default(); 32],
+            endpoint_addr: vec![0u8; 32],
+            ep0_passthrough_busy: false,
             pending_in: Vec::new(),
         }
     }
@@ -54,6 +68,62 @@ impl Slot {
     pub fn in_use(&self) -> bool {
         self.port != 0
     }
+
+    /// Configure or replace the transfer ring for `dci`.
+    pub fn set_endpoint_ring(
+        &mut self,
+        dci: u8,
+        dequeue: u64,
+        enabled: bool,
+        endpoint: Option<u8>,
+    ) {
+        let index = dci as usize;
+        if index < self.ep_by_dci.len() {
+            self.ep_by_dci[index].dequeue = dequeue;
+            self.ep_by_dci[index].cycle = true;
+            self.ep_by_dci[index].enabled = enabled;
+        }
+        if let Some(addr) = endpoint {
+            if index < self.endpoint_addr.len() {
+                self.endpoint_addr[index] = addr;
+            }
+        }
+        if dci == 1 {
+            self.ep0.dequeue = dequeue;
+            self.ep0.cycle = true;
+            self.ep0.enabled = enabled;
+        }
+    }
+
+    /// Transfer ring for `dci` (falls back to legacy `ep_in` for DCI 2).
+    pub fn ep_ring(&self, dci: u8) -> &EpRing {
+        if dci == 0 {
+            return &self.ep0;
+        }
+        let index = dci as usize;
+        if index < self.ep_by_dci.len() && self.ep_by_dci[index].enabled {
+            return &self.ep_by_dci[index];
+        }
+        if dci == 2 {
+            return &self.ep_in;
+        }
+        &self.ep0
+    }
+
+    /// Mutable transfer ring for `dci`.
+    pub fn ep_ring_mut(&mut self, dci: u8) -> &mut EpRing {
+        if dci == 0 {
+            return &mut self.ep0;
+        }
+        let index = dci as usize;
+        if index < self.ep_by_dci.len() && self.ep_by_dci[index].enabled {
+            return &mut self.ep_by_dci[index];
+        }
+        if dci == 2 {
+            return &mut self.ep_in;
+        }
+        &mut self.ep0
+    }
 }
 
 /// Root port and slot allocator.
@@ -63,6 +133,20 @@ pub struct SlotTable {
     slots: Vec<Slot>,
 }
 
+/// What is wired to a root port.
+#[derive(Debug, Clone, Copy)]
+pub enum PortKind {
+    /// Virtual boot HID.
+    Hid(HidKind),
+    /// Host passthrough device (must be claimed before the VM starts).
+    Passthrough {
+        /// USB vendor ID.
+        vendor_id: u16,
+        /// USB product ID.
+        product_id: u16,
+    },
+}
+
 /// One root hub port.
 #[derive(Debug, Clone, Copy)]
 pub struct Port {
@@ -70,8 +154,8 @@ pub struct Port {
     pub connected: bool,
     /// Port enabled.
     pub enabled: bool,
-    /// Which HID is wired to this port.
-    pub kind: HidKind,
+    /// Port role.
+    pub kind: PortKind,
 }
 
 impl SlotTable {
@@ -82,12 +166,28 @@ impl SlotTable {
             Port {
                 connected: true,
                 enabled: false,
-                kind: HidKind::Keyboard,
+                kind: PortKind::Hid(HidKind::Keyboard),
             },
             Port {
                 connected: true,
                 enabled: false,
-                kind: HidKind::Mouse,
+                kind: PortKind::Hid(HidKind::Mouse),
+            },
+            Port {
+                connected: false,
+                enabled: false,
+                kind: PortKind::Passthrough {
+                    vendor_id: 0,
+                    product_id: 0,
+                },
+            },
+            Port {
+                connected: false,
+                enabled: false,
+                kind: PortKind::Passthrough {
+                    vendor_id: 0,
+                    product_id: 0,
+                },
             },
         ];
         tracing::info!(
@@ -133,33 +233,75 @@ impl SlotTable {
         }
     }
 
+    /// Wire passthrough entries onto root ports 3+ (must be called before the guest enumerates).
+    #[tracing::instrument(level = "debug", target = "ternvale::usb", skip(self, entries))]
+    pub fn configure_passthrough_ports(&mut self, entries: &[(u8, u16, u16)]) {
+        for (port, vid, pid) in entries {
+            let index = *port as usize - 1;
+            if index >= self.ports.len() {
+                tracing::warn!(target: "ternvale::usb", port, "passthrough port out of range");
+                continue;
+            }
+            self.ports[index] = Port {
+                connected: true,
+                enabled: false,
+                kind: PortKind::Passthrough {
+                    vendor_id: *vid,
+                    product_id: *pid,
+                },
+            };
+            tracing::info!(
+                target: "ternvale::usb",
+                port,
+                vendor_id = format!("{vid:#06x}"),
+                product_id = format!("{pid:#06x}"),
+                "passthrough port configured"
+            );
+        }
+    }
+
     /// Allocate the first free slot for a port's device.
     pub fn enable_slot(&mut self) -> Option<u8> {
         for (index, slot) in self.slots.iter_mut().enumerate() {
             if !slot.in_use() {
                 let id = index + 1;
-                // Prefer keyboard then mouse by port order.
-                let port = self
-                    .ports
-                    .iter()
-                    .find(|p| p.connected && !p.enabled)
-                    .map(|p| (p.kind, p));
-                if let Some((kind, _)) = port {
-                    let port_num = kind.port();
-                    slot.port = port_num;
-                    slot.hid = Some(kind);
-                    slot.address = kind.default_address();
-                    self.ports[port_num as usize - 1].enabled = true;
-                    tracing::info!(
-                        target: "ternvale::usb",
-                        slot_id = id,
-                        port = port_num,
-                        hid = ?kind,
-                        "xhci slot enabled"
-                    );
-                    return Some(id as u8);
+                let port_idx = self.ports.iter().position(|p| p.connected && !p.enabled);
+                let port_idx = port_idx?;
+                let port_num = port_idx + 1;
+                let kind = self.ports[port_idx].kind;
+                slot.port = port_num as u8;
+                match kind {
+                    PortKind::Hid(hid) => {
+                        slot.hid = Some(hid);
+                        slot.passthrough = false;
+                        slot.address = hid.default_address();
+                        tracing::info!(
+                            target: "ternvale::usb",
+                            slot_id = id,
+                            port = port_num,
+                            hid = ?hid,
+                            "xhci slot enabled"
+                        );
+                    }
+                    PortKind::Passthrough {
+                        vendor_id,
+                        product_id,
+                    } => {
+                        slot.hid = None;
+                        slot.passthrough = true;
+                        slot.address = id as u8;
+                        tracing::info!(
+                            target: "ternvale::usb",
+                            slot_id = id,
+                            port = port_num,
+                            vendor_id = format!("{vendor_id:#06x}"),
+                            product_id = format!("{product_id:#06x}"),
+                            "xhci passthrough slot enabled"
+                        );
+                    }
                 }
-                return None;
+                self.ports[port_idx].enabled = true;
+                return Some(id as u8);
             }
         }
         None
@@ -188,6 +330,37 @@ impl SlotTable {
         }
         tracing::info!(target: "ternvale::usb", slot_id, port, "xhci slot freed");
         true
+    }
+
+    /// Guest unplug: mark `port` disconnected and free its slot.
+    #[tracing::instrument(level = "warn", target = "ternvale::usb", skip(self), fields(port))]
+    pub fn disconnect_passthrough_port(&mut self, port: u8) -> Option<u8> {
+        let index = port as usize - 1;
+        if index >= self.ports.len() {
+            tracing::warn!(target: "ternvale::usb", port, "disconnect on invalid port");
+            return None;
+        }
+        self.ports[index].connected = false;
+        self.ports[index].enabled = false;
+        let slot_id = self
+            .slots
+            .iter()
+            .enumerate()
+            .find(|(_, s)| s.port == port)
+            .map(|(i, _)| i + 1);
+        if let Some(id) = slot_id {
+            let id = id as u8;
+            self.disable_slot(id);
+            tracing::warn!(
+                target: "ternvale::usb",
+                port,
+                slot_id = id,
+                "passthrough device disconnected from root port"
+            );
+            return Some(id);
+        }
+        tracing::warn!(target: "ternvale::usb", port, "passthrough disconnect with no active slot");
+        None
     }
 
     /// Slot id serving `port`, if enabled.

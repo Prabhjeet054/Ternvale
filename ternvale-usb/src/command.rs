@@ -2,6 +2,7 @@
 
 use crate::event::{self, EventRing, CC_SUCCESS, CC_TRB_ERROR};
 use crate::guest_mem::{GuestMemoryAccess, MemError};
+use crate::input_ctx::apply_input_context;
 use crate::slots::SlotTable;
 use crate::trb::{
     TRB_TYPE_ADDRESS_DEVICE, TRB_TYPE_CONFIGURE_EP, TRB_TYPE_DISABLE_SLOT, TRB_TYPE_ENABLE_SLOT,
@@ -74,13 +75,18 @@ impl CommandRing {
                 TRB_TYPE_CONFIGURE_EP => {
                     let slot_id = ((trb.control >> 24) & 0xff) as u8;
                     if let Some(slot) = slots.slot_mut(slot_id) {
-                        slot.ep0.enabled = true;
-                        slot.ep0.dequeue = trb.param;
-                        slot.ep0.cycle = true;
-                        slot.ep_in.enabled = true;
-                        slot.ep_in.dequeue = trb.param;
-                        slot.ep_in.cycle = true;
-                        tracing::info!(target: "ternvale::usb", slot_id, "xhci configure endpoint");
+                        let passthrough = slot.passthrough;
+                        if passthrough {
+                            apply_input_context(mem, trb.param, slot)?;
+                        } else {
+                            slot.ep0.enabled = true;
+                            slot.ep0.dequeue = trb.param;
+                            slot.ep0.cycle = true;
+                            slot.ep_in.enabled = true;
+                            slot.ep_in.dequeue = trb.param;
+                            slot.ep_in.cycle = true;
+                        }
+                        tracing::info!(target: "ternvale::usb", slot_id, passthrough, "xhci configure endpoint");
                         events.post_command(mem, slot_id, CC_SUCCESS, cmd_ptr)?;
                     } else {
                         events.post_command(mem, 0, CC_TRB_ERROR, cmd_ptr)?;

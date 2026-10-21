@@ -20,7 +20,7 @@ pub use profile::{
     WINDOWS_MIN_RAM_MIB,
 };
 pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
-pub use usb::UsbSection;
+pub use usb::{UsbPassthroughEntry, UsbSection};
 pub use vm::{default_nvram_path, Disk, Nic, VmConfig};
 pub use vsock::{VsockSection, MAX_UDS_DIR};
 

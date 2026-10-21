@@ -3,6 +3,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::guest_mem::{GuestMemoryAccess, MemError};
+use crate::passthrough::PassthroughWorker;
 
 use crate::command::CommandRing;
 use crate::event::EventRing;
@@ -39,6 +40,7 @@ pub struct Xhci {
     erst_base: u64,
     erdp: u64,
     irq: Option<Arc<dyn Fn(bool) + Send + Sync>>,
+    passthrough: Option<Arc<PassthroughWorker>>,
 }
 
 impl Xhci {
@@ -86,7 +88,53 @@ impl Xhci {
             erst_base: 0,
             erdp: 0,
             irq,
+            passthrough: None,
         })
+    }
+
+    /// Attach the passthrough worker used to forward transfers to host USB devices.
+    #[tracing::instrument(level = "debug", target = "ternvale::usb", skip_all)]
+    pub fn set_passthrough_worker(&mut self, worker: Arc<PassthroughWorker>) {
+        self.passthrough = Some(worker);
+        tracing::info!(target: "ternvale::usb", "xhci passthrough worker attached");
+    }
+
+    /// Configure root ports and slot table for host passthrough entries `(port, vid, pid)`.
+    #[tracing::instrument(level = "debug", target = "ternvale::usb", skip(self, entries))]
+    pub fn configure_passthrough_ports(&mut self, entries: &[(u8, u16, u16)]) {
+        self.slots.configure_passthrough_ports(entries);
+    }
+
+    /// Post a transfer completion from the passthrough worker thread.
+    pub(crate) fn post_passthrough_completion(
+        &mut self,
+        slot_id: u8,
+        dci: u8,
+        code: u32,
+        trb_ptr: u64,
+        bytes: u32,
+        mem: &mut dyn GuestMemoryAccess,
+    ) -> Result<(), MemError> {
+        self.events.post(mem, slot_id, dci, code, trb_ptr, bytes)?;
+        Ok(())
+    }
+
+    /// Slot table (passthrough worker completion path).
+    pub(crate) fn slots_mut(&mut self) -> &mut SlotTable {
+        &mut self.slots
+    }
+
+    /// Host unplug: drop the guest port/slot and pulse IRQ so the guest observes disconnect.
+    #[tracing::instrument(
+        level = "warn",
+        target = "ternvale::usb",
+        skip(self, _mem),
+        fields(port)
+    )]
+    pub fn handle_host_usb_disconnect(&mut self, port: u8, _mem: &mut dyn GuestMemoryAccess) {
+        if self.slots.disconnect_passthrough_port(port).is_some() {
+            self.pulse_irq();
+        }
     }
 
     pub(crate) fn pulse_irq(&mut self) {
@@ -316,7 +364,15 @@ impl Xhci {
                 .run(&mut *mem, &mut self.slots, &mut self.events)
                 .is_ok()
         } else if let Some(s) = self.slots.slot_mut(slot) {
-            transfer::process_transfer(&mut *mem, slot, target, s, &mut self.events).is_ok()
+            transfer::process_transfer(
+                &mut *mem,
+                slot,
+                target,
+                s,
+                &mut self.events,
+                self.passthrough.as_ref(),
+            )
+            .is_ok()
         } else {
             false
         };
@@ -338,8 +394,33 @@ pub fn attach_shared(
     memory: Arc<Mutex<dyn GuestMemoryAccess + Send>>,
     irq: Arc<dyn Fn(bool) + Send + Sync>,
 ) -> Result<(Arc<Mutex<Xhci>>, crate::UsbInput), XhciError> {
-    let xhci = Xhci::new_with_irq(base, memory, Some(irq))?;
+    attach_shared_with_passthrough(base, memory, irq, &[], vec![])
+}
+
+/// Like [`attach_shared`] with passthrough ports and host backends.
+#[tracing::instrument(level = "debug", target = "ternvale::usb", skip_all, fields(passthrough_ports = port_entries.len(), backends = bindings.len()))]
+pub fn attach_shared_with_passthrough(
+    base: u64,
+    memory: Arc<Mutex<dyn GuestMemoryAccess + Send>>,
+    irq: Arc<dyn Fn(bool) + Send + Sync>,
+    port_entries: &[(u8, u16, u16)],
+    bindings: Vec<crate::passthrough::PassthroughBinding>,
+) -> Result<(Arc<Mutex<Xhci>>, crate::UsbInput), XhciError> {
+    let mut xhci = Xhci::new_with_irq(base, Arc::clone(&memory), Some(irq))?;
+    xhci.configure_passthrough_ports(port_entries);
     let inner = Arc::new(Mutex::new(xhci));
+    if !bindings.is_empty() {
+        let worker = Arc::new(PassthroughWorker::start(
+            bindings,
+            Arc::clone(&memory),
+            Arc::clone(&inner),
+        ));
+        if let Ok(mut guard) = inner.lock() {
+            guard.set_passthrough_worker(worker);
+        } else {
+            tracing::error!(target: "ternvale::usb", "xhci lock poisoned installing passthrough worker");
+        }
+    }
     let input = crate::UsbInput::new(Arc::clone(&inner));
     Ok((inner, input))
 }

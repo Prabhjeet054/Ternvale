@@ -159,6 +159,15 @@ pub enum ConfigError {
         /// What is wrong.
         reason: String,
     },
+
+    /// A `[usb]` passthrough entry is invalid.
+    #[error("{field}: {reason}")]
+    InvalidUsb {
+        /// Field, such as `usb.passthrough[0].port`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
 }
 
 /// Error type other Ternvale crates can return without depending on each other.
