@@ -65,7 +65,12 @@ impl StackManifest {
         off += base_len;
         let count = u32::from_le_bytes(bytes[off..off + 4].try_into().expect("count")) as usize;
         off += 4;
-        let base = dir.join(base_rel);
+        let base = Path::new(base_rel);
+        let base = if base.is_absolute() {
+            base.to_path_buf()
+        } else {
+            dir.join(base)
+        };
         let mut deltas = Vec::with_capacity(count);
         for _ in 0..count {
             if bytes.len() < off + 4 {
@@ -144,15 +149,9 @@ fn relative_path(dir: &Path, target: &Path) -> Result<String, SnapshotError> {
         path: target.to_path_buf(),
         source,
     })?;
-    let rel = target
-        .strip_prefix(&dir)
-        .map_err(|_| SnapshotError::InvalidManifest {
-            path: target.clone(),
-            detail: format!(
-                "path {} is not under manifest dir {}",
-                target.display(),
-                dir.display()
-            ),
-        })?;
-    Ok(rel.to_string_lossy().into_owned())
+    if let Ok(rel) = target.strip_prefix(&dir) {
+        return Ok(rel.to_string_lossy().into_owned());
+    }
+    // Linked clones: shared base may live outside the clone's `disks/` directory.
+    Ok(target.to_string_lossy().into_owned())
 }

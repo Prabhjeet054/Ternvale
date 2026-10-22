@@ -8,6 +8,8 @@ mod virtio;
 pub use agent::{AgentServer, AgentServerConfig, AgentServerError, AgentState, AgentStatus};
 pub use expect::{last_lines, Progress, Session, Step};
 pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
+#[doc(hidden)]
+pub use virtio::try_open_disk_for_write;
 pub use virtio::{
     attach_blocks, attach_disks, attach_disks_pci, attach_pci, AttachedBlock, AttachedBlocks,
     BlkMedia, BlkPlacement, VirtioPci, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE,

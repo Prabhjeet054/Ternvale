@@ -285,3 +285,27 @@ fn backend_pread_pwrite_round_trip() {
     be.flush().expect("flush");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn backend_rejects_writable_open_of_shared_clone_base() {
+    let dir = std::env::temp_dir().join(format!("ternvale-blk-prot-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("dir");
+    unsafe { std::env::set_var("TERNVALE_REFS_DIR", dir.join("refs")) };
+    let base = dir.join("base.img");
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&base)
+        .expect("create")
+        .set_len(SECTOR * 2)
+        .expect("len");
+    ternvale_snapshot::acquire_base_ref(&base, "vm-a").expect("acquire");
+    let Err(err) = FileBackend::open(&base, false) else {
+        panic!("writable open of shared base should be rejected");
+    };
+    assert!(format!("{err:#}").contains("shared clone base"), "{err:#}");
+    ternvale_snapshot::release_base_ref(&base, "vm-a").expect("release");
+    FileBackend::open(&base, false).expect("writable after release");
+    let _ = std::fs::remove_dir_all(dir);
+}

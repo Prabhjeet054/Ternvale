@@ -97,6 +97,33 @@ impl FileBackend {
         fields(path = %path.display(), read_only)
     )]
     pub fn open(path: &Path, read_only: bool) -> Result<Self, VirtioBlkError> {
+        if !read_only {
+            match ternvale_snapshot::is_write_protected(path) {
+                Ok(true) => {
+                    tracing::warn!(
+                        target: "ternvale::virtio::blk",
+                        path = %path.display(),
+                        "rejected writable open of a shared disk base image"
+                    );
+                    return Err(VirtioBlkError::Open {
+                        path: path.to_path_buf(),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "disk image is a shared clone base and cannot be opened for write",
+                        ),
+                    });
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        target: "ternvale::virtio::blk",
+                        path = %path.display(),
+                        error = %error,
+                        "could not check shared-base protection; opening anyway"
+                    );
+                }
+            }
+        }
         let file = OpenOptions::new()
             .read(true)
             .write(!read_only)

@@ -49,3 +49,5 @@ ternvale-tpm = { path = "../ternvale-tpm" }
 # gpu boot scenario: VirtioGpu on virtio-mmio and its host-side frame (workspace crate;
 # it depends on this one, which Cargo allows for dev-dependencies).
 ternvale-gpu = { path = "../ternvale-gpu" }
+# clone boot scenario: SHA-256 of the shared base image.
+sha2 = "0.10"

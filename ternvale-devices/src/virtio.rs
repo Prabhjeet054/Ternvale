@@ -20,6 +20,8 @@ mod vsock;
 pub use attach_disks::{
     attach_blocks, attach_disks, attach_disks_pci, AttachedBlock, AttachedBlocks, BlkPlacement,
 };
+#[doc(hidden)]
+pub use blk::try_open_disk_for_write;
 pub use blk::{
     AttachedBlk, BlkMedia, BlkStats, VirtioBlk, VirtioBlkError, OPTICAL_BLOCK_SIZE,
     VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO, VIRTIO_BLK_ID,

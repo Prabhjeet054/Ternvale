@@ -2,12 +2,19 @@
 //!
 //! See `docs/SNAPSHOT.md` for disk layers and `docs/VM_SNAPSHOT.md` for RAM bundles.
 
+mod base_ref;
+mod clone;
 mod delta;
 mod format;
 mod manifest;
 mod stack;
 mod vm_bundle;
 
+pub use base_ref::{
+    acquire as acquire_base_ref, count as base_ref_count, has_holder as base_ref_has_holder,
+    is_write_protected, release as release_base_ref,
+};
+pub use clone::{create_linked_stack, release_disk_base, shared_base_path};
 pub use delta::DeltaLayer;
 pub use format::{
     bitmap_bytes_for_blocks, bitmap_rank_before, bitmap_set, bitmap_test, DeltaHeader,

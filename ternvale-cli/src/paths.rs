@@ -11,6 +11,8 @@ pub const MAX_SOCKET_PATH: usize = 103;
 pub const RUN_DIR_ENV: &str = "TERNVALE_RUN_DIR";
 /// Overrides `~/Library/Application Support/Ternvale/snapshots`.
 pub const SNAPSHOTS_DIR_ENV: &str = "TERNVALE_SNAPSHOTS_DIR";
+/// Overrides `~/Library/Application Support/Ternvale/vms`.
+pub const VMS_DIR_ENV: &str = "TERNVALE_VMS_DIR";
 
 /// The directory holding every VM's control socket.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
@@ -76,6 +78,30 @@ pub fn validate_snapshot_label(label: &str) -> Result<()> {
         bail!("snapshot name {label:?} must be non-empty ASCII letters, digits, '-' or '_'");
     }
     Ok(())
+}
+
+/// VM library root (`~/Library/Application Support/Ternvale/vms`).
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn vms_root() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os(VMS_DIR_ENV) {
+        return Ok(PathBuf::from(dir));
+    }
+    let home = std::env::var_os("HOME")
+        .context("HOME is not set; cannot find the VM library directory")?;
+    Ok(PathBuf::from(home).join("Library/Application Support/Ternvale/vms"))
+}
+
+/// `vms_root/<name>/`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
+pub fn vm_dir(name: &str) -> Result<PathBuf> {
+    socket_path(name)?;
+    Ok(vms_root()?.join(name))
+}
+
+/// `vms_root/<name>/config.toml`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
+pub fn vm_config_path(name: &str) -> Result<PathBuf> {
+    Ok(vm_dir(name)?.join("config.toml"))
 }
 
 /// `snapshots_root/<vm>/<label>/` bundle directory.

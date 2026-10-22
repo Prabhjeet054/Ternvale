@@ -96,6 +96,18 @@ enum Kick {
     Reset,
 }
 
+/// Whether `path` may be opened writable on the host (shared clone bases are rejected).
+#[doc(hidden)]
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::virtio::blk",
+    skip_all,
+    fields(path = %path.display())
+)]
+pub fn try_open_disk_for_write(path: &Path) -> Result<(), VirtioBlkError> {
+    backend::FileBackend::open(path, false).map(|_| ())
+}
+
 /// One virtio-blk device with a dedicated I/O thread.
 pub struct VirtioBlk {
     media: BlkMedia,

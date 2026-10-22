@@ -17,6 +17,7 @@ pub mod acpi;
 pub mod acpi_fault;
 pub mod cli;
 pub mod client;
+pub mod clone_cmd;
 pub mod commands;
 pub mod diag;
 pub mod disk;
@@ -148,6 +149,10 @@ fn non_run(command: Command) -> Result<ExitCode> {
             cli::SnapshotCommand::Delete { vm, name, json } => {
                 snapshot_cmd::delete(&vm, &name, json)
             }
+        },
+        Command::Clone { source, new_name } => clone_cmd::clone_vm(&source, &new_name),
+        Command::Vm { action } => match action {
+            cli::VmCommand::Delete { name } => clone_cmd::delete_vm(&name),
         },
         Command::Doctor { json, config } => doctor::doctor(json, config.as_deref()),
         Command::Logs {

@@ -73,6 +73,18 @@ pub enum Command {
         #[command(subcommand)]
         action: SnapshotCommand,
     },
+    /// Linked clone: new VM config sharing the source disk base read-only.
+    Clone {
+        /// Source VM name (under `~/Library/Application Support/Ternvale/vms/`).
+        source: String,
+        /// New VM name.
+        new_name: String,
+    },
+    /// VM library maintenance.
+    Vm {
+        #[command(subcommand)]
+        action: VmCommand,
+    },
     /// Continue a paused VM.
     Resume {
         /// VM name.
@@ -159,6 +171,16 @@ pub enum Command {
         /// hypervisor entitlement (scripts/acpi-check.sh).
         #[arg(long)]
         offline: bool,
+    },
+}
+
+/// `ternvale vm …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum VmCommand {
+    /// Remove a VM from the library and release shared disk base refcounts.
+    Delete {
+        /// VM name.
+        name: String,
     },
 }
 
