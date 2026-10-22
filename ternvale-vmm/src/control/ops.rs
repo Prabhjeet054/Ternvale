@@ -267,9 +267,10 @@ impl VmControl {
         }
     }
 
-    pub(super) fn park(&self, cpu: u32) -> bool {
+    pub(super) fn park(&self, cpu: u32, while_parked: &mut dyn FnMut()) -> bool {
         tracing::debug!(target: "ternvale::vcpu", cpu, "vcpu parked for pause");
         loop {
+            while_parked();
             if self.is_stopping() {
                 tracing::debug!(target: "ternvale::vcpu", cpu, "parked vcpu sees the machine stopping");
                 return false;
@@ -303,7 +304,7 @@ impl VmControl {
         }
     }
 
-    fn call_kick(&self) {
+    pub(super) fn call_kick(&self) {
         if let Some(hooks) = self.hooks.get() {
             (hooks.kick)();
         }
@@ -337,10 +338,11 @@ impl VmControl {
         ticks
     }
 
-    fn reject(&self, op: &'static str, state: VmState) -> ControlError {
+    pub(super) fn reject(&self, op: &'static str, state: VmState) -> ControlError {
         let needs = match op {
             "pause" => "running (or already paused)",
             "resume" => "paused (or already running)",
+            "snapshot create" | "snapshot restore" => "paused",
             _ => "created, running, paused, or already stopping",
         };
         tracing::warn!(target: "ternvale::boot", vm = %self.name, op, %state, needs, "control request rejected");

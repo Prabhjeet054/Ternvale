@@ -30,6 +30,7 @@ pub mod protocol;
 pub mod report;
 pub mod run;
 pub mod server;
+pub mod snapshot_cmd;
 pub mod summary;
 pub mod vsock;
 
@@ -136,6 +137,18 @@ fn non_run(command: Command) -> Result<ExitCode> {
             no_wait,
             json,
         } => commands::stop(&name, force, no_wait, json),
+        Command::Snapshot { action } => match action {
+            cli::SnapshotCommand::Create { vm, name, json } => {
+                snapshot_cmd::create(&vm, &name, json)
+            }
+            cli::SnapshotCommand::Restore { vm, name, json } => {
+                snapshot_cmd::restore(&vm, &name, json)
+            }
+            cli::SnapshotCommand::List { vm, json } => snapshot_cmd::list(&vm, json),
+            cli::SnapshotCommand::Delete { vm, name, json } => {
+                snapshot_cmd::delete(&vm, &name, json)
+            }
+        },
         Command::Doctor { json, config } => doctor::doctor(json, config.as_deref()),
         Command::Logs {
             name,

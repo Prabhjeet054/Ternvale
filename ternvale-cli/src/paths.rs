@@ -9,6 +9,8 @@ pub const MAX_SOCKET_PATH: usize = 103;
 
 /// Overrides the run directory (tests, or a home path too long for a socket).
 pub const RUN_DIR_ENV: &str = "TERNVALE_RUN_DIR";
+/// Overrides `~/Library/Application Support/Ternvale/snapshots`.
+pub const SNAPSHOTS_DIR_ENV: &str = "TERNVALE_SNAPSHOTS_DIR";
 
 /// The directory holding every VM's control socket.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
@@ -50,6 +52,38 @@ pub fn socket_path_in(dir: &Path, name: &str) -> Result<PathBuf> {
         );
     }
     Ok(path)
+}
+
+/// Root directory for full-VM snapshot bundles.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn snapshots_root() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os(SNAPSHOTS_DIR_ENV) {
+        return Ok(PathBuf::from(dir));
+    }
+    let home =
+        std::env::var_os("HOME").context("HOME is not set; cannot find the snapshots directory")?;
+    Ok(PathBuf::from(home).join("Library/Application Support/Ternvale/snapshots"))
+}
+
+/// Validate a snapshot label (same rules as a VM name).
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(label))]
+pub fn validate_snapshot_label(label: &str) -> Result<()> {
+    let plain = !label.is_empty()
+        && label
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_');
+    if !plain {
+        bail!("snapshot name {label:?} must be non-empty ASCII letters, digits, '-' or '_'");
+    }
+    Ok(())
+}
+
+/// `snapshots_root/<vm>/<label>/` bundle directory.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm, label))]
+pub fn snapshot_bundle(vm: &str, label: &str) -> Result<PathBuf> {
+    validate_snapshot_label(label)?;
+    socket_path(vm)?;
+    Ok(snapshots_root()?.join(vm).join(label))
 }
 
 #[cfg(test)]

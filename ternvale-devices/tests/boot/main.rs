@@ -98,6 +98,7 @@ mod uefi_linux_acpi;
 mod uefi_linux_tpm;
 mod uefi_lspci;
 mod usb;
+mod vm_snapshot;
 mod windows_installer;
 mod windows_media;
 mod windows_profile;
@@ -125,6 +126,7 @@ fn run() -> Result<(), String> {
         "devices" => devices::run(),
         "audio" => audio::run(),
         "snapshot" => snapshot::run(),
+        "vm-snapshot" => vm_snapshot::run(),
         "usb" => usb::run(),
         "gpu" => gpu::run(),
         "input" => input::run(),
@@ -145,7 +147,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, snapshot, usb, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, snapshot, vm-snapshot, usb, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

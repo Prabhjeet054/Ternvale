@@ -16,6 +16,8 @@
 #                       (needs ./scripts/make-devices-initramfs.sh)
 #   audio             — virtio_snd + speaker-test 440 Hz sine (needs ./scripts/make-audio-initramfs.sh);
 #                       see ./scripts/audio-boot-check.sh
+#   vm-snapshot       — full-VM snapshot rewind: serial counter must go backward after restore
+#                       (needs ./scripts/make-vm-snapshot-initramfs.sh); see vm-snapshot-restore-check.sh
 #   gpu               — Linux virtio-gpu + fbdev on virtio-mmio with a 1024x768 scanout:
 #                       fb0 sysfs geometry and fbset, then two rows written through /dev/fb0
 #                       must appear in the host frame (needs ./scripts/make-gpu-initramfs.sh)

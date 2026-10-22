@@ -1128,6 +1128,7 @@ dependencies = [
  "ternvale-gpu",
  "ternvale-hv",
  "ternvale-log",
+ "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-vmm",
  "tracing",
@@ -1200,6 +1201,8 @@ dependencies = [
 name = "ternvale-snapshot"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -1243,11 +1246,14 @@ name = "ternvale-vmm"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "serde",
+ "serde_json",
  "sha2",
  "ternvale-acpi",
  "ternvale-config",
  "ternvale-hv",
  "ternvale-log",
+ "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-usb",
  "ternvale-usb-host",

@@ -269,6 +269,62 @@ pub fn handle_line_with(
         Request::ForceStop => control
             .request_stop(true)
             .map(|status| Response::status(&status)),
+        Request::SnapshotCreate { name } => {
+            let bundle = match crate::paths::snapshot_bundle(control.name(), &name) {
+                Ok(path) => path,
+                Err(error) => return Response::error(error.to_string()),
+            };
+            if bundle.exists() {
+                return Response::error(format!(
+                    "snapshot {} already exists at {}",
+                    name,
+                    bundle.display()
+                ));
+            }
+            if let Some(parent) = bundle.parent() {
+                if let Err(error) = std::fs::create_dir_all(parent) {
+                    return Response::error(format!("create snapshot dir: {error}"));
+                }
+            }
+            Ok(match control.snapshot_create(&name, &bundle) {
+                Ok(path) => Response::snapshots(
+                    &control.status(),
+                    Vec::new(),
+                    Some(path.display().to_string()),
+                ),
+                Err(error) => Response::error(error.to_string()),
+            })
+        }
+        Request::SnapshotRestore { name } => {
+            let bundle = match crate::paths::snapshot_bundle(control.name(), &name) {
+                Ok(path) => path,
+                Err(error) => return Response::error(error.to_string()),
+            };
+            if !bundle.join("meta.json").is_file() {
+                return Response::error(format!("no snapshot {} at {}", name, bundle.display()));
+            }
+            Ok(match control.snapshot_restore(&bundle) {
+                Ok(()) => Response::status(&control.status()),
+                Err(error) => Response::error(error.to_string()),
+            })
+        }
+        Request::SnapshotList => Ok(match crate::paths::snapshots_root() {
+            Ok(root) => match ternvale_snapshot::list_snapshots(&root, control.name()) {
+                Ok(names) => Response::snapshots(&control.status(), names, None),
+                Err(error) => Response::error(error.to_string()),
+            },
+            Err(error) => Response::error(error.to_string()),
+        }),
+        Request::SnapshotDelete { name } => {
+            let bundle = match crate::paths::snapshot_bundle(control.name(), &name) {
+                Ok(path) => path,
+                Err(error) => return Response::error(error.to_string()),
+            };
+            Ok(match ternvale_snapshot::delete_bundle(&bundle) {
+                Ok(()) => Response::status(&control.status()),
+                Err(error) => Response::error(error.to_string()),
+            })
+        }
         Request::DumpDiagnostics => {
             let Some(diag) = diag else {
                 tracing::warn!(target: "ternvale::cli", "dump-diagnostics on a server without diagnostics");

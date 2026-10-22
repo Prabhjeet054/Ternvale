@@ -259,7 +259,17 @@ fn run_loop(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<Leave, Machi
     loop {
         let pc = vcpu.get_pc().map_err(op(index, "read pc"))?;
         shared.watchdog.note_exit(pc);
-        if !shared.control.enter_guest(index) {
+        let mut on_parked = || {
+            shared.control.snapshot_vcpu_tick(index, || {
+                crate::control::snapshot::capture_vcpu(index, vcpu)
+                    .map_err(|error| error.to_string())
+            });
+            shared.control.snapshot_restore_tick(index, |state| {
+                crate::control::snapshot::restore_vcpu(vcpu, state)
+                    .map_err(|error| error.to_string())
+            });
+        };
+        if !shared.control.enter_guest_parked(index, &mut on_parked) {
             tracing::debug!(target: "ternvale::vcpu", cpu = index, "vm stopping; the next run returns at once");
         }
         let ran = hide_pauses(index, vcpu, shared, &mut applied)

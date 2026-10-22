@@ -134,6 +134,15 @@ pub enum ControlError {
     /// The VM began stopping while a pause was in progress.
     #[error("vm began stopping while pausing")]
     StoppedWhilePausing,
+    /// Snapshot capture/restore is not wired for this VM.
+    #[error("vm snapshot host is not installed")]
+    SnapshotHostMissing,
+    /// Capture, restore, or bundle I/O failed.
+    #[error("vm snapshot: {detail}")]
+    Snapshot {
+        /// Detail.
+        detail: String,
+    },
 }
 
 /// Callbacks into the running machine, installed by [`VmControl::bind`].
@@ -215,11 +224,14 @@ pub struct VmControl {
     in_guest: Vec<AtomicBool>,
     paused_ticks: AtomicU64,
     hooks: OnceLock<ControlHooks>,
+    snapshot_host: OnceLock<Arc<snapshot::SnapshotHost>>,
     clock: fn() -> u64,
     diag: Arc<Diagnostics>,
+    snapshot: snapshot::Session,
 }
 
 mod ops;
+pub(crate) mod snapshot;
 
 impl VmControl {
     /// Controller for VM `name` with `cpus` vCPUs, in `Created`.
@@ -253,8 +265,10 @@ impl VmControl {
             in_guest: (0..cpus).map(|_| AtomicBool::new(false)).collect(),
             paused_ticks: AtomicU64::new(0),
             hooks: OnceLock::new(),
+            snapshot_host: OnceLock::new(),
             clock,
             diag: Arc::new(Diagnostics::new()),
+            snapshot: snapshot::Session::idle(),
         }
     }
 
@@ -318,6 +332,13 @@ impl VmControl {
     /// runs, and the stopped vCPU returns at once.
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(cpu))]
     pub fn enter_guest(&self, cpu: u32) -> bool {
+        self.enter_guest_parked(cpu, &mut || ())
+    }
+
+    /// Like [`enter_guest`], but invokes `while_parked` on each iteration of the
+    /// pause loop (vCPU thread only — used to capture/restore register state).
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(cpu))]
+    pub fn enter_guest_parked(&self, cpu: u32, while_parked: &mut dyn FnMut()) -> bool {
         let Some(flag) = self.in_guest.get(cpu as usize) else {
             return true;
         };
@@ -327,9 +348,27 @@ impl VmControl {
         }
         flag.store(false, Ordering::SeqCst);
         self.notify_pauser();
-        let running = self.park(cpu);
+        let running = self.park(cpu, while_parked);
         flag.store(true, Ordering::SeqCst);
         running
+    }
+
+    /// Install RAM/GIC capture for `snapshot create` / `restore`.
+    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(vm = %self.name))]
+    pub fn bind_snapshot_host(&self, host: Arc<snapshot::SnapshotHost>) {
+        if self.snapshot_host.set(host).is_err() {
+            tracing::warn!(target: "ternvale::snapshot", vm = %self.name, "snapshot host already bound");
+        }
+    }
+
+    /// vCPU thread: participate in an in-flight snapshot session.
+    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(cpu))]
+    pub(crate) fn snapshot_vcpu_tick(
+        &self,
+        cpu: u32,
+        capture: impl FnOnce() -> Result<snapshot::VcpuGuestState, String>,
+    ) {
+        self.snapshot.vcpu_tick(cpu, capture);
     }
 
     /// Called by CPU `cpu` after `hv_vcpu_run` returns.

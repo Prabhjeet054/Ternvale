@@ -237,6 +237,32 @@ impl GuestMemory {
         Ok(())
     }
 
+    /// Every registered `(gpa, size)` pair, sorted by GPA.
+    #[tracing::instrument(level = "debug", target = "ternvale::mem", skip_all)]
+    pub fn regions(&self) -> Vec<(u64, u64)> {
+        self.regions
+            .iter()
+            .map(|region| (region.gpa, region.size as u64))
+            .collect()
+    }
+
+    /// Copy `size` bytes starting at `gpa` into a new vector (for snapshots).
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::mem",
+        skip_all,
+        fields(gpa = format!("{:#x}", gpa), size = format!("{:#x}", size))
+    )]
+    pub fn copy_region(&self, gpa: u64, size: u64) -> Result<Vec<u8>, MemoryError> {
+        let bytes = usize::try_from(size).map_err(|_| MemoryError::OutOfRange {
+            gpa,
+            size: usize::MAX,
+        })?;
+        let mut buf = vec![0u8; bytes];
+        self.read_bytes(gpa, &mut buf)?;
+        Ok(buf)
+    }
+
     /// Write `src` at `gpa`.
     #[tracing::instrument(
         level = "debug",

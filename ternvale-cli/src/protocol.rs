@@ -41,6 +41,23 @@ pub enum Request {
     QueryStats,
     /// Write the guest DTB, MMIO events, and summary beside the host log.
     DumpDiagnostics,
+    /// Pause, capture guest RAM/GIC/vCPU state, write a bundle, resume.
+    SnapshotCreate {
+        /// Snapshot label (directory name under the VM's snapshot store).
+        name: String,
+    },
+    /// Pause, restore a bundle, resume.
+    SnapshotRestore {
+        /// Snapshot label.
+        name: String,
+    },
+    /// List snapshot labels for this VM (no pause).
+    SnapshotList,
+    /// Delete a snapshot bundle directory.
+    SnapshotDelete {
+        /// Snapshot label.
+        name: String,
+    },
 }
 
 impl Request {
@@ -55,6 +72,10 @@ impl Request {
             Self::ForceStop => "force-stop",
             Self::QueryStats => "query-stats",
             Self::DumpDiagnostics => "dump-diagnostics",
+            Self::SnapshotCreate { .. } => "snapshot-create",
+            Self::SnapshotRestore { .. } => "snapshot-restore",
+            Self::SnapshotList => "snapshot-list",
+            Self::SnapshotDelete { .. } => "snapshot-delete",
         }
     }
 
@@ -68,6 +89,10 @@ impl Request {
             Self::Resume => "resume",
             Self::Shutdown => "stop",
             Self::ForceStop => "force-stop",
+            Self::SnapshotCreate { .. } => "snapshot create for",
+            Self::SnapshotRestore { .. } => "snapshot restore for",
+            Self::SnapshotList => "list snapshots for",
+            Self::SnapshotDelete { .. } => "snapshot delete for",
         }
     }
 }
@@ -172,6 +197,11 @@ pub struct Response {
     /// Files written by `dump-diagnostics`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<String>>,
+    /// Snapshot labels (`snapshot-list`) or bundle path (`snapshot-create`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshots: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_path: Option<String>,
 }
 
 impl Response {
@@ -184,6 +214,8 @@ impl Response {
             status: Some(StatusJson::from(status)),
             stats: None,
             files: None,
+            snapshots: None,
+            snapshot_path: None,
         }
     }
 
@@ -221,6 +253,22 @@ impl Response {
                 process_cpu_ms: stats.process_cpu_ms,
             }),
             files: None,
+            snapshots: None,
+            snapshot_path: None,
+        }
+    }
+
+    /// Success with snapshot names or a bundle path.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn snapshots(status: &VmStatus, names: Vec<String>, path: Option<String>) -> Self {
+        Self {
+            ok: true,
+            error: None,
+            status: Some(StatusJson::from(status)),
+            stats: None,
+            files: None,
+            snapshots: Some(names),
+            snapshot_path: path,
         }
     }
 
@@ -233,6 +281,8 @@ impl Response {
             status: None,
             stats: None,
             files: None,
+            snapshots: None,
+            snapshot_path: None,
         }
     }
 }

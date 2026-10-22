@@ -299,6 +299,16 @@ impl Machine {
         drop(attached);
         let power = Arc::new(CpuPower::new(config.cpus, RAM_BASE, ram_size));
         control.bind(host::control_hooks(&power));
+        control.bind_snapshot_host(Arc::new(crate::control::snapshot::SnapshotHost {
+            memory: Arc::clone(&memory),
+            gic: Arc::clone(&gic),
+            ram_base: RAM_BASE,
+            ram_size,
+            vm_name: config.name.clone(),
+            device_note:
+                "MMIO device registers (virtio queues, UART FIFOs) are not serialized in v1."
+                    .to_string(),
+        }));
         let shutdown = Arc::new(AtomicBool::new(false));
         let watchdog = Arc::new(Watchdog::new(HANG));
         let stop_watch = Arc::clone(&shutdown);

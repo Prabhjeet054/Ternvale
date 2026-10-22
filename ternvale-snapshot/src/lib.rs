@@ -1,11 +1,12 @@
-//! Layered copy-on-write disk images for virtio-blk.
+//! Layered copy-on-write disk images for virtio-blk and full-VM snapshot bundles.
 //!
-//! See `docs/SNAPSHOT.md` for the on-disk layout and block-size tradeoffs.
+//! See `docs/SNAPSHOT.md` for disk layers and `docs/VM_SNAPSHOT.md` for RAM bundles.
 
 mod delta;
 mod format;
 mod manifest;
 mod stack;
+mod vm_bundle;
 
 pub use delta::DeltaLayer;
 pub use format::{
@@ -14,6 +15,10 @@ pub use format::{
 };
 pub use manifest::StackManifest;
 pub use stack::ImageStack;
+pub use vm_bundle::{
+    delete_bundle, list_snapshots, new_meta, read_bundle, write_bundle, VmSnapshotMeta,
+    VmSnapshotPayload, BUNDLE_MAGIC, BUNDLE_VERSION,
+};
 
 /// Stack / delta errors.
 #[derive(Debug, thiserror::Error)]

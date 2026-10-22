@@ -68,6 +68,11 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Full-VM snapshots (guest RAM, GIC, vCPU registers).
+    Snapshot {
+        #[command(subcommand)]
+        action: SnapshotCommand,
+    },
     /// Continue a paused VM.
     Resume {
         /// VM name.
@@ -154,6 +159,45 @@ pub enum Command {
         /// hypervisor entitlement (scripts/acpi-check.sh).
         #[arg(long)]
         offline: bool,
+    },
+}
+
+/// `ternvale snapshot …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum SnapshotCommand {
+    /// Capture guest RAM, GIC, and vCPU state into a named bundle.
+    Create {
+        /// VM name.
+        vm: String,
+        /// Snapshot label.
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Restore a bundle into a running (paused) VM.
+    Restore {
+        /// VM name.
+        vm: String,
+        /// Snapshot label.
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List snapshot labels for a VM.
+    List {
+        /// VM name.
+        vm: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a snapshot bundle.
+    Delete {
+        /// VM name.
+        vm: String,
+        /// Snapshot label.
+        name: String,
+        #[arg(long)]
+        json: bool,
     },
 }
 
