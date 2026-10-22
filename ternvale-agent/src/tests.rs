@@ -33,6 +33,12 @@ impl Actions for Recorder {
             .push(format!("clipboard {text}"));
         Ok(())
     }
+    fn clipboard_get(&mut self) -> Result<String, AgentError> {
+        Ok("guest".into())
+    }
+    fn mount_share(&mut self, _tag: &str, _mount_point: &str) -> Result<(), AgentError> {
+        Ok(())
+    }
     fn shutdown(&mut self) -> Result<(), AgentError> {
         self.0.lock().expect("recorder").push("shutdown".into());
         Ok(())
@@ -246,4 +252,18 @@ fn vsock_target_is_unsupported_off_linux_and_targets_display() {
     }
     let os = os_description();
     assert!(os.ends_with(std::env::consts::ARCH), "{os}");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn harness_reads_guest_clipboard_file() {
+    use super::actions::SystemActions;
+    use super::Actions;
+    const GUEST: &str = "/tmp/ternvale-guest-clipboard";
+    std::env::set_var("TERNVALE_AGENT_HARNESS", "1");
+    std::fs::write(GUEST, "guest-text").expect("guest clip file");
+    let mut actions = SystemActions::default();
+    assert_eq!(actions.clipboard_get().expect("get"), "guest-text");
+    std::fs::remove_file(GUEST).ok();
+    std::env::remove_var("TERNVALE_AGENT_HARNESS");
 }

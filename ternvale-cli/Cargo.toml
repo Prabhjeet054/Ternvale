@@ -55,6 +55,8 @@ nix = { version = "0.31", default-features = false, features = ["fs"] }
 # `report`: write the crash-report .zip. Deflate only (pure-Rust zlib-rs backend); no
 # bzip2/lzma/zstd/aes C code. MIT, actively maintained.
 zip = { version = "7.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# `clipboard-get` / `clipboard-set`: read and write the macOS pasteboard on aarch64-apple-darwin.
+arboard = { version = "3.4", default-features = false }
 
 [dev-dependencies]
 # Status tests connect the real agent loop to the agent server.

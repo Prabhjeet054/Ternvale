@@ -66,6 +66,7 @@ pub fn run() -> Result<(), String> {
         tpm: None,
         usb: None,
         audio: None,
+        shares: Vec::new(),
     };
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -162,7 +163,7 @@ fn control(server: AgentServer, sock: &Path) -> Result<Summary, String> {
     if !os.starts_with("Linux ") || !os.ends_with(" aarch64") {
         return Err(format!("unexpected agent os {os:?}"));
     }
-    if first.version != Some(1) {
+    if first.version != Some(2) {
         return Err(format!("unexpected protocol version {:?}", first.version));
     }
 

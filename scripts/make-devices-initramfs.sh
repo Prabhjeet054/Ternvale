@@ -96,7 +96,7 @@ tar -tf "${tmp}/linux-virt.apk" >"${tmp}/files"
 mod_dir=$(grep -m1 '/modules.dep$' "${tmp}/files" | sed 's|/modules.dep$||')
 [[ -n "${mod_dir}" ]] || { log "modules.dep not found in linux-virt"; exit 1; }
 tar -xOf "${tmp}/linux-virt.apk" "${mod_dir}/modules.dep" >"${tmp}/modules.dep"
-python3 - "${tmp}/modules.dep" virtio_mmio virtio_rng vmw_vsock_virtio_transport \
+python3 - "${tmp}/modules.dep" virtio_mmio virtio_rng vmw_vsock_virtio_transport 9p 9pnet 9pnet_virtio \
     >"${tmp}/order" <<'PY'
 import sys
 deps = {}
@@ -158,14 +158,69 @@ done
 rng=$(cat /sys/class/misc/hw_random/rng_current 2>/dev/null)
 echo "ternvale devices ready rng=${rng:-missing} vsock=$([ -e /dev/vsock ] && echo yes || echo no)"
 agent=$(sed -n 's/.*ternvale\.agent=\([a-z0-9]*\).*/\1/p' /proc/cmdline)
+sharetest=$(sed -n 's/.*ternvale\.sharetest=1.*/1/p' /proc/cmdline)
 if [ -n "${agent}" ]; then
   case "${agent}" in trace|debug|info|warn) level=${agent} ;; *) level=info ;; esac
+  if [ "${sharetest}" = "1" ]; then
+    export TERNVALE_AGENT_HARNESS=1
+  fi
   TERNVALE_AGENT_LOG=${level} setsid /bin/ternvale-agent </dev/null >/dev/console 2>&1 &
   echo "ternvale agent started pid=$! log=${level}"
+fi
+if [ "${sharetest}" = "1" ]; then
+  /bin/busybox sh /sharetest.sh
+  exit 0
 fi
 exec setsid sh -c 'exec sh -i' </dev/console >/dev/console 2>&1
 INIT
 chmod 755 "${tmp}/initrd/init"
+
+cat >"${tmp}/initrd/sharetest.sh" <<'SHARE'
+#!/bin/busybox sh
+set -e
+MP=/mnt/ternvale
+HOST_CLIP="host-copy-paste-test"
+GUEST_CLIP="guest-copy-paste-test"
+i=0
+while ! /bin/busybox mountpoint -q "${MP}" 2>/dev/null; do
+  i=$((i + 1))
+  if [ "$i" -gt 300 ]; then
+    echo "SHARE_MOUNT_TIMEOUT"
+    exit 1
+  fi
+  /bin/busybox sleep 0.1
+done
+echo "SHARE_MOUNTED mount=${MP}"
+i=0
+while [ ! -f /tmp/ternvale-host-clipboard-out ]; do
+  i=$((i + 1))
+  if [ "$i" -gt 300 ]; then
+    echo "CLIP_HOST_TIMEOUT"
+    exit 1
+  fi
+  /bin/busybox sleep 0.1
+done
+got=$(/bin/busybox cat /tmp/ternvale-host-clipboard-out)
+if [ "${got}" != "${HOST_CLIP}" ]; then
+  echo "CLIP_HOST_BAD got=${got}"
+  exit 1
+fi
+echo "CLIP_HOST_OK len=${#got}"
+echo -n "${GUEST_CLIP}" >/tmp/ternvale-guest-clipboard
+echo "CLIP_GUEST_READY"
+if [ ! -f "${MP}/from_host.bin" ]; then
+  echo "HOST_FILE_MISSING"
+  exit 1
+fi
+host_sha=$(/bin/busybox sha256sum "${MP}/from_host.bin" | /bin/busybox awk '{print $1}')
+echo "HOST_FILE_SHA=${host_sha}"
+/bin/busybox dd if=/dev/urandom of="${MP}/from_guest.bin" bs=1M count=5 status=none
+guest_sha=$(/bin/busybox sha256sum "${MP}/from_guest.bin" | /bin/busybox awk '{print $1}')
+echo "GUEST_FILE_SHA=${guest_sha}"
+echo "SHARE_CLIPBOARD_TEST_DONE"
+/bin/busybox poweroff -f
+SHARE
+chmod 755 "${tmp}/initrd/sharetest.sh"
 
 (
     cd "${tmp}/initrd"

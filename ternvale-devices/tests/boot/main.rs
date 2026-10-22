@@ -34,6 +34,8 @@
 //! Set `TERNVALE_BOOT_SCENARIO=agent` to run the guest agent from the same assets against the
 //! host `AgentServer`: handshake, heartbeats, reconnect after a server restart, requests, and
 //! a guest power-off on `Shutdown`.
+//! Set `TERNVALE_BOOT_SCENARIO=share-clipboard` for virtio-9p + agent clipboard both ways and
+//! a 100 MiB host→guest share file checksum (rebuild initramfs after script changes).
 //! Set `TERNVALE_BOOT_SCENARIO=smp` to check `nproc`, `/proc/cpuinfo`, the host CPU cost of
 //! an idle guest, and a per-CPU `dd` workload on `TERNVALE_BOOT_CPUS` CPUs (default 4) with
 //! the initrd assets.
@@ -93,6 +95,7 @@ mod installer;
 mod net;
 mod pci;
 mod rootfs;
+mod share_clipboard;
 mod smp;
 mod snapshot;
 mod tpm_guest_checks;
@@ -138,6 +141,7 @@ fn run() -> Result<(), String> {
         "getty" => getty::run(),
         "desktop" => desktop::run(),
         "agent" => agent::run(),
+        "share-clipboard" => share_clipboard::run(),
         "smp" => smp::run(),
         "firmware" => firmware::run(),
         "firmware-acpi" => firmware_acpi::run(),
@@ -152,7 +156,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, snapshot, clone, vm-snapshot, usb, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, snapshot, clone, vm-snapshot, usb, gpu, input, getty, desktop, agent, share-clipboard, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

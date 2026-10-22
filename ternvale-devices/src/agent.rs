@@ -16,6 +16,7 @@ use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -78,7 +79,13 @@ pub enum AgentServerError {
         /// Current state name.
         state: &'static str,
     },
-    /// Only `SetResolution`, `ClipboardSet` and `Shutdown` may be sent.
+    /// The agent did not answer `ClipboardGet` in time.
+    #[error("clipboard_get timed out after {timeout_ms} ms")]
+    ClipboardTimeout {
+        /// Wait duration in milliseconds.
+        timeout_ms: u64,
+    },
+    /// Only host request types may be sent with [`AgentServer::send`].
     #[error("{kind} is not a host request")]
     NotARequest {
         /// Message type.
@@ -100,6 +107,8 @@ pub(crate) struct Shared {
     config: AgentServerConfig,
     stop: AtomicBool,
     book: Mutex<Book>,
+    /// virtio-9p shares to mount after handshake (tag, guest mount point).
+    shares: Vec<(String, String)>,
 }
 
 impl Shared {
@@ -137,7 +146,7 @@ impl AgentServer {
     /// with default timing.
     #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm, path = %path.display()))]
     pub fn start(path: &Path, vm: &str) -> Result<Self, AgentServerError> {
-        Self::start_with(path, vm, AgentServerConfig::default())
+        Self::start_with(path, vm, AgentServerConfig::default(), Vec::new())
     }
 
     /// Listen on `path` with `config` timing.
@@ -146,6 +155,7 @@ impl AgentServer {
         path: &Path,
         vm: &str,
         config: AgentServerConfig,
+        shares: Vec<(String, String)>,
     ) -> Result<Self, AgentServerError> {
         let fail = |source| socket_error(path, source);
         if let Some(dir) = path.parent() {
@@ -160,6 +170,7 @@ impl AgentServer {
             config,
             stop: AtomicBool::new(false),
             book: Mutex::new(Book::default()),
+            shares,
         });
         let service = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
@@ -216,7 +227,11 @@ impl AgentServer {
     pub fn send(&self, message: &Message) -> Result<(), AgentServerError> {
         if !matches!(
             message,
-            Message::SetResolution { .. } | Message::ClipboardSet { .. } | Message::Shutdown
+            Message::SetResolution { .. }
+                | Message::ClipboardSet { .. }
+                | Message::ClipboardGet
+                | Message::ShareMount { .. }
+                | Message::Shutdown
         ) {
             return Err(AgentServerError::NotARequest {
                 kind: message.kind(),
@@ -242,6 +257,50 @@ impl AgentServer {
         })?;
         tracing::info!(target: "ternvale::agent", kind = message.kind(), "agent request sent");
         Ok(())
+    }
+
+    /// Ask the guest for its clipboard text (protocol v2+).
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm, timeout_ms = status::millis(timeout)))]
+    pub fn clipboard_get(&self, timeout: Duration) -> Result<String, AgentServerError> {
+        let (tx, rx) = mpsc::channel();
+        {
+            let mut book = self.shared.book();
+            let state = book.snapshot(Instant::now()).state;
+            if state != AgentState::Connected {
+                return Err(AgentServerError::NotConnected {
+                    state: state.as_str(),
+                });
+            }
+            if book.clipboard_wait.is_some() {
+                return Err(AgentServerError::NotConnected {
+                    state: "clipboard_get already pending",
+                });
+            }
+            book.clipboard_wait = Some(tx);
+        }
+        self.send(&Message::ClipboardGet)?;
+        match rx.recv_timeout(timeout) {
+            Ok(Ok(text)) => {
+                tracing::info!(target: "ternvale::agent", len = text.0.len(), "clipboard_get ok");
+                Ok(text.0)
+            }
+            Ok(Err(reason)) => {
+                tracing::warn!(target: "ternvale::agent", reason = %reason, "clipboard_get failed in guest");
+                Err(AgentServerError::NotConnected {
+                    state: "clipboard_get failed",
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let mut book = self.shared.book();
+                book.clipboard_wait = None;
+                Err(AgentServerError::ClipboardTimeout {
+                    timeout_ms: status::millis(timeout),
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
+                state: "disconnected during clipboard_get",
+            }),
+        }
     }
 }
 

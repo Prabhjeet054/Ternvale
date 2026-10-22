@@ -27,6 +27,9 @@ pub(super) fn run(shared: &Shared, id: u64, mut stream: UnixStream) {
 
 /// Book-keeping when connection `conn` ends.
 pub(super) fn record_end(book: &mut Book, conn: Conn, why: &str) {
+    if let Some(wait) = book.clipboard_wait.take() {
+        let _ = wait.send(Err(why.to_string()));
+    }
     let reason = conn.failure.unwrap_or_else(|| why.to_string());
     let connected_ms = millis(conn.since.elapsed());
     if conn.hello.is_some() {
@@ -83,6 +86,19 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
         book.ever_connected = true;
     }
     tracing::info!(target: "ternvale::agent", version, os = %os, agent = %agent, "agent connected");
+    if version >= 2 {
+        for (tag, mount_point) in shared.shares.clone() {
+            tracing::info!(target: "ternvale::agent", tag = %tag, mount_point = %mount_point, "sending share_mount to agent");
+            let message = Message::ShareMount { tag, mount_point };
+            if let Err(error) = message.validate() {
+                tracing::warn!(target: "ternvale::agent", error = %error, "share_mount skipped");
+                continue;
+            }
+            shared
+                .write(id, &message)
+                .map_err(|error| error.to_string())?;
+        }
+    }
     loop {
         match next(shared, &mut reader, stream, None)? {
             None => return Ok(()),
@@ -90,6 +106,14 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
             Some(Message::Ping { seq }) => shared
                 .write(id, &Message::Pong { seq })
                 .map_err(|error| error.to_string())?,
+            Some(Message::ClipboardGetOk { text }) => {
+                let mut book = shared.book();
+                if let Some(wait) = book.clipboard_wait.take() {
+                    let _ = wait.send(Ok(text));
+                } else {
+                    tracing::debug!(target: "ternvale::agent", len = text.0.len(), "clipboard_get_ok without a waiter");
+                }
+            }
             Some(other) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from agent ignored");
             }

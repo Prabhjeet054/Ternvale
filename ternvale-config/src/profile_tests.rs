@@ -108,6 +108,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         tpm: None,
         usb: None,
         audio: None,
+        shares: Vec::new(),
     }
 }
 
@@ -263,6 +264,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         tpm: None,
         usb: None,
         audio: None,
+        shares: Vec::new(),
     }
 }
 

@@ -40,6 +40,7 @@ pub use virtio::{
     STATUS_FEATURES_OK, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO, VIRTIO_BLK_ID, VIRTIO_F_EVENT_IDX,
     VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
 };
+pub use virtio::{AttachedP9, P9Error, P9Stats, VirtioP9, VIRTIO_9P_ID, VIRTIO_9P_TAG_LEN};
 pub use virtio::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
 pub use virtio::{AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};
 #[cfg(feature = "vmnet")]

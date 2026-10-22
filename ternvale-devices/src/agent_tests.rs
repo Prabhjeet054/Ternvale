@@ -43,6 +43,20 @@ impl Actions for Recorder {
         calls.push(format!("clipboard {text}"));
         Ok(())
     }
+    fn clipboard_get(&mut self) -> Result<String, AgentError> {
+        self.0
+            .lock()
+            .expect("recorder")
+            .push("clipboard_get".into());
+        Ok("guest clip".into())
+    }
+    fn mount_share(&mut self, tag: &str, mount_point: &str) -> Result<(), AgentError> {
+        self.0
+            .lock()
+            .expect("recorder")
+            .push(format!("mount {tag} at {mount_point}"));
+        Ok(())
+    }
     fn shutdown(&mut self) -> Result<(), AgentError> {
         self.0.lock().expect("recorder").push("shutdown".into());
         Ok(())
@@ -67,7 +81,7 @@ fn hello(path: &std::path::Path, version: u32) -> UnixStream {
 #[test]
 fn real_agent_connects_heartbeats_reconnects_and_shuts_down() {
     let path = socket("real");
-    let server = AgentServer::start_with(&path, "unit", fast()).expect("start");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
     assert_eq!(server.status().state, AgentState::Waiting);
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -84,7 +98,7 @@ fn real_agent_connects_heartbeats_reconnects_and_shuts_down() {
     let status = server
         .wait_for(WAIT, |s| s.state == AgentState::Connected && s.pongs >= 2)
         .expect("agent connected and answering pings");
-    assert_eq!(status.version, Some(1));
+    assert_eq!(status.version, Some(2));
     assert!(status
         .agent
         .as_deref()
@@ -109,7 +123,7 @@ fn real_agent_connects_heartbeats_reconnects_and_shuts_down() {
         .expect("resolution");
 
     drop(server);
-    let server = AgentServer::start_with(&path, "unit", fast()).expect("restart");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("restart");
     let restarted = Instant::now();
     let status = server
         .wait_for(WAIT, |s| s.state == AgentState::Connected)
@@ -133,7 +147,7 @@ fn real_agent_connects_heartbeats_reconnects_and_shuts_down() {
 #[test]
 fn old_agent_is_rejected_with_the_supported_range() {
     let path = socket("reject");
-    let server = AgentServer::start_with(&path, "unit", fast()).expect("start");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
     let mut agent = hello(&path, 0);
     match read_message(&mut agent, "host").expect("reply") {
         Message::Reject {
@@ -141,7 +155,7 @@ fn old_agent_is_rejected_with_the_supported_range() {
             min_version,
             max_version,
         } => {
-            assert_eq!((min_version, max_version), (1, 1));
+            assert_eq!((min_version, max_version), (1, 2));
             assert!(reason.contains("version 0 is not supported"), "{reason}");
         }
         other => panic!("expected reject, got {other:?}"),
@@ -159,7 +173,7 @@ fn old_agent_is_rejected_with_the_supported_range() {
 #[test]
 fn silent_and_unresponsive_agents_are_dropped() {
     let path = socket("silent");
-    let server = AgentServer::start_with(&path, "unit", fast()).expect("start");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
     let _silent = UnixStream::connect(&path).expect("connect");
     let status = server
         .wait_for(WAIT, |s| s.last_error.is_some())
@@ -186,9 +200,40 @@ fn silent_and_unresponsive_agents_are_dropped() {
 }
 
 #[test]
+fn share_mount_and_clipboard_get_use_protocol_v2() {
+    let path = socket("share");
+    let shares = vec![("ternvale".into(), "/mnt/ternvale".into())];
+    let server = AgentServer::start_with(&path, "unit", fast(), shares).expect("start");
+    let stop = Arc::new(AtomicBool::new(false));
+    let recorder = Recorder::default();
+    let config = AgentConfig {
+        backoff: Backoff::new(Duration::from_millis(20), Duration::from_millis(200)),
+        poll: Duration::from_millis(10),
+        idle_timeout: Duration::from_secs(2),
+        ..AgentConfig::new(Target::Unix(path.clone()))
+    };
+    let (flag, mut actions) = (Arc::clone(&stop), recorder.clone());
+    let agent = std::thread::spawn(move || run(&config, &mut actions, &flag));
+    server
+        .wait_for(WAIT, |s| s.state == AgentState::Connected)
+        .expect("connected");
+    let text = server
+        .clipboard_get(Duration::from_secs(2))
+        .expect("clipboard_get");
+    assert_eq!(text, "guest clip");
+    stop.store(true, Ordering::Release);
+    let _ = agent.join();
+    let calls = recorder.0.lock().expect("recorder");
+    assert!(
+        calls.iter().any(|c| c.starts_with("mount ternvale")),
+        "{calls:?}"
+    );
+}
+
+#[test]
 fn newer_connection_replaces_the_current_one_and_unknown_types_are_skipped() {
     let path = socket("replace");
-    let server = AgentServer::start_with(&path, "unit", fast()).expect("start");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
     let mut first = hello(&path, 1);
     assert!(matches!(
         read_message(&mut first, "host"),
@@ -234,7 +279,7 @@ fn newer_connection_replaces_the_current_one_and_unknown_types_are_skipped() {
 #[test]
 fn send_needs_a_connected_agent_and_a_host_request() {
     let path = socket("send");
-    let server = AgentServer::start_with(&path, "unit", fast()).expect("start");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
     let error = server.send(&Message::Shutdown).expect_err("nobody there");
     assert_eq!(error.to_string(), "agent is not connected (state waiting)");
     let error = server
@@ -248,8 +293,9 @@ fn stale_sockets_are_replaced_and_live_or_foreign_paths_refused() {
     let path = socket("stale");
     let stale = std::os::unix::net::UnixListener::bind(&path).expect("stale bind");
     drop(stale);
-    let server = AgentServer::start_with(&path, "unit", fast()).expect("replaces stale");
-    let error = AgentServer::start_with(&path, "unit", fast())
+    let server =
+        AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("replaces stale");
+    let error = AgentServer::start_with(&path, "unit", fast(), Vec::new())
         .err()
         .expect("live socket");
     assert!(matches!(error, AgentServerError::InUse { .. }), "{error}");
@@ -257,7 +303,7 @@ fn stale_sockets_are_replaced_and_live_or_foreign_paths_refused() {
     assert!(!path.exists(), "socket removed on drop");
 
     std::fs::write(&path, b"not a socket").expect("file");
-    let error = AgentServer::start_with(&path, "unit", fast())
+    let error = AgentServer::start_with(&path, "unit", fast(), Vec::new())
         .err()
         .expect("regular file");
     assert!(error.to_string().contains("not a socket"), "{error}");

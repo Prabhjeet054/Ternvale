@@ -140,6 +140,21 @@ fn serve_requests(
             }
             Message::SetResolution { width, height } => actions.set_resolution(width, height),
             Message::ClipboardSet { text } => actions.clipboard_set(&text.0),
+            Message::ClipboardGet => {
+                let text = actions.clipboard_get()?;
+                write_message(
+                    stream,
+                    &Message::ClipboardGetOk {
+                        text: ternvale_agent_proto::ClipboardText(text),
+                    },
+                    "host",
+                )
+                .map_err(|source| AgentError::Frame {
+                    op: "send clipboard_get_ok",
+                    source,
+                })
+            }
+            Message::ShareMount { tag, mount_point } => actions.mount_share(&tag, &mount_point),
             Message::Shutdown => {
                 actions.shutdown()?;
                 return Ok(SessionEnd::Shutdown);
@@ -147,7 +162,8 @@ fn serve_requests(
             other @ (Message::Hello { .. }
             | Message::Welcome { .. }
             | Message::Reject { .. }
-            | Message::Pong { .. }) => {
+            | Message::Pong { .. }
+            | Message::ClipboardGetOk { .. }) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from host ignored");
                 Ok(())
             }

@@ -54,6 +54,20 @@ pub enum Message {
         /// New clipboard contents.
         text: ClipboardText,
     },
+    /// Host → agent: read the guest clipboard (answer with `ClipboardGetOk`).
+    ClipboardGet,
+    /// Agent → host: answer to `ClipboardGet`.
+    ClipboardGetOk {
+        /// Guest clipboard text (may be empty).
+        text: ClipboardText,
+    },
+    /// Host → agent: mount the virtio-9p share (Linux only).
+    ShareMount {
+        /// virtio-9p mount tag (matches device config).
+        tag: String,
+        /// Guest path to mount at.
+        mount_point: String,
+    },
     /// Host → agent: flush and power the guest off.
     Shutdown,
 }
@@ -82,6 +96,9 @@ impl Message {
             Self::Pong { .. } => "pong",
             Self::SetResolution { .. } => "set_resolution",
             Self::ClipboardSet { .. } => "clipboard_set",
+            Self::ClipboardGet => "clipboard_get",
+            Self::ClipboardGetOk { .. } => "clipboard_get_ok",
+            Self::ShareMount { .. } => "share_mount",
             Self::Shutdown => "shutdown",
         }
     }
@@ -103,6 +120,23 @@ impl Message {
                 Err(format!(
                     "resolution {width}x{height} outside 1..={MAX_DIMENSION}"
                 ))
+            }
+            Self::ShareMount { tag, mount_point } => {
+                if tag.is_empty() || tag.len() > crate::MAX_TAG_LEN {
+                    Err(format!(
+                        "share_mount tag length must be 1..={}",
+                        crate::MAX_TAG_LEN
+                    ))
+                } else if mount_point.is_empty() || mount_point.len() > crate::MAX_MOUNT_PATH {
+                    Err(format!(
+                        "share_mount mount_point length must be 1..={}",
+                        crate::MAX_MOUNT_PATH
+                    ))
+                } else if !mount_point.starts_with('/') {
+                    Err("share_mount mount_point must be absolute".into())
+                } else {
+                    Ok(())
+                }
             }
             _ => Ok(()),
         }

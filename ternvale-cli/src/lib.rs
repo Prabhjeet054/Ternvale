@@ -17,6 +17,7 @@ pub mod acpi;
 pub mod acpi_fault;
 pub mod cli;
 pub mod client;
+pub mod clipboard;
 pub mod clone_cmd;
 pub mod commands;
 pub mod diag;

@@ -11,6 +11,7 @@ mod input;
 mod irq;
 mod mmio;
 mod net;
+mod p9;
 mod pci;
 mod queue;
 mod rng;
@@ -43,6 +44,7 @@ pub use net::{
 };
 #[cfg(feature = "vmnet")]
 pub use net::{VmnetBackend, VMNET_SHARED_MODE};
+pub use p9::{AttachedP9, P9Error, P9Stats, VirtioP9, VIRTIO_9P_ID, VIRTIO_9P_TAG_LEN};
 pub use pci::{attach_pci, VirtioPci, VIRTIO_PCI_DEVICE_BASE, VIRTIO_PCI_VENDOR_ID};
 pub use queue::{Buffer, Chain, SplitQueue};
 pub use rng::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};

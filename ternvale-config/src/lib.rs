@@ -8,6 +8,7 @@ mod error;
 mod firmware_tables;
 mod iso;
 mod profile;
+mod share;
 mod tpm;
 mod usb;
 mod vm;
@@ -21,6 +22,7 @@ pub use profile::{
     is_iso9660, Profile, VirtioTransport, WINDOWS_MIN_CPUS, WINDOWS_MIN_DISK_BYTES,
     WINDOWS_MIN_RAM_MIB,
 };
+pub use share::{Share, MAX_MOUNT_PATH, MAX_TAG_LEN};
 pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
 pub use usb::{UsbPassthroughEntry, UsbSection};
 pub use vm::{default_nvram_path, Disk, Nic, VmConfig};

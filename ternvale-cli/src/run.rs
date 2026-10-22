@@ -15,9 +15,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use ternvale_config::{BlockDevice, VirtioTransport, VmConfig};
+use ternvale_config::{BlockDevice, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
-    attach_blocks, open_backend, Pl011, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
+    attach_blocks, open_backend, Pl011, VirtioNet, VirtioP9, VirtioVsock, VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -104,6 +104,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
     let device = vsock.as_ref().map(|setup| setup.device.clone());
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();
+    let share = config.shares.first();
     let session_slot = Arc::clone(&session);
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
         let wanted = Wanted {
@@ -111,6 +112,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
             transport,
             nics: &nics,
             vsock: device.as_ref(),
+            share,
             display: plan.as_ref(),
             audio,
         };
@@ -190,6 +192,8 @@ struct Wanted<'a> {
     transport: VirtioTransport,
     nics: &'a [String],
     vsock: Option<&'a VsockConfig>,
+    /// First `[[shares]]` entry (virtio-9p on the next virtio-mmio slot).
+    share: Option<&'a Share>,
     /// `--display window`: a virtio-gpu after vsock, then a virtio-input
     /// keyboard and tablet (all PCI with `virtio-pci`).
     display: Option<&'a DisplayPlan>,
@@ -241,8 +245,9 @@ fn attach_devices(
         stats.nics.push((backend_name.clone(), nic_stats));
         devices.push((base, size, device));
     }
+    let mut mmio_after_net = mmio_slots + nics.len();
     if let Some(vsock) = vsock {
-        let slot = u32::try_from(mmio_slots + nics.len())
+        let slot = u32::try_from(mmio_after_net)
             .map_err(|_| MachineError::Attach("vsock slot does not fit in u32".into()))?;
         let (base, size, device, vsock_stats, cid) = VirtioVsock::attach(
             slot,
@@ -254,9 +259,33 @@ fn attach_devices(
         tracing::info!(target: "ternvale::cli", slot, cid, uds_dir = %vsock.uds_dir.display(), "attached virtio-vsock");
         stats.vsock = Some(vsock_stats);
         devices.push((base, size, device));
+        mmio_after_net += 1;
     }
+    if let Some(share) = wanted.share {
+        let slot = u32::try_from(mmio_after_net)
+            .map_err(|_| MachineError::Attach("virtio-9p slot does not fit in u32".into()))?;
+        let (base, size, device, _p9_stats) = VirtioP9::attach(
+            slot,
+            share.host_path.clone(),
+            &share.tag,
+            Arc::clone(&attach.memory),
+            attach.virtio_irq_hook(slot),
+        )
+        .map_err(|error| MachineError::Attach(format!("virtio-9p: {error}")))?;
+        tracing::info!(
+            target: "ternvale::virtio::p9",
+            slot,
+            tag = %share.tag,
+            host = %share.host_path.display(),
+            mount = %share.mount_point,
+            "attached virtio-9p share"
+        );
+        devices.push((base, size, device));
+        mmio_after_net += 1;
+    }
+    let display_slots = usize::from(wanted.display.is_some()) * 3;
     if let Some(plan) = wanted.display {
-        let slot = u32::try_from(mmio_slots + nics.len() + usize::from(vsock.is_some()))
+        let slot = u32::try_from(mmio_after_net)
             .map_err(|_| MachineError::Attach("virtio-gpu slot does not fit in u32".into()))?;
         let (mapped, display) = crate::display::attach_gpu(attach, wanted.transport, slot)?;
         devices.extend(mapped);
@@ -269,13 +298,8 @@ fn attach_devices(
         *lockwatch::lock(session, "display-session") = Some(started);
     }
     if wanted.audio {
-        let slot = u32::try_from(
-            mmio_slots
-                + nics.len()
-                + usize::from(vsock.is_some())
-                + usize::from(wanted.display.is_some()) * 3,
-        )
-        .map_err(|_| MachineError::Attach("virtio-sound slot does not fit in u32".into()))?;
+        let slot = u32::try_from(mmio_after_net + display_slots)
+            .map_err(|_| MachineError::Attach("virtio-sound slot does not fit in u32".into()))?;
         let (base, size, device) = ternvale_devices::VirtioSound::attach(
             slot,
             Arc::clone(&attach.memory),

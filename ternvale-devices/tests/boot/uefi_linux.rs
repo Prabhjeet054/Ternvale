@@ -87,6 +87,7 @@ fn boot(
         tpm: None,
         usb: None,
         audio: None,
+        shares: Vec::new(),
     };
     tracing::info!(target: "ternvale::boot", esp = %esp.display(), serial = %serial_log.display(), "uefi linux boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

@@ -325,6 +325,40 @@ pub fn handle_line_with(
                 Err(error) => Response::error(error.to_string()),
             })
         }
+        Request::ClipboardGet { timeout_ms } => {
+            let Some(agent) = agent else {
+                return Response::error("this vm has no guest agent server");
+            };
+            let wait = timeout_ms
+                .map(Duration::from_millis)
+                .unwrap_or(crate::clipboard::DEFAULT_CLIPBOARD_TIMEOUT);
+            return match crate::clipboard::pull_from_guest(agent, wait) {
+                Ok(text) => {
+                    let mut response = Response::clipboard(&control.status(), text);
+                    if let Some(status) = response.status.as_mut() {
+                        status.agent = Some(AgentJson::from(&agent.status()));
+                    }
+                    response
+                }
+                Err(error) => Response::error(format!("clipboard-get: {error:#}")),
+            };
+        }
+        Request::ClipboardSet { text } => {
+            let Some(agent) = agent else {
+                return Response::error("this vm has no guest agent server");
+            };
+            if let Err(error) = crate::clipboard::set_host_text(&text) {
+                return Response::error(format!("clipboard-set: {error:#}"));
+            }
+            if let Err(error) = crate::clipboard::push_to_guest(agent, &text) {
+                return Response::error(format!("clipboard-set: {error}"));
+            }
+            let mut response = Response::status(&control.status());
+            if let Some(status) = response.status.as_mut() {
+                status.agent = Some(AgentJson::from(&agent.status()));
+            }
+            return response;
+        }
         Request::DumpDiagnostics => {
             let Some(diag) = diag else {
                 tracing::warn!(target: "ternvale::cli", "dump-diagnostics on a server without diagnostics");

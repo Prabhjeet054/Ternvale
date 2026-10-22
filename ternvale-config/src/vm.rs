@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
-use crate::{AudioSection, IsoSection, Profile, TpmSection, UsbSection, VsockSection};
+use crate::{AudioSection, IsoSection, Profile, Share, TpmSection, UsbSection, VsockSection};
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
@@ -94,6 +94,9 @@ pub struct VmConfig {
     /// virtio-sound playback to CoreAudio; unset means enabled. See [`AudioSection`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioSection>,
+    /// Host folders shared with the guest over virtio-9p (at most one today).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shares: Vec<Share>,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -258,6 +261,30 @@ impl VmConfig {
             .validate(self.effective_firmware_tables())?;
         self.usb_section().validate()?;
         self.audio_section().validate()?;
+        if self.shares.len() > 1 {
+            return Err(ConfigError::InvalidShare {
+                field: "shares",
+                reason: "at most one share is supported today".into(),
+            });
+        }
+        for (index, share) in self.shares.iter().enumerate() {
+            if let Err(ConfigError::InvalidShare { field, reason }) = share.validate() {
+                return Err(ConfigError::InvalidShare {
+                    field: "shares",
+                    reason: format!("[{index}] {field}: {reason}"),
+                });
+            }
+        }
+        if !self.shares.is_empty() {
+            let vsock_ok = self.vsock.as_ref().is_some_and(|section| section.agent);
+            if !vsock_ok {
+                return Err(ConfigError::InvalidShare {
+                    field: "shares",
+                    reason: "requires [vsock] with agent = true so the guest can mount the export"
+                        .into(),
+                });
+            }
+        }
         tracing::debug!(target: "ternvale::config", name = %self.name, "VM config is valid");
         Ok(())
     }

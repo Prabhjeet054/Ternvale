@@ -1,7 +1,10 @@
 //! Agent connection state and the bookkeeping behind [`AgentStatus`].
 
 use std::os::unix::net::UnixStream;
+use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
+
+use ternvale_agent_proto::ClipboardText;
 
 /// Where the agent connection is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +112,8 @@ pub(super) struct Book {
     pub pings: u64,
     pub pongs: u64,
     pub last_error: Option<String>,
+    /// Delivers `ClipboardGetOk` to a waiting [`super::AgentServer::clipboard_get`].
+    pub clipboard_wait: Option<Sender<Result<ClipboardText, String>>>,
 }
 
 impl Book {

@@ -58,6 +58,17 @@ pub enum Request {
         /// Snapshot label.
         name: String,
     },
+    /// Guest clipboard → host pasteboard (and response `clipboard_text`).
+    ClipboardGet {
+        /// How long to wait for the guest agent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
+    },
+    /// Host pasteboard + guest clipboard from `text`.
+    ClipboardSet {
+        /// New clipboard contents.
+        text: String,
+    },
 }
 
 impl Request {
@@ -76,6 +87,8 @@ impl Request {
             Self::SnapshotRestore { .. } => "snapshot-restore",
             Self::SnapshotList => "snapshot-list",
             Self::SnapshotDelete { .. } => "snapshot-delete",
+            Self::ClipboardGet { .. } => "clipboard-get",
+            Self::ClipboardSet { .. } => "clipboard-set",
         }
     }
 
@@ -93,6 +106,8 @@ impl Request {
             Self::SnapshotRestore { .. } => "snapshot restore for",
             Self::SnapshotList => "list snapshots for",
             Self::SnapshotDelete { .. } => "snapshot delete for",
+            Self::ClipboardGet { .. } => "clipboard get for",
+            Self::ClipboardSet { .. } => "clipboard set for",
         }
     }
 }
@@ -202,6 +217,9 @@ pub struct Response {
     pub snapshots: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_path: Option<String>,
+    /// Plain text from `clipboard-get`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clipboard_text: Option<String>,
 }
 
 impl Response {
@@ -216,6 +234,22 @@ impl Response {
             files: None,
             snapshots: None,
             snapshot_path: None,
+            clipboard_text: None,
+        }
+    }
+
+    /// Success with guest clipboard text.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn clipboard(status: &VmStatus, text: String) -> Self {
+        Self {
+            ok: true,
+            error: None,
+            status: Some(StatusJson::from(status)),
+            stats: None,
+            files: None,
+            snapshots: None,
+            snapshot_path: None,
+            clipboard_text: Some(text),
         }
     }
 
@@ -255,6 +289,7 @@ impl Response {
             files: None,
             snapshots: None,
             snapshot_path: None,
+            clipboard_text: None,
         }
     }
 
@@ -269,6 +304,7 @@ impl Response {
             files: None,
             snapshots: Some(names),
             snapshot_path: path,
+            clipboard_text: None,
         }
     }
 
@@ -283,6 +319,7 @@ impl Response {
             files: None,
             snapshots: None,
             snapshot_path: None,
+            clipboard_text: None,
         }
     }
 }
@@ -325,6 +362,16 @@ mod tests {
             (r#"{"cmd":"force-stop"}"#, Request::ForceStop),
             (r#"{"cmd":"query-stats"}"#, Request::QueryStats),
             (r#"{"cmd":"dump-diagnostics"}"#, Request::DumpDiagnostics),
+            (
+                r#"{"cmd":"clipboard-get","timeout_ms":1000}"#,
+                Request::ClipboardGet {
+                    timeout_ms: Some(1000),
+                },
+            ),
+            (
+                r#"{"cmd":"clipboard-set","text":"hi"}"#,
+                Request::ClipboardSet { text: "hi".into() },
+            ),
         ];
         for (line, want) in cases {
             let got: Request = serde_json::from_str(line).expect(line);

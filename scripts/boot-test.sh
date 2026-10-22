@@ -33,6 +33,9 @@
 #   agent             — the guest ternvale-agent (same assets) against the host AgentServer:
 #                       handshake, heartbeats, reconnect after a server restart, clipboard /
 #                       resolution requests, and power-off on Shutdown
+#   share-clipboard   — virtio-9p share mount, host↔guest clipboard (agent v2 + harness),
+#                       100 MiB host→guest file sha256, guest→host file visible on host
+#                       (rebuild initramfs: ./scripts/make-devices-initramfs.sh)
 #   smp               — nproc, /proc/cpuinfo, and one dd per CPU checked in /proc/stat
 #                       and top, on TERNVALE_BOOT_CPUS CPUs (default 4)
 #   firmware          — EDK2 UEFI (needs ./scripts/fetch-firmware.sh): UEFI shell, front

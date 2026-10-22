@@ -99,6 +99,7 @@ fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Re
         }),
         usb: None,
         audio: None,
+        shares: Vec::new(),
     };
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));

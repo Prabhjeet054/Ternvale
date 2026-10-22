@@ -168,6 +168,15 @@ pub enum ConfigError {
         /// What is wrong.
         reason: String,
     },
+
+    /// A `[[shares]]` entry is invalid.
+    #[error("{field}: {reason}")]
+    InvalidShare {
+        /// Field, such as `shares[0].tag`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
 }
 
 /// Error type other Ternvale crates can return without depending on each other.

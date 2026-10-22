@@ -45,6 +45,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         tpm: None,
         usb: None,
         audio: None,
+        shares: Vec::new(),
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

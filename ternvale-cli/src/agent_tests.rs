@@ -55,6 +55,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         tpm: None,
         usb: None,
         audio: None,
+        shares: Vec::new(),
     }
 }
 

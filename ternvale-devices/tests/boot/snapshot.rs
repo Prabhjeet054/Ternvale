@@ -198,6 +198,7 @@ fn boot_phase(
         tpm: None,
         usb: None,
         audio: None,
+        shares: Vec::new(),
     };
     let uart = Pl011::open(&serial_log).map_err(|e| e.to_string())?;
     let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));

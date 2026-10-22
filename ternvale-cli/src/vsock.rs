@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::{bail, Context, Result};
 use ternvale_agent_proto::AGENT_PORT;
 use ternvale_config::{VmConfig, MAX_UDS_DIR};
-use ternvale_devices::{host_socket_path, AgentServer, VsockConfig};
+use ternvale_devices::{host_socket_path, AgentServer, AgentServerConfig, VsockConfig};
 
 use crate::paths;
 
@@ -52,10 +52,16 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
         .with_context(|| format!("create vsock socket directory {}", dir.display()))?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
         .with_context(|| format!("restrict vsock socket directory {}", dir.display()))?;
+    let shares: Vec<(String, String)> = config
+        .shares
+        .iter()
+        .map(|share| (share.tag.clone(), share.mount_point.clone()))
+        .collect();
     let agent = if section.agent {
         let path = host_socket_path(&dir, AGENT_PORT);
-        let server = AgentServer::start(&path, &config.name)
-            .with_context(|| format!("start the agent server on {}", path.display()))?;
+        let server =
+            AgentServer::start_with(&path, &config.name, AgentServerConfig::default(), shares)
+                .with_context(|| format!("start the agent server on {}", path.display()))?;
         Some(Arc::new(server))
     } else {
         tracing::info!(target: "ternvale::cli", "agent server disabled (vsock.agent = false)");
