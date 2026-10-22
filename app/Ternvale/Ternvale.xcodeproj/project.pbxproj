@@ -1,0 +1,442 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B10000000000000000000001 /* TernvaleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* TernvaleApp.swift */; };
+		B10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* ContentView.swift */; };
+		B10000000000000000000003 /* VMListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* VMListView.swift */; };
+		B10000000000000000000004 /* VMControlBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* VMControlBar.swift */; };
+		B10000000000000000000005 /* LogPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* LogPanelView.swift */; };
+		B10000000000000000000006 /* LibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* LibraryViewModel.swift */; };
+		B10000000000000000000007 /* VMConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* VMConfig.swift */; };
+		B10000000000000000000008 /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000008 /* Paths.swift */; };
+		B10000000000000000000009 /* ControlSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000009 /* ControlSocketClient.swift */; };
+		B1000000000000000000000A /* VMProcessManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000A /* VMProcessManager.swift */; };
+		B1000000000000000000000B /* VMLibraryScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000B /* VMLibraryScanner.swift */; };
+		B1000000000000000000000C /* HostLogTailer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000C /* HostLogTailer.swift */; };
+		B1000000000000000000000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000D /* Assets.xcassets */; };
+		B1000000000000000000000E /* VMRuntimePhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000F /* VMRuntimePhase.swift */; };
+		B10000000000000000000010 /* CrashBundleReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* CrashBundleReader.swift */; };
+		B10000000000000000000011 /* VMCreator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* VMCreator.swift */; };
+		B10000000000000000000012 /* CreateVMView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000012 /* CreateVMView.swift */; };
+		B10000000000000000000013 /* CrashBundleReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* CrashBundleReaderTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B20000000000000000000001 /* TernvaleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TernvaleApp.swift; sourceTree = "<group>"; };
+		B20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B20000000000000000000003 /* VMListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMListView.swift; sourceTree = "<group>"; };
+		B20000000000000000000004 /* VMControlBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMControlBar.swift; sourceTree = "<group>"; };
+		B20000000000000000000005 /* LogPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogPanelView.swift; sourceTree = "<group>"; };
+		B20000000000000000000006 /* LibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViewModel.swift; sourceTree = "<group>"; };
+		B20000000000000000000007 /* VMConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMConfig.swift; sourceTree = "<group>"; };
+		B20000000000000000000008 /* Paths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Paths.swift; sourceTree = "<group>"; };
+		B20000000000000000000009 /* ControlSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlSocketClient.swift; sourceTree = "<group>"; };
+		B2000000000000000000000A /* VMProcessManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMProcessManager.swift; sourceTree = "<group>"; };
+		B2000000000000000000000B /* VMLibraryScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMLibraryScanner.swift; sourceTree = "<group>"; };
+		B2000000000000000000000C /* HostLogTailer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostLogTailer.swift; sourceTree = "<group>"; };
+		B2000000000000000000000D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B2000000000000000000000E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B2000000000000000000000F /* VMRuntimePhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMRuntimePhase.swift; sourceTree = "<group>"; };
+		B20000000000000000000010 /* CrashBundleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashBundleReader.swift; sourceTree = "<group>"; };
+		B20000000000000000000011 /* VMCreator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMCreator.swift; sourceTree = "<group>"; };
+		B20000000000000000000012 /* CreateVMView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateVMView.swift; sourceTree = "<group>"; };
+		B20000000000000000000013 /* CrashBundleReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashBundleReaderTests.swift; sourceTree = "<group>"; };
+		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				B50000000000000000000002 /* Ternvale */,
+				B50000000000000000000008 /* TernvaleTests */,
+				B50000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B50000000000000000000002 /* Ternvale */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000001 /* TernvaleApp.swift */,
+				B50000000000000000000004 /* Views */,
+				B50000000000000000000005 /* ViewModels */,
+				B50000000000000000000006 /* Models */,
+				B50000000000000000000007 /* Services */,
+				B2000000000000000000000D /* Assets.xcassets */,
+				B2000000000000000000000E /* Info.plist */,
+			);
+			path = Ternvale;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B30000000000000000000001 /* Ternvale.app */,
+				B30000000000000000000002 /* TernvaleTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000008 /* TernvaleTests */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000013 /* CrashBundleReaderTests.swift */,
+			);
+			path = TernvaleTests;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000004 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000002 /* ContentView.swift */,
+				B20000000000000000000003 /* VMListView.swift */,
+				B20000000000000000000004 /* VMControlBar.swift */,
+				B20000000000000000000005 /* LogPanelView.swift */,
+				B20000000000000000000012 /* CreateVMView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000005 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000006 /* LibraryViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000006 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000007 /* VMConfig.swift */,
+				B2000000000000000000000F /* VMRuntimePhase.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000007 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000008 /* Paths.swift */,
+				B20000000000000000000009 /* ControlSocketClient.swift */,
+				B2000000000000000000000A /* VMProcessManager.swift */,
+				B2000000000000000000000B /* VMLibraryScanner.swift */,
+				B2000000000000000000000C /* HostLogTailer.swift */,
+				B20000000000000000000010 /* CrashBundleReader.swift */,
+				B20000000000000000000011 /* VMCreator.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		BC0000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B80000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B60000000000000000000001;
+			remoteInfo = Ternvale;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		BC0000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B60000000000000000000001 /* Ternvale */;
+			targetProxy = BC0000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXNativeTarget section */
+		B60000000000000000000001 /* Ternvale */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B90000000000000000000003 /* Build configuration list for PBXNativeTarget "Ternvale" */;
+			buildPhases = (
+				B70000000000000000000001 /* Sources */,
+				B40000000000000000000001 /* Frameworks */,
+				B70000000000000000000002 /* Resources */,
+				B70000000000000000000003 /* Embed ternvale helper */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Ternvale;
+			productName = Ternvale;
+			productReference = B30000000000000000000001 /* Ternvale.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B60000000000000000000002 /* TernvaleTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B90000000000000000000004 /* Build configuration list for PBXNativeTarget "TernvaleTests" */;
+			buildPhases = (
+				B70000000000000000000004 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BC0000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = TernvaleTests;
+			productName = TernvaleTests;
+			productReference = B30000000000000000000002 /* TernvaleTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B80000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					B60000000000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = B90000000000000000000001 /* Build configuration list for PBXProject "Ternvale" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B50000000000000000000001;
+			productRefGroup = B50000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B60000000000000000000001 /* Ternvale */,
+				B60000000000000000000002 /* TernvaleTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B70000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1000000000000000000000D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		B70000000000000000000003 /* Embed ternvale helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Embed ternvale helper";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/../scripts/copy-ternvale-helper.sh\" \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B70000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000013 /* CrashBundleReaderTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B70000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001 /* TernvaleApp.swift in Sources */,
+				B10000000000000000000002 /* ContentView.swift in Sources */,
+				B10000000000000000000003 /* VMListView.swift in Sources */,
+				B10000000000000000000004 /* VMControlBar.swift in Sources */,
+				B10000000000000000000005 /* LogPanelView.swift in Sources */,
+				B10000000000000000000006 /* LibraryViewModel.swift in Sources */,
+				B10000000000000000000007 /* VMConfig.swift in Sources */,
+				B10000000000000000000008 /* Paths.swift in Sources */,
+				B10000000000000000000009 /* ControlSocketClient.swift in Sources */,
+				B1000000000000000000000A /* VMProcessManager.swift in Sources */,
+				B1000000000000000000000B /* VMLibraryScanner.swift in Sources */,
+				B1000000000000000000000C /* HostLogTailer.swift in Sources */,
+				B1000000000000000000000E /* VMRuntimePhase.swift in Sources */,
+				B10000000000000000000010 /* CrashBundleReader.swift in Sources */,
+				B10000000000000000000011 /* VMCreator.swift in Sources */,
+				B10000000000000000000012 /* CreateVMView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BA0000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		BA0000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		BA0000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Ternvale/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ternvale.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BA0000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Ternvale/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ternvale.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		BA0000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ternvale.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ternvale.app/Contents/MacOS/Ternvale";
+			};
+			name = Debug;
+		};
+		BA0000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ternvale.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ternvale.app/Contents/MacOS/Ternvale";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B90000000000000000000001 /* Build configuration list for PBXProject "Ternvale" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA0000000000000000000001 /* Debug */,
+				BA0000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B90000000000000000000003 /* Build configuration list for PBXNativeTarget "Ternvale" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA0000000000000000000003 /* Debug */,
+				BA0000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B90000000000000000000004 /* Build configuration list for PBXNativeTarget "TernvaleTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA0000000000000000000005 /* Debug */,
+				BA0000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B80000000000000000000001 /* Project object */;
+}
