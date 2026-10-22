@@ -94,6 +94,10 @@ fn viewer_messages_round_trip() {
     for message in [
         ViewerMessage::Hello { version: VERSION },
         ViewerMessage::Presented { sequence: u64::MAX },
+        ViewerMessage::SetSize {
+            width: 1920,
+            height: 1080,
+        },
     ] {
         let bytes = message.encode();
         assert_eq!(bytes.len(), MESSAGE_LEN);

@@ -21,6 +21,10 @@ enum TernvalePaths {
         runDirectory.appendingPathComponent("\(vmName).sock")
     }
 
+    static func displaySocket(for vmName: String) -> URL {
+        runDirectory.appendingPathComponent("\(vmName).display.sock")
+    }
+
     /// Newest `ternvale-<vm>-<YYYYMMDD-HHMMSS>.log` in the host log directory.
     static func newestHostLog(for vmName: String) -> URL? {
         guard let entries = try? FileManager.default.contentsOfDirectory(

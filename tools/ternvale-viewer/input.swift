@@ -12,6 +12,7 @@ let kindKey: UInt16 = 0x0201
 let kindPointer: UInt16 = 0x0202
 let kindButton: UInt16 = 0x0203
 let kindScroll: UInt16 = 0x0204
+let kindSetSize: UInt16 = 0x0205
 let pointerMax = 32767.0
 
 /// Device-dependent modifier bits (IOKit `NX_DEVICE*KEYMASK`) by key code, so
@@ -68,6 +69,11 @@ final class InputSender {
     /// Wheel clicks: `dx > 0` right, `dy > 0` up.
     func scroll(dx: Int32, dy: Int32) {
         send(kindScroll, UInt64(UInt32(bitPattern: dx)) | UInt64(UInt32(bitPattern: dy)) << 32)
+    }
+
+    /// Host window resize (TVDP `SET_SIZE`); same as the Swift app's `VMDisplayPanel`.
+    func requestHostMode(width: UInt32, height: UInt32) {
+        send(kindSetSize, UInt64(width) | UInt64(height) << 32)
     }
 
     func releaseAll() {

@@ -10,7 +10,7 @@
 //!   virtio-gpu `format`; `format` 0 with an empty payload means "no scanout").
 //! - viewer → VMM: fixed [`MESSAGE_LEN`]-byte messages: `HELLO` first (carrying
 //!   the viewer's version), then `PRESENTED` with a frame's `sequence` once it
-//!   is on screen, and (version 2) the input messages of [`ViewerInput`].
+//!   is on screen, [`ViewerInput`] messages, and `SET_SIZE` for host resize.
 
 /// `"TVDP"` read as a little-endian u32.
 pub const MAGIC: u32 = u32::from_le_bytes(*b"TVDP");
@@ -39,6 +39,9 @@ pub const KIND_BUTTON: u16 = 0x0203;
 /// viewer → VMM: wheel clicks; `value` = dx as i32 (bits 0..32, + right) |
 /// dy as i32 (bits 32..64, + up).
 pub const KIND_SCROLL: u16 = 0x0204;
+/// viewer → VMM: host window resize; `value` = width (bits 0..32) |
+/// height (bits 32..64) for scanout 0.
+pub const KIND_SET_SIZE: u16 = 0x0205;
 /// Largest pointer coordinate (matches the tablet's `ABS_X`/`ABS_Y` max).
 pub const POINTER_MAX: u32 = 0x7fff;
 /// Largest width or height a frame may claim (the device's own limit).
@@ -175,6 +178,13 @@ pub enum ViewerMessage {
     },
     /// Keyboard or pointer input for the guest.
     Input(ViewerInput),
+    /// Host wants a new advertised mode for scanout 0 (dynamic resolution).
+    SetSize {
+        /// Pixels per row.
+        width: u32,
+        /// Rows.
+        height: u32,
+    },
 }
 
 /// Pointer button in a [`ViewerInput::Button`].
@@ -285,6 +295,9 @@ impl ViewerMessage {
             Self::Hello { version } => (KIND_HELLO, u64::from(version)),
             Self::Presented { sequence } => (KIND_PRESENTED, sequence),
             Self::Input(input) => input.wire(),
+            Self::SetSize { width, height } => {
+                (KIND_SET_SIZE, u64::from(width) | u64::from(height) << 32)
+            }
         };
         let mut out = [0u8; MESSAGE_LEN];
         out[0..4].copy_from_slice(&MAGIC.to_le_bytes());
@@ -303,6 +316,10 @@ impl ViewerMessage {
                 version: u16::try_from(value).unwrap_or(u16::MAX),
             }),
             KIND_PRESENTED => Ok(Self::Presented { sequence: value }),
+            KIND_SET_SIZE => Ok(Self::SetSize {
+                width: value as u32,
+                height: (value >> 32) as u32,
+            }),
             kind => match ViewerInput::parse(kind, value) {
                 Some(input) => input.map(Self::Input),
                 None => Err(WireError::Kind { kind }),

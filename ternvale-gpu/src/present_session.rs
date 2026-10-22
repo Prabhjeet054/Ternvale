@@ -104,7 +104,9 @@ pub(crate) fn serve(
     std::thread::scope(|scope| {
         let acks = std::thread::Builder::new()
             .name("ternvale-gpu-viewer-rx".into())
-            .spawn_scoped(scope, move || read_messages(reader, &tx, input, stats))
+            .spawn_scoped(scope, move || {
+                read_messages(reader, &tx, input, stats, display, config.scanout)
+            })
             .map_err(io("spawn viewer reader thread"))?;
         let result = stream_frames(&mut stream, &rx, display, config, stats, stop);
         if let Err(e) = stream.shutdown(Shutdown::Both) {
@@ -135,6 +137,8 @@ fn read_messages(
     tx: &Sender<Event>,
     input: Option<&dyn InputTarget>,
     stats: &PresentStats,
+    display: &GpuDisplay,
+    scanout: usize,
 ) {
     let mut buf = [0u8; MESSAGE_LEN];
     loop {
@@ -146,6 +150,13 @@ fn read_messages(
                         forwarded = input.is_some(), "viewer input");
                     if let Some(target) = input {
                         target.deliver(event);
+                    }
+                    continue;
+                }
+                Ok(ViewerMessage::SetSize { width, height }) => {
+                    if let Err(error) = display.request_host_mode(scanout, width, height) {
+                        tracing::warn!(target: "ternvale::gpu", %error, width, height,
+                            scanout, "viewer set_size rejected");
                     }
                     continue;
                 }
@@ -230,6 +241,35 @@ fn stream_frames(
         }
     };
     window.report(Instant::now(), "session end");
+    let had_in_flight = in_flight.is_some();
+    if let Some(pending) = in_flight {
+        tracing::warn!(
+            target: "ternvale::gpu",
+            sequence = pending.sequence,
+            waited_ms = pending.sent_at.elapsed().as_millis() as u64,
+            "display session ended with one frame still awaiting a presented ack"
+        );
+    }
+    let sent = stats.sent.load(Ordering::Relaxed);
+    let presented = stats.presented.load(Ordering::Relaxed);
+    let unacked = sent.saturating_sub(presented);
+    if unacked > 1 {
+        tracing::warn!(
+            target: "ternvale::gpu",
+            sent,
+            presented,
+            unacked,
+            "display IPC frame imbalance (sent minus presented acks)"
+        );
+    } else {
+        tracing::debug!(
+            target: "ternvale::gpu",
+            sent,
+            presented,
+            in_flight = had_in_flight,
+            "display session frame accounting"
+        );
+    }
     result
 }
 
@@ -317,6 +357,7 @@ fn on_message(
             tracing::warn!(target: "ternvale::gpu", version, "display viewer repeated its hello; ignoring")
         }
         ViewerMessage::Input(_) => {}
+        ViewerMessage::SetSize { .. } => {}
     }
 }
 

@@ -30,6 +30,11 @@ struct ContentView: View {
                     onResume: library.resumeSelected
                 )
                 Divider()
+                VMDisplayPanel(
+                    controller: library.display,
+                    isActive: library.selectedIsRunning
+                )
+                Divider()
                 LogPanelView(text: logTailer.text, path: logTailer.path)
             }
         }

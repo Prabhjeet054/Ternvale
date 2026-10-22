@@ -114,7 +114,7 @@ fn display_socket_sits_beside_the_control_socket() {
 fn plan(scratch: &Scratch, viewer: PathBuf) -> DisplayPlan {
     DisplayPlan {
         name: "vm".into(),
-        viewer,
+        viewer: Some(viewer),
         socket: scratch.0.join("vm.display.sock"),
         fps: 30,
     }

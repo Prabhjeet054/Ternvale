@@ -1,12 +1,14 @@
-//! `ternvale run --display window`: show the VM's virtio-gpu in the dev
-//! viewer (`tools/ternvale-viewer`, Step 44; a throwaway tool, not the app).
+//! `ternvale run --display window`: virtio-gpu frames on a Unix socket.
+//!
+//! By default the CLI also launches the Step 44 dev viewer (`tools/ternvale-viewer`).
+//! The macOS app sets [`EMBEDDED_DISPLAY_ENV`] and connects its own Metal view instead.
 //!
 //! The run adds a virtio-gpu (next virtio-mmio slot, or PCI with
 //! `profile = "windows"`), starts a [`Presenter`] on
-//! `<run dir>/<name>.display.sock` capped at `--fps`, and launches the viewer
-//! pointed at it. A virtio-input keyboard and tablet follow the GPU and take
-//! the window's input ([`crate::display_input`]). Closing the window leaves
-//! the VM running; stopping the VM closes the socket and the viewer exits.
+//! `<run dir>/<name>.display.sock` capped at `--fps`, and optionally launches the
+//! viewer. A virtio-input keyboard and tablet follow the GPU and take the
+//! window's input ([`crate::display_input`]). Closing the viewer leaves the VM
+//! running; stopping the VM closes the socket.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -22,6 +24,8 @@ use crate::paths::{MAX_SOCKET_PATH, RUN_DIR_ENV};
 
 /// Viewer binary override.
 pub const VIEWER_ENV: &str = "TERNVALE_VIEWER";
+/// When set, the presenter listens but no dev viewer process is spawned (app Metal view).
+pub const EMBEDDED_DISPLAY_ENV: &str = "TERNVALE_EMBEDDED_DISPLAY";
 /// The viewer's file name next to `ternvale` or under `target/viewer`.
 pub const VIEWER_NAME: &str = "ternvale-viewer";
 /// How long the viewer gets to exit after its socket closes.
@@ -33,7 +37,7 @@ pub enum DisplayMode {
     /// No virtio-gpu.
     #[default]
     None,
-    /// A virtio-gpu shown in the dev viewer window.
+    /// A virtio-gpu with a presenter socket (dev viewer or app).
     Window,
 }
 
@@ -105,13 +109,13 @@ pub fn socket_path(control: &Path) -> Result<PathBuf> {
 }
 
 /// What `--display window` needs, resolved before the VM boots so a missing
-/// viewer fails fast.
+/// viewer fails fast (unless embedded display is requested).
 #[derive(Debug, Clone)]
 pub struct DisplayPlan {
     /// VM name, for the window title.
     pub name: String,
-    /// Viewer binary.
-    pub viewer: PathBuf,
+    /// Dev viewer binary, when the app is not presenting.
+    pub viewer: Option<PathBuf>,
     /// Display socket.
     pub socket: PathBuf,
     /// Frame-rate cap.
@@ -119,19 +123,26 @@ pub struct DisplayPlan {
 }
 
 impl DisplayPlan {
-    /// Resolve the viewer and socket for VM `name` with control socket `control`.
+    /// Resolve the socket for VM `name` with control socket `control`.
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name, fps))]
     pub fn new(name: &str, control: &Path, fps: u32) -> Result<Self> {
+        let embedded = std::env::var_os(EMBEDDED_DISPLAY_ENV).is_some();
+        let viewer = if embedded {
+            tracing::info!(target: "ternvale::cli", "embedded display; dev viewer not launched");
+            None
+        } else {
+            Some(find_viewer()?)
+        };
         Ok(Self {
             name: name.to_string(),
-            viewer: find_viewer()?,
+            viewer,
             socket: socket_path(control)?,
             fps,
         })
     }
 
     /// Start presenting `display`, forwarding window input to `input`, and
-    /// launch the viewer.
+    /// launch the dev viewer when configured.
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = %self.name, input = input.is_some()))]
     pub fn start(
         &self,
@@ -144,18 +155,28 @@ impl DisplayPlan {
         };
         let presenter = Presenter::start_with_input(display, &self.socket, config, input)
             .with_context(|| format!("start the display presenter on {}", self.socket.display()))?;
-        let viewer = Command::new(&self.viewer)
-            .arg("--socket")
-            .arg(&self.socket)
-            .arg("--title")
-            .arg(format!("Ternvale — {}", self.name))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .with_context(|| format!("launch the dev viewer {}", self.viewer.display()))?;
-        tracing::info!(target: "ternvale::cli", viewer = %self.viewer.display(), pid = viewer.id(),
-            socket = %self.socket.display(), fps = self.fps, "started display viewer");
+        let viewer = match &self.viewer {
+            Some(viewer) => {
+                let child = Command::new(viewer)
+                    .arg("--socket")
+                    .arg(&self.socket)
+                    .arg("--title")
+                    .arg(format!("Ternvale — {}", self.name))
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::inherit())
+                    .spawn()
+                    .with_context(|| format!("launch the dev viewer {}", viewer.display()))?;
+                tracing::info!(target: "ternvale::cli", viewer = %viewer.display(), pid = child.id(),
+                    socket = %self.socket.display(), fps = self.fps, "started display viewer");
+                Some(child)
+            }
+            None => {
+                tracing::info!(target: "ternvale::cli", socket = %self.socket.display(),
+                    fps = self.fps, "display presenter ready for embedded client");
+                None
+            }
+        };
         Ok(DisplaySession {
             presenter: Some(presenter),
             viewer,
@@ -163,18 +184,21 @@ impl DisplayPlan {
     }
 }
 
-/// A presenter and its viewer process; dropping it closes both.
+/// A presenter and optionally its dev viewer process; dropping it closes both.
 pub struct DisplaySession {
     presenter: Option<Presenter>,
-    viewer: Child,
+    viewer: Option<Child>,
 }
 
 impl Drop for DisplaySession {
     fn drop(&mut self) {
         drop(self.presenter.take());
+        let Some(viewer) = self.viewer.as_mut() else {
+            return;
+        };
         let deadline = Instant::now() + VIEWER_EXIT_GRACE;
         loop {
-            match self.viewer.try_wait() {
+            match viewer.try_wait() {
                 Ok(Some(status)) => {
                     tracing::info!(target: "ternvale::cli", %status, "display viewer exited");
                     return;
@@ -189,11 +213,11 @@ impl Drop for DisplaySession {
                 }
             }
         }
-        tracing::warn!(target: "ternvale::cli", pid = self.viewer.id(), "display viewer did not exit; killing it");
-        if let Err(error) = self.viewer.kill() {
+        tracing::warn!(target: "ternvale::cli", pid = viewer.id(), "display viewer did not exit; killing it");
+        if let Err(error) = viewer.kill() {
             tracing::warn!(target: "ternvale::cli", error = %error, "could not kill the display viewer");
         }
-        if let Err(error) = self.viewer.wait() {
+        if let Err(error) = viewer.wait() {
             tracing::warn!(target: "ternvale::cli", error = %error, "could not reap the display viewer");
         }
     }

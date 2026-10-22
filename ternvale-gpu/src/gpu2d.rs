@@ -126,7 +126,8 @@ impl Gpu2d {
         );
         let result = match command {
             Command::GetDisplayInfo => {
-                return protocol::display_info(&hdr, self.display.modes());
+                let modes = self.display.modes();
+                return protocol::display_info(&hdr, &modes);
             }
             Command::ResourceCreate2d {
                 resource_id,

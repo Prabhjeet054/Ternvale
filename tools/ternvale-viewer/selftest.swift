@@ -20,6 +20,7 @@
 //                      apart, then one move to (gx, gy)
 //   click-burst <n> <gap_us>   n left clicks where the pointer is
 //   frame-info         prints window number and geometry (for screencapture -l)
+//   set-size <w> <h>   TVDP SET_SIZE (embedded app / dynamic resolution)
 // Every step is echoed to stderr as "ternvale-viewer: selftest ...".
 
 import AppKit
@@ -112,6 +113,11 @@ final class SelfTest {
                 guard parts.count == 2, parts[0] >= 1, parts[1] >= 0 else { fail("selftest: click-burst needs <n> <gap_us>") }
                 clickBurst(count: parts[0], gap: useconds_t(parts[1]))
             case "frame-info": onMain { self.frameInfo() }
+            case "set-size":
+                let parts = arg.split(separator: " ").compactMap { UInt32($0) }
+                guard parts.count == 2 else { fail("selftest: set-size needs <w> <h>") }
+                onMain { self.surface.input?.requestHostMode(width: parts[0], height: parts[1]) }
+                selftestNote("set-size width=\(parts[0]) height=\(parts[1])")
             default: fail("selftest: unknown command '\(cmd)'")
             }
         }

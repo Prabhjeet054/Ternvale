@@ -14,6 +14,7 @@ final class LibraryViewModel: ObservableObject {
     private let scanner = VMLibraryScanner()
     private let control = ControlSocketClient()
     private let processes = VMProcessManager()
+    let display = VMDisplayController()
     private let log = Logger(subsystem: "com.ternvale.app", category: "library")
     private var pollTask: Task<Void, Never>?
     private var lastHelperExit: Int32?
@@ -157,6 +158,7 @@ final class LibraryViewModel: ObservableObject {
         crashSummary = nil
         phase = .starting
         lastHelperExit = nil
+        display.connect(vmName: vm.name)
         Task {
             do {
                 try processes.start(vm: vm)
@@ -179,6 +181,7 @@ final class LibraryViewModel: ObservableObject {
         isBusy = true
         statusMessage = nil
         processes.markUserStop(vmName: vm.name)
+        display.disconnect()
         phase = .stopping
         Task {
             do {
@@ -241,6 +244,7 @@ final class LibraryViewModel: ObservableObject {
     }
 
     private func markCrashed(vmName: String, reason: String?) {
+        display.disconnect()
         phase = .crashed
         let bundle = CrashBundleReader.loadSummary(vmName: vmName, helperExitCode: lastHelperExit)
         if let reason {

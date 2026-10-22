@@ -25,6 +25,12 @@
 		B10000000000000000000011 /* VMCreator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* VMCreator.swift */; };
 		B10000000000000000000012 /* CreateVMView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000012 /* CreateVMView.swift */; };
 		B10000000000000000000013 /* CrashBundleReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* CrashBundleReaderTests.swift */; };
+		B10000000000000000000014 /* PresentWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000014 /* PresentWire.swift */; };
+		B10000000000000000000015 /* DisplaySocketLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000015 /* DisplaySocketLink.swift */; };
+		B10000000000000000000016 /* DisplayInputSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000016 /* DisplayInputSender.swift */; };
+		B10000000000000000000017 /* VMDisplayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000017 /* VMDisplayController.swift */; };
+		B10000000000000000000018 /* VMMetalDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000018 /* VMMetalDisplayView.swift */; };
+		B10000000000000000000019 /* VMDisplayPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000019 /* VMDisplayPanel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +53,12 @@
 		B20000000000000000000011 /* VMCreator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMCreator.swift; sourceTree = "<group>"; };
 		B20000000000000000000012 /* CreateVMView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateVMView.swift; sourceTree = "<group>"; };
 		B20000000000000000000013 /* CrashBundleReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashBundleReaderTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000014 /* PresentWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentWire.swift; sourceTree = "<group>"; };
+		B20000000000000000000015 /* DisplaySocketLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplaySocketLink.swift; sourceTree = "<group>"; };
+		B20000000000000000000016 /* DisplayInputSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayInputSender.swift; sourceTree = "<group>"; };
+		B20000000000000000000017 /* VMDisplayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMDisplayController.swift; sourceTree = "<group>"; };
+		B20000000000000000000018 /* VMMetalDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMMetalDisplayView.swift; sourceTree = "<group>"; };
+		B20000000000000000000019 /* VMDisplayPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMDisplayPanel.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -76,6 +88,7 @@
 			children = (
 				B20000000000000000000001 /* TernvaleApp.swift */,
 				B50000000000000000000004 /* Views */,
+				B50000000000000000000009 /* Display */,
 				B50000000000000000000005 /* ViewModels */,
 				B50000000000000000000006 /* Models */,
 				B50000000000000000000007 /* Services */,
@@ -110,6 +123,7 @@
 				B20000000000000000000004 /* VMControlBar.swift */,
 				B20000000000000000000005 /* LogPanelView.swift */,
 				B20000000000000000000012 /* CreateVMView.swift */,
+				B20000000000000000000019 /* VMDisplayPanel.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -143,6 +157,18 @@
 				B20000000000000000000011 /* VMCreator.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		B50000000000000000000009 /* Display */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000014 /* PresentWire.swift */,
+				B20000000000000000000015 /* DisplaySocketLink.swift */,
+				B20000000000000000000016 /* DisplayInputSender.swift */,
+				B20000000000000000000017 /* VMDisplayController.swift */,
+				B20000000000000000000018 /* VMMetalDisplayView.swift */,
+			);
+			path = Display;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -292,6 +318,12 @@
 				B10000000000000000000010 /* CrashBundleReader.swift in Sources */,
 				B10000000000000000000011 /* VMCreator.swift in Sources */,
 				B10000000000000000000012 /* CreateVMView.swift in Sources */,
+				B10000000000000000000014 /* PresentWire.swift in Sources */,
+				B10000000000000000000015 /* DisplaySocketLink.swift in Sources */,
+				B10000000000000000000016 /* DisplayInputSender.swift in Sources */,
+				B10000000000000000000017 /* VMDisplayController.swift in Sources */,
+				B10000000000000000000018 /* VMMetalDisplayView.swift in Sources */,
+				B10000000000000000000019 /* VMDisplayPanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

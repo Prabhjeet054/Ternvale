@@ -57,10 +57,11 @@ final class VMProcessManager {
         let binary = try helperURL()
         let process = Process()
         process.executableURL = binary
-        process.arguments = ["run", vm.configURL.path]
+        process.arguments = ["run", "--display", "window", vm.configURL.path]
         process.currentDirectoryURL = vm.configURL.deletingLastPathComponent()
         var env = ProcessInfo.processInfo.environment
         env.removeValue(forKey: "TERNVALE_HELPER_PATH")
+        env["TERNVALE_EMBEDDED_DISPLAY"] = "1"
         process.environment = env
         let pipe = Pipe()
         process.standardOutput = pipe

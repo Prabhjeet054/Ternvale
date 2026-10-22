@@ -6,6 +6,7 @@
 //! `CONTEXT_INIT`). Config space is `struct virtio_gpu_config` (virtio 1.2
 //! §5.7.4): `events_read`, `events_clear`, `num_scanouts`, `num_capsets`.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -47,6 +48,10 @@ pub const F_CONTEXT_INIT: u64 = 1 << 4;
 pub const F_BLOB_ALIGNMENT: u64 = 1 << 5;
 /// Mode a scanout reports when the config does not choose one.
 pub const DEFAULT_MODE: (u32, u32) = (1280, 800);
+/// `VIRTIO_GPU_EVENT_DISPLAY` (virtio 1.2 §5.7.4): display configuration changed.
+pub const EVENT_DISPLAY: u32 = 1;
+/// Virtio config-change interrupt bit (virtio-mmio §4.2.4.6).
+const INT_CONFIG: u32 = 2;
 
 /// Display configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,7 +132,7 @@ pub struct PciGpu {
 /// One virtio-gpu device with its worker thread.
 pub struct VirtioGpu {
     config: GpuConfig,
-    events_read: u32,
+    events_read: Arc<AtomicU32>,
     display: GpuDisplay,
     stats: Arc<GpuStats>,
     kick: Option<Sender<Kick>>,
@@ -144,12 +149,26 @@ impl VirtioGpu {
     ) -> Result<Self, GpuError> {
         config.validate()?;
         let display = GpuDisplay::new(&config.modes);
+        let events_read = Arc::new(AtomicU32::new(0));
+        let irq_line = Arc::clone(&irq);
+        display.install_host_resize_hook(Box::new({
+            let events_read = Arc::clone(&events_read);
+            let irq = Arc::clone(&irq_line);
+            move |scanout, width, height| {
+                events_read.fetch_or(EVENT_DISPLAY, Ordering::Release);
+                irq.raise(INT_CONFIG);
+                tracing::debug!(target: "ternvale::gpu", scanout, width, height,
+                    events_read = events_read.load(Ordering::Relaxed),
+                    "virtio-gpu display configuration event raised");
+            }
+        }));
         let stats = Arc::new(GpuStats::default());
         let gpu = GpuEngine::new(display.clone(), Arc::clone(&stats));
         let (tx, rx) = mpsc::channel();
+        let irq_worker = Arc::clone(&irq);
         let join = std::thread::Builder::new()
             .name("ternvale-virtio-gpu".into())
-            .spawn(move || worker::run(rx, gpu, memory, irq))
+            .spawn(move || worker::run(rx, gpu, memory, irq_worker))
             .map_err(GpuError::Spawn)?;
         tracing::info!(
             target: "ternvale::gpu",
@@ -160,7 +179,7 @@ impl VirtioGpu {
         );
         Ok(Self {
             config,
-            events_read: 0,
+            events_read,
             display,
             stats,
             kick: Some(tx),
@@ -250,7 +269,7 @@ impl VirtioGpu {
     fn config_bytes(&self) -> Vec<u8> {
         let len = self.config_len() as usize;
         let mut out = vec![0u8; len];
-        out[0..4].copy_from_slice(&self.events_read.to_le_bytes());
+        out[0..4].copy_from_slice(&self.events_read.load(Ordering::Relaxed).to_le_bytes());
         // events_clear (4..8) reads as 0.
         out[8..12].copy_from_slice(&(self.config.modes.len() as u32).to_le_bytes());
         #[cfg(feature = "gpu3d")]
@@ -319,8 +338,11 @@ impl VirtioDevice for VirtioGpu {
         tracing::trace!(target: "ternvale::gpu", offset = format!("{offset:#x}"), size, value = format!("{value:#x}"), "virtio-gpu config write");
         if offset == 4 && size == 4 {
             // events_clear: write-to-clear bits of events_read (§5.7.4).
-            self.events_read &= !(value as u32);
-            tracing::debug!(target: "ternvale::gpu", cleared = format!("{value:#x}"), events_read = self.events_read, "virtio-gpu events cleared");
+            let prev = self
+                .events_read
+                .fetch_and(!(value as u32), Ordering::AcqRel);
+            tracing::debug!(target: "ternvale::gpu", cleared = format!("{value:#x}"),
+                events_read = prev & !(value as u32), "virtio-gpu events cleared");
         } else {
             tracing::warn!(target: "ternvale::gpu", offset = format!("{offset:#x}"), size, "write to read-only virtio-gpu config field ignored");
         }
@@ -332,7 +354,7 @@ impl VirtioDevice for VirtioGpu {
 
     fn status_changed(&mut self, status: u32) {
         if status == 0 {
-            self.events_read = 0;
+            self.events_read.store(0, Ordering::Release);
             self.send(Kick::Reset);
         }
     }
