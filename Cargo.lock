@@ -1157,6 +1157,7 @@ dependencies = [
  "ternvale-gpu",
  "ternvale-hv",
  "ternvale-log",
+ "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-vmm",
  "thiserror 2.0.21",
@@ -1193,6 +1194,14 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ternvale-snapshot"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

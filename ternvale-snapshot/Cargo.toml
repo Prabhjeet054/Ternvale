@@ -1,0 +1,10 @@
+[package]
+name = "ternvale-snapshot"
+description = "Layered copy-on-write disk images for Ternvale virtio-blk."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror = "2"
+tracing = "0.1"

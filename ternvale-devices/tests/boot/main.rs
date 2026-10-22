@@ -8,6 +8,8 @@
 //! disk (also needs `./scripts/make-pci-assets.sh`; the kernel has `virtio_pci` built in).
 //! Set `TERNVALE_BOOT_SCENARIO=net` to ping the loopback gateway over virtio-net
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
+//! Set `TERNVALE_BOOT_SCENARIO=snapshot` for a two-boot layered disk test (needs
+//! `./scripts/make-snapshot-initramfs.sh` under `test-assets/snapshot-boot/`).
 //! Set `TERNVALE_BOOT_SCENARIO=audio` to load virtio_snd and play a 440 Hz sine through
 //! speaker-test (needs `./scripts/make-audio-initramfs.sh` under `test-assets/virtio-audio/`).
 //! Set `TERNVALE_BOOT_SCENARIO=devices` to read /dev/hwrng and ping/pong over vsock
@@ -88,6 +90,7 @@ mod net;
 mod pci;
 mod rootfs;
 mod smp;
+mod snapshot;
 mod tpm_guest_checks;
 mod uefi_dmem;
 mod uefi_linux;
@@ -121,6 +124,7 @@ fn run() -> Result<(), String> {
         "net" => net::run(),
         "devices" => devices::run(),
         "audio" => audio::run(),
+        "snapshot" => snapshot::run(),
         "usb" => usb::run(),
         "gpu" => gpu::run(),
         "input" => input::run(),
@@ -141,7 +145,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, usb, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, snapshot, usb, gpu, input, getty, desktop, agent, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

@@ -32,6 +32,7 @@ ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 # (workspace crate, already built through ternvale-vmm).
 ternvale-config = { path = "../ternvale-config" }
 ternvale-audio-host = { path = "../ternvale-audio-host" }
+ternvale-snapshot = { path = "../ternvale-snapshot" }
 
 [dev-dependencies]
 # AgentServer tests run the real agent loop over a Unix socket.

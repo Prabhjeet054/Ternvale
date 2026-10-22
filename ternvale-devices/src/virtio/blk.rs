@@ -16,7 +16,7 @@ use ternvale_vmm::{DeviceAttach, GuestMemory, MachineError};
 use super::irq::{IrqHook, VirtioIrq};
 use super::queue::SplitQueue;
 use super::{QueueNotify, VirtioDevice, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
-use backend::FileBackend;
+use backend::BlkBackend;
 pub use media::{BlkMedia, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE};
 
 /// Virtio block device id.
@@ -51,6 +51,9 @@ pub enum VirtioBlkError {
         /// OS error.
         source: std::io::Error,
     },
+    /// Layered snapshot stack error.
+    #[error("virtio-blk snapshot: {0}")]
+    Snapshot(ternvale_snapshot::SnapshotError),
 }
 
 /// Base, size, MMIO device, and live stats from [`VirtioBlk::attach`].
@@ -132,7 +135,7 @@ impl VirtioBlk {
         memory: Arc<Mutex<GuestMemory>>,
         irq: Arc<VirtioIrq>,
     ) -> Result<Self, VirtioBlkError> {
-        let backend = FileBackend::open(path, media.read_only())?;
+        let backend = BlkBackend::open(path, media.read_only())?;
         let capacity = backend.capacity();
         tracing::debug!(
             target: "ternvale::virtio::blk",
@@ -317,7 +320,7 @@ impl VirtioDevice for VirtioBlk {
 
 fn worker(
     rx: Receiver<Kick>,
-    backend: FileBackend,
+    mut backend: BlkBackend,
     memory: Arc<Mutex<GuestMemory>>,
     irq: Arc<VirtioIrq>,
     stats: Arc<BlkStats>,
@@ -354,7 +357,7 @@ fn worker(
                 let mut completed = false;
                 let chains: Vec<_> = q.chains(&mem).collect();
                 for chain in chains {
-                    let used = request::process(&mut mem, &backend, &chain, &serial, &stats);
+                    let used = request::process(&mut mem, &mut backend, &chain, &serial, &stats);
                     if q.add_used(&mut mem, chain.head, used) {
                         completed = true;
                     }

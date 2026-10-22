@@ -2,7 +2,7 @@
 
 use ternvale_vmm::GuestMemory;
 
-use super::backend::FileBackend;
+use super::backend::BlkBackend;
 use super::{
     BlkStats, Buffer, ID_BYTES, SECTOR, VIRTIO_BLK_S_IOERR, VIRTIO_BLK_S_OK, VIRTIO_BLK_S_UNSUPP,
     VIRTIO_BLK_T_FLUSH, VIRTIO_BLK_T_GET_ID, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT,
@@ -17,7 +17,7 @@ struct Header {
 /// Run one chain. Returns the used-ring length (writable bytes touched).
 pub fn process(
     mem: &mut GuestMemory,
-    backend: &FileBackend,
+    backend: &mut BlkBackend,
     chain: &Chain,
     serial: &[u8; ID_BYTES],
     stats: &BlkStats,
@@ -114,7 +114,7 @@ fn data_bytes(chain: &Chain, ty: u32) -> u32 {
 
 fn read_req(
     mem: &mut GuestMemory,
-    backend: &FileBackend,
+    backend: &mut BlkBackend,
     chain: &Chain,
     sector: u64,
     len: u32,
@@ -153,7 +153,7 @@ fn read_req(
 
 fn write_req(
     mem: &GuestMemory,
-    backend: &FileBackend,
+    backend: &mut BlkBackend,
     chain: &Chain,
     sector: u64,
     len: u32,
@@ -200,7 +200,7 @@ fn write_req(
     VIRTIO_BLK_S_OK
 }
 
-fn flush_req(backend: &FileBackend, stats: &BlkStats) -> u8 {
+fn flush_req(backend: &BlkBackend, stats: &BlkStats) -> u8 {
     if let Err(error) = backend.flush() {
         tracing::error!(
             target: "ternvale::virtio::blk",
@@ -223,7 +223,7 @@ fn get_id(mem: &mut GuestMemory, chain: &Chain, serial: &[u8; ID_BYTES], stats: 
     VIRTIO_BLK_S_OK
 }
 
-fn in_range(backend: &FileBackend, sector: u64, len: u32) -> bool {
+fn in_range(backend: &BlkBackend, sector: u64, len: u32) -> bool {
     if len == 0 {
         return sector <= backend.capacity();
     }
