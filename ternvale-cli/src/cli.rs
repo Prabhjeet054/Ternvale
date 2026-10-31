@@ -46,6 +46,20 @@ pub enum Command {
         /// Must be a multiple of 512.
         size: String,
     },
+    /// Show lock-free VM metrics (`query-stats`).
+    Stats {
+        /// VM name (the config's `name`).
+        name: String,
+        /// Repeat until the VM exits.
+        #[arg(long)]
+        watch: bool,
+        /// `--watch` poll period in milliseconds (default 1000).
+        #[arg(long, default_value_t = 1000)]
+        interval_ms: u64,
+        /// Print the raw JSON response.
+        #[arg(long)]
+        json: bool,
+    },
     /// Show a running VM's state.
     Status {
         /// VM name (the config's `name`).

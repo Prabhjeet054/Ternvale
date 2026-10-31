@@ -45,6 +45,7 @@ impl Fx {
             Arc::clone(&memory),
             irq,
             pcap,
+            Arc::new(ternvale_metrics::Metrics::new()),
         )
         .expect("net");
         (

@@ -1,0 +1,12 @@
+[package]
+name = "ternvale-metrics"
+description = "Lock-free VM counters and log-scale latency histograms."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Snapshot JSON for query-stats (optional fields on the existing response).
+serde = { version = "1", features = ["derive"] }
+# Required project-wide logging facade (target ternvale::metrics).
+tracing = "0.1"

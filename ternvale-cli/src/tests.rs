@@ -116,6 +116,24 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(
+        parse(&["ternvale", "stats", "a", "--watch", "--json"]),
+        Command::Stats {
+            name: "a".into(),
+            watch: true,
+            interval_ms: 1000,
+            json: true
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "stats", "a", "--watch", "--interval-ms", "250"]),
+        Command::Stats {
+            name: "a".into(),
+            watch: true,
+            interval_ms: 250,
+            json: false
+        }
+    );
+    assert_eq!(
         parse(&["ternvale", "pause", "a", "--timeout-ms", "250", "--json"]),
         Command::Pause {
             name: "a".into(),

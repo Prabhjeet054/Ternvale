@@ -9,11 +9,14 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "metrics")]
+use std::time::Instant;
 
 use crate::diag::MmioTrace;
 use crate::esr::ExitEvent;
 use crate::lockwatch::Guard;
 use crate::vcpu::{Vcpu, VcpuError};
+use ternvale_metrics::Metrics;
 
 /// A device behind one guest-physical window.
 ///
@@ -120,6 +123,8 @@ struct Slot {
     device: Mutex<Box<dyn MmioDevice>>,
     accesses: Arc<AtomicU64>,
     trace_id: Option<u16>,
+    #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
+    metrics_id: Option<u8>,
 }
 
 impl Slot {
@@ -132,6 +137,8 @@ impl Slot {
 pub struct MmioBus {
     devices: Vec<Slot>,
     trace: Option<Arc<MmioTrace>>,
+    #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl std::fmt::Debug for MmioBus {
@@ -156,6 +163,7 @@ impl MmioBus {
         Self {
             devices: Vec::new(),
             trace: None,
+            metrics: None,
         }
     }
 
@@ -165,7 +173,14 @@ impl MmioBus {
         Self {
             devices: Vec::new(),
             trace: Some(trace),
+            metrics: None,
         }
+    }
+
+    /// Attach lock-free MMIO latency counters.
+    #[tracing::instrument(level = "debug", target = "ternvale::mmio", skip_all)]
+    pub fn set_metrics(&mut self, metrics: Arc<Metrics>) {
+        self.metrics = Some(metrics);
     }
 
     /// Register `device` at `[base, base + size)`.
@@ -215,6 +230,10 @@ impl MmioBus {
             "registered mmio device"
         );
         let accesses = Arc::new(AtomicU64::new(0));
+        let metrics_id = self
+            .metrics
+            .as_ref()
+            .and_then(|metrics| metrics.register_device(device.name()));
         let trace_id = self
             .trace
             .as_ref()
@@ -226,6 +245,7 @@ impl MmioBus {
             device: Mutex::new(device),
             accesses,
             trace_id,
+            metrics_id,
         });
         Ok(())
     }
@@ -287,6 +307,8 @@ impl MmioBus {
         let slot = &self.devices[index];
         let offset = gpa - slot.base;
         let direction = if write { "write" } else { "read" };
+        #[cfg(feature = "metrics")]
+        let started = Instant::now();
         let value = if write {
             let raw = if reg == 31 { 0 } else { regs.get_reg(reg)? };
             let value = mask(raw, size);
@@ -299,6 +321,10 @@ impl MmioBus {
             }
             value
         };
+        #[cfg(feature = "metrics")]
+        if let (Some(metrics), Some(id)) = (self.metrics.as_ref(), slot.metrics_id) {
+            metrics.record_mmio(id, started.elapsed());
+        }
         slot.accesses.fetch_add(1, Ordering::Relaxed);
         if let Some(trace) = &self.trace {
             trace.record(slot.trace_id, regs.cpu_id(), write, gpa, size, value);

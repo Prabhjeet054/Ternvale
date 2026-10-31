@@ -251,6 +251,7 @@ impl Machine {
             Arc::clone(&memory),
             Arc::clone(&gic),
             Arc::clone(&spi_levels),
+            Arc::clone(control.metrics()),
         );
         let devices = attach(&attached)?;
         // The PCI count includes the host bridge.
@@ -268,9 +269,15 @@ impl Machine {
         control.diagnostics().set_dtb(&dtb);
         let serial: attach::SharedSerial = Arc::new(Mutex::new(serial));
         let irq_level = Arc::new(AtomicBool::new(false));
-        attach::install_uart_irq(&serial, Arc::clone(&gic), Arc::clone(&irq_level));
+        attach::install_uart_irq(
+            &serial,
+            Arc::clone(&gic),
+            Arc::clone(&irq_level),
+            Arc::clone(control.metrics()),
+        );
         let redist = RedistMap::new(config.cpus);
         let mut bus = MmioBus::with_trace(Arc::clone(control.diagnostics().mmio()));
+        bus.set_metrics(Arc::clone(control.metrics()));
         bus.register(
             GIC_REDIST_BASE,
             GIC_REDIST_SIZE,

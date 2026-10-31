@@ -1336,6 +1336,7 @@ dependencies = [
  "ternvale-gpu",
  "ternvale-hv",
  "ternvale-log",
+ "ternvale-metrics",
  "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-vmm",
@@ -1367,6 +1368,7 @@ dependencies = [
  "ternvale-gpu",
  "ternvale-hv",
  "ternvale-log",
+ "ternvale-metrics",
  "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-vmm",
@@ -1404,6 +1406,14 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ternvale-metrics"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -1463,6 +1473,7 @@ dependencies = [
  "ternvale-config",
  "ternvale-hv",
  "ternvale-log",
+ "ternvale-metrics",
  "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-usb",

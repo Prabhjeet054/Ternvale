@@ -11,10 +11,10 @@ thiserror = "2"
 # Required project-wide logging facade (target ternvale::gpu).
 tracing = "0.1"
 # GuestMemory, MmioDevice, DeviceAttach and the PCI types (workspace crate).
-ternvale-vmm = { path = "../ternvale-vmm" }
+ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
 # VirtioDevice, SplitQueue, VirtioIrq and the virtio-mmio / virtio-pci transports from
 # Steps 19/26 (workspace crate); the GPU reuses them instead of a transport of its own.
-ternvale-devices = { path = "../ternvale-devices" }
+ternvale-devices = { path = "../ternvale-devices", default-features = false }
 # Optional: load libvirglrenderer at runtime for Venus SUBMIT_3D (gpu3d).
 libloading = { version = "0.8", optional = true }
 

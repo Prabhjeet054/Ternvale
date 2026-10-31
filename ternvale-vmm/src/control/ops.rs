@@ -219,6 +219,7 @@ impl VmControl {
         }
         drop(inner);
         self.changed.notify_all();
+        self.metrics.log_summary(&self.name);
     }
 
     /// Current state and counters.
@@ -247,6 +248,7 @@ impl VmControl {
             status,
             cpus,
             process_cpu_ms: crate::vcpu::process_cpu_ms(),
+            metrics: self.metrics.snapshot(),
         }
     }
 

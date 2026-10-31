@@ -151,6 +151,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
             false,
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(0),
+            Arc::clone(&attach.metrics),
         )
         .map_err(|error| ternvale_vmm::MachineError::Attach(error.to_string()))?;
         *stats_for_attach.lock().expect("stats") = Some(stats);

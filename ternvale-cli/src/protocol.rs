@@ -197,6 +197,9 @@ pub struct StatsJson {
     pub cpus: Vec<CpuJson>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub process_cpu_ms: Option<u64>,
+    /// Lock-free VM metrics. Optional so older clients ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<ternvale_metrics::Snapshot>,
 }
 
 /// One response line.
@@ -285,6 +288,7 @@ impl Response {
             stats: Some(StatsJson {
                 cpus,
                 process_cpu_ms: stats.process_cpu_ms,
+                metrics: Some(stats.metrics.clone()),
             }),
             files: None,
             snapshots: None,

@@ -86,6 +86,7 @@ pub fn run() -> Result<(), String> {
             backend,
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(0),
+            Arc::clone(&attach.metrics),
         )
         .map_err(fail)?;
         if let Ok(mut slot) = stats_slot.lock() {

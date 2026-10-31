@@ -5,7 +5,9 @@
 
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use ternvale_metrics::Metrics;
 
 use ternvale_vmm::GuestMemory;
 
@@ -23,8 +25,20 @@ const HDR_F_NEEDS_CSUM: u8 = 1;
 const GSO_NONE: u8 = 0;
 
 pub(super) enum Kick {
-    Notify(QueueNotify),
+    Notify(QueueNotify, Option<Instant>),
     Reset,
+}
+
+#[inline]
+pub(super) fn notify_mark() -> Option<Instant> {
+    #[cfg(feature = "metrics")]
+    {
+        Some(Instant::now())
+    }
+    #[cfg(not(feature = "metrics"))]
+    {
+        None
+    }
 }
 
 struct Bound {
@@ -37,6 +51,8 @@ pub(super) struct Worker {
     memory: Arc<Mutex<GuestMemory>>,
     irq: Arc<VirtioIrq>,
     stats: Arc<NetStats>,
+    #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
+    metrics: Arc<Metrics>,
     pcap: Option<PcapWriter>,
     rx: Option<Bound>,
     tx: Option<Bound>,
@@ -50,12 +66,14 @@ impl Worker {
         irq: Arc<VirtioIrq>,
         stats: Arc<NetStats>,
         pcap: Option<PcapWriter>,
+        metrics: Arc<Metrics>,
     ) -> Self {
         Self {
             backend,
             memory,
             irq,
             stats,
+            metrics,
             pcap,
             rx: None,
             tx: None,
@@ -71,7 +89,26 @@ impl Worker {
         );
         loop {
             match kicks.recv_timeout(POLL) {
-                Ok(Kick::Notify(notify)) => self.bind(&notify),
+                Ok(Kick::Notify(notify, started)) => {
+                    #[cfg(not(feature = "metrics"))]
+                    let _ = started;
+                    self.bind(&notify);
+                    #[cfg(feature = "metrics")]
+                    let before = self.stats.snapshot();
+                    self.process_tx();
+                    self.deliver_rx();
+                    #[cfg(feature = "metrics")]
+                    {
+                        let after = self.stats.snapshot();
+                        let packets =
+                            after[0].saturating_sub(before[0]) + after[3].saturating_sub(before[3]);
+                        let bytes =
+                            after[1].saturating_sub(before[1]) + after[4].saturating_sub(before[4]);
+                        self.metrics
+                            .record_net(packets, bytes, started.map(|at| at.elapsed()));
+                    }
+                    continue;
+                }
                 Ok(Kick::Reset) => {
                     self.rx = None;
                     self.tx = None;

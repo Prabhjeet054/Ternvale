@@ -6,7 +6,7 @@
 //! PSCI `CPU_ON`. Every thread runs inside a `vcpu` span carrying `vm`, `cpu`,
 //! `mpidr`, and `vcpu_id`.
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use ternvale_hv::SysReg;
 
@@ -100,6 +100,7 @@ fn own_vcpu(index: u32, shared: &Shared<'_>) -> Result<(), MachineError> {
     let created = Vcpu::create(shared.vm);
     shared.power.mark_created(index);
     let vcpu = created.map_err(op(index, "create vcpu"))?;
+    vcpu.bind_metrics(Arc::clone(shared.control.metrics()), index);
     shared.control.attach_cpu_stats(index, vcpu.stats_source());
     // A nested span rather than a late `record`: with the stderr and file
     // layers both formatting, a recorded field is printed twice.

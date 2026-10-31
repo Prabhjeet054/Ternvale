@@ -6,6 +6,9 @@ edition.workspace = true
 publish.workspace = true
 
 [features]
+default = ["metrics"]
+# Hot-path virtio notify latency (needs ternvale-vmm/metrics).
+metrics = ["ternvale-vmm/metrics"]
 # Builds tests/boot.rs, the hypervisor boot harness. `cargo test --workspace` skips it.
 boot-test = []
 # Stub vmnet.framework (shared mode) virtio-net backend. Off by default; see docs/NET.md.
@@ -23,7 +26,9 @@ thiserror = "2"
 # Register, TX, and interrupt-stub logs on ternvale::uart.
 tracing = "0.1"
 # MmioDevice so the PL011 can be registered on the guest MMIO bus.
-ternvale-vmm = { path = "../ternvale-vmm" }
+ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
+# Notify-to-completion histograms for virtio-blk and virtio-net.
+ternvale-metrics = { path = "../ternvale-metrics" }
 # fill_entropy (safe getentropy wrapper) for virtio-rng; raw FFI stays in ternvale-hv.
 ternvale-hv = { path = "../ternvale-hv" }
 # Host side of the guest agent protocol (AgentServer).

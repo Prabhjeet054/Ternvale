@@ -102,6 +102,7 @@ pub fn attach_blocks(
                     media,
                     Arc::clone(&attach.memory),
                     attach.virtio_irq_hook(slot),
+                    Arc::clone(&attach.metrics),
                 )
                 .map_err(|error| fail(error.to_string()))?;
                 out.mmio.push((base, size, mmio));
@@ -202,6 +203,7 @@ pub fn attach_disks<P: AsRef<Path>>(
             *read_only,
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(slot),
+            Arc::clone(&attach.metrics),
         )
         .map_err(|error| MachineError::Attach(error.to_string()))?;
         devices.push((base, size, device));

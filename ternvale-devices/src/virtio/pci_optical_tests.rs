@@ -126,6 +126,7 @@ fn optical_disc_reads_2048_byte_blocks_and_refuses_writes() {
         BlkMedia::Optical,
         Arc::clone(&disc.memory),
         Arc::clone(&irq),
+        Arc::new(ternvale_metrics::Metrics::new()),
     )
     .expect("optical");
     let guest =

@@ -104,6 +104,7 @@ fn blk_write_and_read_back_over_pci_with_intx() {
         false,
         Arc::clone(&disk.memory),
         Arc::clone(&irq),
+        Arc::new(ternvale_metrics::Metrics::new()),
     )
     .expect("blk");
     let guest =

@@ -5,6 +5,11 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[features]
+default = ["metrics"]
+# Hot-path exit/MMIO/interrupt counters. Disable for an overhead baseline.
+metrics = []
+
 [dependencies]
 # mmap, munmap, and sysconf(_SC_PAGESIZE) for guest RAM. Hypervisor FFI stays in ternvale-hv.
 libc = "0.2"
@@ -26,6 +31,8 @@ ternvale-config = { path = "../ternvale-config" }
 ternvale-snapshot = { path = "../ternvale-snapshot" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Lock-free exit / MMIO / interrupt counters for query-stats.
+ternvale-metrics = { path = "../ternvale-metrics" }
 # Map, unmap, and rejected GPA access logs.
 tracing = "0.1"
 # Build the guest device tree (FDT) without linking libfdt.

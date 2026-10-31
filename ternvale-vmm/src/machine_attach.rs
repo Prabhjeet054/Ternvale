@@ -8,6 +8,7 @@ use crate::memory::GuestMemory;
 use crate::mmio::MmioDevice;
 use crate::pci::{Bdf, IntxPin, LineHook, PciFunction, PciRoot, PCI_INTX_LINES, PCI_INTX_SPI0};
 use crate::serial::SerialDevice;
+use ternvale_metrics::Metrics;
 
 /// One SPI that the poll loop should re-assert while the line stays high.
 pub type SpiLevel = (u32, Arc<AtomicBool>);
@@ -30,6 +31,8 @@ pub struct DeviceAttach {
     pub spi_levels: SpiLevels,
     /// PCIe root complex. Functions added here appear behind the ECAM window.
     pub pci: Arc<PciRoot>,
+    /// Lock-free VM metrics (virtio notify latency, interrupt counts).
+    pub metrics: Arc<Metrics>,
 }
 
 impl DeviceAttach {
@@ -39,14 +42,22 @@ impl DeviceAttach {
         memory: Arc<Mutex<GuestMemory>>,
         gic: Arc<ternvale_hv::Gic>,
         spi_levels: SpiLevels,
+        metrics: Arc<Metrics>,
     ) -> Self {
-        let hooks: [LineHook; PCI_INTX_LINES] =
-            std::array::from_fn(|i| spi_hook(&gic, &spi_levels, PCI_INTX_SPI0 + i as u32));
+        let hooks: [LineHook; PCI_INTX_LINES] = std::array::from_fn(|i| {
+            spi_hook(
+                &gic,
+                &spi_levels,
+                PCI_INTX_SPI0 + i as u32,
+                Arc::clone(&metrics),
+            )
+        });
         Self {
             memory,
             gic,
             spi_levels,
             pci: PciRoot::new(hooks),
+            metrics,
         }
     }
 
@@ -55,7 +66,7 @@ impl DeviceAttach {
     /// while it stays high.
     #[tracing::instrument(level = "debug", target = "ternvale::boot", skip(self), fields(spi))]
     pub fn spi_hook(&self, spi: u32) -> Arc<dyn Fn(bool) + Send + Sync> {
-        spi_hook(&self.gic, &self.spi_levels, spi)
+        spi_hook(&self.gic, &self.spi_levels, spi, Arc::clone(&self.metrics))
     }
 
     /// Hook that drives virtio-mmio slot `slot`: FDT SPI `0x10 + slot`.
@@ -80,6 +91,7 @@ fn spi_hook(
     gic: &Arc<ternvale_hv::Gic>,
     spi_levels: &SpiLevels,
     spi: u32,
+    metrics: Arc<Metrics>,
 ) -> Arc<dyn Fn(bool) + Send + Sync> {
     let intid = 32 + spi;
     let gic = Arc::clone(gic);
@@ -88,6 +100,12 @@ fn spi_hook(
     Arc::new(move |assert| {
         if level.swap(assert, Ordering::AcqRel) == assert {
             return;
+        }
+        #[cfg(not(feature = "metrics"))]
+        let _ = &metrics;
+        #[cfg(feature = "metrics")]
+        if assert {
+            metrics.record_interrupt();
         }
         if let Err(error) = gic.set_spi(intid, assert) {
             tracing::warn!(
@@ -105,6 +123,7 @@ pub(super) fn install_uart_irq(
     serial: &SharedSerial,
     gic: Arc<ternvale_hv::Gic>,
     level_flag: Arc<AtomicBool>,
+    metrics: Arc<Metrics>,
 ) {
     let spi = 32 + crate::fdt::UART_SPI;
     lock_serial(serial).set_irq_hook(Arc::new(move |level| {
@@ -112,6 +131,12 @@ pub(super) fn install_uart_irq(
         // high leave a pending SPI after the PL011 has cleared MIS.
         if level_flag.swap(level, Ordering::AcqRel) == level {
             return;
+        }
+        #[cfg(not(feature = "metrics"))]
+        let _ = &metrics;
+        #[cfg(feature = "metrics")]
+        if level {
+            metrics.record_interrupt();
         }
         if let Err(error) = gic.set_spi(spi, level) {
             tracing::warn!(

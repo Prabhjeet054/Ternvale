@@ -58,8 +58,14 @@ impl Fixture {
         irq.set_hook(Arc::new(move |level| {
             flag.store(level, Ordering::Release);
         }));
-        let blk =
-            VirtioBlk::open(&image, read_only, Arc::clone(&memory), Arc::clone(&irq)).expect("blk");
+        let blk = VirtioBlk::open(
+            &image,
+            read_only,
+            Arc::clone(&memory),
+            Arc::clone(&irq),
+            Arc::new(ternvale_metrics::Metrics::new()),
+        )
+        .expect("blk");
         (
             Self {
                 dir,

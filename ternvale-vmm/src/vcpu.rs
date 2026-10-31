@@ -5,7 +5,7 @@
 //! uses to call `hv_vcpus_exit`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::ThreadId;
 use std::time::Instant;
 
@@ -83,6 +83,7 @@ pub struct Vcpu {
     /// Set after a VTIMER exit until `CNTV_CTL_EL0.ISTATUS` clears.
     pub(super) timer_masked: AtomicBool,
     counters: Arc<stats::Counters>,
+    metrics: OnceLock<(Arc<ternvale_metrics::Metrics>, u32)>,
 }
 
 mod exit;
@@ -126,7 +127,16 @@ impl Vcpu {
             park: Arc::new(Mutex::new(())),
             timer_masked: AtomicBool::new(false),
             counters: Arc::new(stats::Counters::default()),
+            metrics: OnceLock::new(),
         })
+    }
+
+    /// Attach VM metrics for guest CPU `cpu`.
+    #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id, cpu))]
+    pub fn bind_metrics(&self, metrics: Arc<ternvale_metrics::Metrics>, cpu: u32) {
+        if self.metrics.set((metrics, cpu)).is_err() {
+            tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, cpu, "metrics already bound");
+        }
     }
 
     /// Activity counters since this vCPU was created.
@@ -266,10 +276,26 @@ impl Vcpu {
             }
             let entered = Instant::now();
             let ran = ternvale_hv::vcpu_run(self.id);
-            self.counters.run(entered.elapsed());
+            let guest = entered.elapsed();
+            self.counters.run(guest);
+            #[cfg(feature = "metrics")]
+            if let Some((metrics, cpu)) = self.metrics.get() {
+                metrics.record_guest(*cpu, guest);
+            }
             ran?;
             let reason = self.read_exit();
-            match self.dispatch(reason)? {
+            #[cfg(feature = "metrics")]
+            if let Some((metrics, cpu)) = self.metrics.get() {
+                metrics.record_exit(*cpu, exit::kind(reason));
+            }
+            #[cfg(feature = "metrics")]
+            let handle = Instant::now();
+            let looped = self.dispatch(reason)?;
+            #[cfg(feature = "metrics")]
+            if let Some((metrics, cpu)) = self.metrics.get() {
+                metrics.record_handle(*cpu, handle.elapsed());
+            }
+            match looped {
                 exit::Loop::Again => {}
                 exit::Loop::Done(reason) => return Ok(reason),
             }

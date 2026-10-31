@@ -35,6 +35,7 @@ pub mod run;
 pub mod seamless;
 pub mod server;
 pub mod snapshot_cmd;
+pub mod stats_cmd;
 pub mod summary;
 pub mod update_check;
 pub mod vsock;
@@ -130,6 +131,12 @@ fn non_run(command: Command) -> Result<ExitCode> {
         Command::Validate { config } => commands::validate(&config),
         Command::CreateDisk { path, size } => commands::create_disk(&path, &size),
         Command::Status { name, stats, json } => commands::status(&name, stats, json),
+        Command::Stats {
+            name,
+            watch,
+            interval_ms,
+            json,
+        } => stats_cmd::stats(&name, watch, interval_ms, json),
         Command::Pause {
             name,
             timeout_ms,

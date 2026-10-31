@@ -41,6 +41,7 @@ fn summary(exit: Option<super::Exit>, cause: Option<StopCause>) -> VmSummary {
                 },
             ],
             process_cpu_ms: Some(2_500),
+            metrics: Default::default(),
         },
         mmio_total: 1_234,
         mmio_unmapped: 2,

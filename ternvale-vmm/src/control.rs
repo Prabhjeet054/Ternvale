@@ -24,6 +24,7 @@ use std::time::{Duration, Instant};
 use crate::diag::Diagnostics;
 use crate::lockwatch::Guard;
 use crate::vcpu::{ExitReason, VcpuStats, VcpuStatsSource};
+use ternvale_metrics::Metrics;
 
 /// How long a parked vCPU sleeps before re-checking for a stop that did not
 /// go through this controller (a vCPU error calls `CpuPower` directly).
@@ -198,6 +199,8 @@ pub struct VmStats {
     pub cpus: Vec<CpuStats>,
     /// CPU time of the whole host process.
     pub process_cpu_ms: Option<u64>,
+    /// Lock-free VM metrics (exits, MMIO, virtio, interrupts).
+    pub metrics: ternvale_metrics::Snapshot,
 }
 
 struct Inner {
@@ -228,6 +231,7 @@ pub struct VmControl {
     clock: fn() -> u64,
     diag: Arc<Diagnostics>,
     snapshot: snapshot::Session,
+    metrics: Arc<Metrics>,
 }
 
 mod ops;
@@ -269,7 +273,14 @@ impl VmControl {
             clock,
             diag: Arc::new(Diagnostics::new()),
             snapshot: snapshot::Session::idle(),
+            metrics: Arc::new(Metrics::new()),
         }
+    }
+
+    /// Lock-free counters for this VM.
+    #[tracing::instrument(level = "debug", target = "ternvale::metrics", skip_all, fields(vm = %self.name))]
+    pub fn metrics(&self) -> &Arc<Metrics> {
+        &self.metrics
     }
 
     /// DTB, MMIO trace, and device counts the machine records for crash reports.

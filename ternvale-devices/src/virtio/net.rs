@@ -22,6 +22,7 @@ use ternvale_vmm::GuestMemory;
 
 use super::irq::{IrqHook, VirtioIrq};
 use super::{QueueNotify, VirtioDevice};
+use ternvale_metrics::Metrics;
 
 pub use backend::{open_backend, NetBackend};
 pub use loopback::{LoopbackBackend, GATEWAY_IP, GATEWAY_MAC};
@@ -150,11 +151,12 @@ impl VirtioNet {
         memory: Arc<Mutex<GuestMemory>>,
         irq: Arc<VirtioIrq>,
         pcap: Option<PcapWriter>,
+        metrics: Arc<Metrics>,
     ) -> Result<Self, NetError> {
         let stats = Arc::new(NetStats::default());
         let (tx, rx) = mpsc::channel();
         let name = backend.name();
-        let state = worker::Worker::new(backend, memory, irq, Arc::clone(&stats), pcap);
+        let state = worker::Worker::new(backend, memory, irq, Arc::clone(&stats), pcap, metrics);
         let join = std::thread::Builder::new()
             .name("ternvale-virtio-net".into())
             .spawn(move || state.run(rx))
@@ -184,7 +186,7 @@ impl VirtioNet {
     #[tracing::instrument(
         level = "debug",
         target = "ternvale::virtio::net",
-        skip(backend, memory, irq_hook),
+        skip(backend, memory, irq_hook, metrics),
         fields(slot, mac = %mac_str(&mac))
     )]
     pub fn attach(
@@ -193,6 +195,7 @@ impl VirtioNet {
         backend: Box<dyn NetBackend>,
         memory: Arc<Mutex<GuestMemory>>,
         irq_hook: IrqHook,
+        metrics: Arc<Metrics>,
     ) -> Result<AttachedNet, NetError> {
         let base = super::slot_base(slot).ok_or_else(|| {
             tracing::error!(target: "ternvale::virtio::net", slot, "virtio-net slot rejected");
@@ -201,7 +204,7 @@ impl VirtioNet {
         let pcap = PcapWriter::from_env()?;
         let irq = VirtioIrq::new();
         irq.set_hook(irq_hook);
-        let net = Self::open(mac, backend, memory, Arc::clone(&irq), pcap)?;
+        let net = Self::open(mac, backend, memory, Arc::clone(&irq), pcap, metrics)?;
         let stats = Arc::clone(&net.stats);
         let transport = super::mmio::VirtioMmio::with_irq(slot, Box::new(net), irq);
         Ok((
@@ -286,7 +289,7 @@ impl VirtioDevice for VirtioNet {
     }
 
     fn notify(&mut self, queue: QueueNotify) {
-        self.send(worker::Kick::Notify(queue));
+        self.send(worker::Kick::Notify(queue, worker::notify_mark()));
     }
 
     fn status_changed(&mut self, status: u32) {

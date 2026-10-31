@@ -6,10 +6,67 @@ use std::time::Duration;
 use ternvale_hv::{SysReg, VcpuExit};
 
 use super::{exit_reason, ExitReason, Vcpu, VcpuError};
+#[cfg(feature = "metrics")]
+use ternvale_metrics::ExitKind;
 
 pub(super) enum Loop {
     Again,
     Done(ExitReason),
+}
+
+/// Map a hypervisor exit onto a metrics class without calling [`crate::esr::decode`]
+/// (that path logs and would run twice per exit).
+#[cfg(feature = "metrics")]
+#[inline]
+pub(super) fn kind(reason: ExitReason) -> ExitKind {
+    match reason {
+        ExitReason::VtimerActivated => ExitKind::Vtimer,
+        ExitReason::Canceled => ExitKind::Canceled,
+        ExitReason::Wfi => ExitKind::Wfi,
+        ExitReason::Exception { syndrome, .. } => kind_from_esr(syndrome),
+        ExitReason::Unknown { .. } => ExitKind::Unknown,
+        _ => ExitKind::Other,
+    }
+}
+
+#[cfg(all(test, feature = "metrics"))]
+mod kind_tests {
+    use super::{kind, kind_from_esr};
+    use crate::vcpu::ExitReason;
+    use ternvale_metrics::ExitKind;
+
+    fn esr(ec: u64, iss: u64) -> u64 {
+        (ec << 26) | iss
+    }
+
+    #[test]
+    fn esr_classes_match_exit_event_kinds() {
+        assert_eq!(kind_from_esr(esr(0x01, 0)), ExitKind::Wfi);
+        assert_eq!(kind_from_esr(esr(0x01, 1)), ExitKind::Wfe);
+        assert_eq!(kind_from_esr(esr(0x16, 0x42)), ExitKind::Hvc);
+        assert_eq!(kind_from_esr(esr(0x17, 7)), ExitKind::Smc);
+        assert_eq!(kind_from_esr(esr(0x18, 0)), ExitKind::SysReg);
+        assert_eq!(kind_from_esr(esr(0x24, 1 << 24)), ExitKind::Mmio);
+        assert_eq!(kind_from_esr(esr(0x24, 0)), ExitKind::Unknown);
+        assert_eq!(kind(ExitReason::VtimerActivated), ExitKind::Vtimer);
+    }
+}
+
+/// EC/ISS only (ARM ARM DDI 0487): same classes as [`crate::esr::decode`].
+#[cfg(feature = "metrics")]
+#[inline]
+fn kind_from_esr(esr: u64) -> ExitKind {
+    let ec = (esr >> 26) & 0x3f;
+    let iss = esr & 0x1ff_ffff;
+    match ec {
+        0x01 if iss & 1 == 1 => ExitKind::Wfe,
+        0x01 => ExitKind::Wfi,
+        0x16 => ExitKind::Hvc,
+        0x17 => ExitKind::Smc,
+        0x18 => ExitKind::SysReg,
+        0x24 | 0x25 if (iss >> 24) & 1 == 1 => ExitKind::Mmio,
+        _ => ExitKind::Unknown,
+    }
 }
 
 impl Vcpu {
@@ -67,6 +124,10 @@ impl Vcpu {
         ternvale_hv::raise_ppi(self.id, ternvale_hv::VTIMER_PPI)?;
         self.timer_masked.store(true, Ordering::Release);
         self.counters.vtimer();
+        #[cfg(feature = "metrics")]
+        if let Some((metrics, _)) = self.metrics.get() {
+            metrics.record_interrupt();
+        }
         tracing::info!(
             target: "ternvale::gic",
             vcpu_id = self.id,

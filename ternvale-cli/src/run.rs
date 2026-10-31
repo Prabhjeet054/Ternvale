@@ -269,6 +269,7 @@ fn attach_devices(
             backend,
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(slot),
+            Arc::clone(&attach.metrics),
         )
         .map_err(fail)?;
         tracing::info!(target: "ternvale::cli", slot, backend = %backend_name, mac = ?mac, "attached virtio-net");

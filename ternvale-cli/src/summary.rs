@@ -200,6 +200,9 @@ pub fn log(summary: &VmSummary) {
         disk_errors = summary.disks.iter().map(|d| d.errors).sum::<u64>(),
         net_tx_packets = summary.nics.iter().map(|n| n.counters[0]).sum::<u64>(),
         net_rx_packets = summary.nics.iter().map(|n| n.counters[3]).sum::<u64>(),
+        metrics_interrupts = summary.stats.metrics.interrupts,
+        metrics_blk = summary.stats.metrics.blk.count,
+        metrics_net = summary.stats.metrics.net.count,
         vsock_connections = ?summary.vsock.as_ref().map(|v| v.connections),
         agent = ?summary.agent.as_ref().map(|a| a.state.as_str()),
         "vm summary"
