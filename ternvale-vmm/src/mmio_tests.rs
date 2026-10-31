@@ -211,6 +211,40 @@ fn concurrent_vcpu_threads_share_one_bus_and_lose_no_access() {
         .all(|(offset, _, val)| offset == val && val % 2 == 1));
 }
 
+/// Mean ns per `dispatch` for `scripts/bench` / `compare.py` when
+/// `TERNVALE_MMIO_BENCH` is a destination path. No-op in ordinary `cargo test`.
+#[test]
+fn write_dispatch_timing_when_env_set() {
+    let Ok(path) = std::env::var("TERNVALE_MMIO_BENCH") else {
+        return;
+    };
+    let mut bus = MmioBus::new();
+    bus.register(0x1000, 0x100, Box::new(dev("probe")))
+        .expect("register");
+    let regs = MockRegs {
+        regs: RefCell::new([0; 31]),
+    };
+    let event = mmio(0x1000, 1, false, 0);
+    for _ in 0..50 {
+        bus.dispatch(&regs, event).expect("warmup");
+    }
+    let samples = 200u32;
+    let started = std::time::Instant::now();
+    for _ in 0..samples {
+        bus.dispatch(&regs, event).expect("timed");
+    }
+    let ns = started.elapsed().as_nanos() / u128::from(samples);
+    tracing::info!(
+        target: "ternvale::mmio",
+        samples,
+        ns_per_dispatch = ns as u64,
+        path = %path,
+        "mmio dispatch timing for compare.py"
+    );
+    let body = format!("{{\"runs\":{{\"ternvale\":{{\"mmio_dispatch_ns\":{ns}}}}}}}\n");
+    std::fs::write(&path, body).expect("write mmio bench json");
+}
+
 fn dev(label: &'static str) -> MockDev {
     recording(label, Arc::new(Mutex::new(Vec::new())))
 }

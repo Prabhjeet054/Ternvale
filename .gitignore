@@ -8,6 +8,7 @@ guest-tests/*.bin
 .cursor/
 docs/
 test-assets/
+bench-results/
 ternvale-cursor-prompts.md
 ternvale-cursor-prompts-part2.md
 ternvale-cursor-prompts-part3.md

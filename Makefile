@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint sign clean guest-tests viewer
+.PHONY: build test test-hv lint sign clean guest-tests viewer bench bench-image bench-compare-test
 
 build:
 	$(CARGO) build --workspace
@@ -51,6 +51,17 @@ sign:
 # AArch64 bare-metal payload: clang --target=aarch64-none-elf -c, then llvm-objcopy -O binary.
 guest-tests:
 	$(MAKE) -C guest-tests
+
+# Step 62: Alpine sysbench/fio/iperf3/STREAM guest vs QEMU/HVF.
+# Image: ./scripts/bench/make-image.sh (Docker linux/arm64). Results: bench-results/.
+bench:
+	python3 scripts/bench/run.py
+
+bench-image:
+	./scripts/bench/make-image.sh
+
+bench-compare-test:
+	cd scripts/bench && python3 test_compare.py
 
 clean:
 	$(CARGO) clean
