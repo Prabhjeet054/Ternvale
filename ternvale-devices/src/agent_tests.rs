@@ -57,6 +57,17 @@ impl Actions for Recorder {
             .push(format!("mount {tag} at {mount_point}"));
         Ok(())
     }
+    fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError> {
+        self.0.lock().expect("recorder").push("list_windows".into());
+        Ok(vec![ternvale_agent_proto::GuestWindow {
+            id: 1,
+            title: "Test".into(),
+            x: 10,
+            y: 20,
+            width: 640,
+            height: 480,
+        }])
+    }
     fn shutdown(&mut self) -> Result<(), AgentError> {
         self.0.lock().expect("recorder").push("shutdown".into());
         Ok(())
@@ -98,7 +109,7 @@ fn real_agent_connects_heartbeats_reconnects_and_shuts_down() {
     let status = server
         .wait_for(WAIT, |s| s.state == AgentState::Connected && s.pongs >= 2)
         .expect("agent connected and answering pings");
-    assert_eq!(status.version, Some(2));
+    assert_eq!(status.version, Some(3));
     assert!(status
         .agent
         .as_deref()
@@ -155,7 +166,7 @@ fn old_agent_is_rejected_with_the_supported_range() {
             min_version,
             max_version,
         } => {
-            assert_eq!((min_version, max_version), (1, 2));
+            assert_eq!((min_version, max_version), (1, 3));
             assert!(reason.contains("version 0 is not supported"), "{reason}");
         }
         other => panic!("expected reject, got {other:?}"),
@@ -227,6 +238,42 @@ fn share_mount_and_clipboard_get_use_protocol_v2() {
     assert!(
         calls.iter().any(|c| c.starts_with("mount ternvale")),
         "{calls:?}"
+    );
+}
+
+#[test]
+fn window_list_get_returns_guest_windows() {
+    let path = socket("windows");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
+    let stop = Arc::new(AtomicBool::new(false));
+    let recorder = Recorder::default();
+    let config = AgentConfig {
+        backoff: Backoff::new(Duration::from_millis(20), Duration::from_millis(200)),
+        poll: Duration::from_millis(10),
+        idle_timeout: Duration::from_secs(2),
+        ..AgentConfig::new(Target::Unix(path.clone()))
+    };
+    let (flag, mut actions) = (Arc::clone(&stop), recorder.clone());
+    let agent = std::thread::spawn(move || run(&config, &mut actions, &flag));
+    server
+        .wait_for(WAIT, |s| s.state == AgentState::Connected)
+        .expect("connected");
+    let windows = server
+        .window_list_get(Duration::from_secs(2))
+        .expect("window_list_get");
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0].title, "Test");
+    assert_eq!(windows[0].width, 640);
+    stop.store(true, Ordering::Release);
+    let _ = agent.join();
+    assert!(
+        recorder
+            .0
+            .lock()
+            .expect("recorder")
+            .iter()
+            .any(|c| c == "list_windows"),
+        "expected list_windows call"
     );
 }
 

@@ -155,6 +155,15 @@ fn serve_requests(
                 })
             }
             Message::ShareMount { tag, mount_point } => actions.mount_share(&tag, &mount_point),
+            Message::WindowListGet => {
+                let windows = actions.list_windows()?;
+                write_message(stream, &Message::WindowListOk { windows }, "host").map_err(
+                    |source| AgentError::Frame {
+                        op: "send window_list_ok",
+                        source,
+                    },
+                )
+            }
             Message::Shutdown => {
                 actions.shutdown()?;
                 return Ok(SessionEnd::Shutdown);
@@ -163,7 +172,8 @@ fn serve_requests(
             | Message::Welcome { .. }
             | Message::Reject { .. }
             | Message::Pong { .. }
-            | Message::ClipboardGetOk { .. }) => {
+            | Message::ClipboardGetOk { .. }
+            | Message::WindowListOk { .. }) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from host ignored");
                 Ok(())
             }

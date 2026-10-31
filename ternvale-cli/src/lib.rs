@@ -31,6 +31,7 @@ pub mod paths;
 pub mod protocol;
 pub mod report;
 pub mod run;
+pub mod seamless;
 pub mod server;
 pub mod snapshot_cmd;
 pub mod summary;

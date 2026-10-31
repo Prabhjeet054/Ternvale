@@ -14,13 +14,17 @@
 mod frame;
 mod message;
 mod reader;
+mod window;
 
 pub use frame::{encode, read_message, write_message, FrameError};
 pub use message::{ClipboardText, Message};
 pub use reader::FrameReader;
+pub use window::{
+    validate_windows, GuestWindow, MAX_WINDOWS, MAX_WINDOW_DIMENSION, MAX_WINDOW_TITLE,
+};
 
 /// Version this build speaks (and the newest it accepts).
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 /// Oldest version this build still accepts.
 pub const MIN_PROTOCOL_VERSION: u32 = 1;
 /// vsock port the host agent server listens on.

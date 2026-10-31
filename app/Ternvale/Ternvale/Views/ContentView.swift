@@ -27,11 +27,13 @@ struct ContentView: View {
                     onStart: library.startSelected,
                     onStop: library.stopSelected,
                     onPause: library.pauseSelected,
-                    onResume: library.resumeSelected
+                    onResume: library.resumeSelected,
+                    onSeamlessDisabled: library.disableSeamlessWhileRunning
                 )
                 Divider()
                 VMDisplayPanel(
                     controller: library.display,
+                    seamless: library.seamless,
                     isActive: library.selectedIsRunning
                 )
                 Divider()

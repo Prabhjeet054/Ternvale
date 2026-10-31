@@ -2,6 +2,7 @@ import SwiftUI
 
 struct VMDisplayPanel: View {
     @ObservedObject var controller: VMDisplayController
+    @ObservedObject var seamless: SeamlessWindowsCoordinator
     let isActive: Bool
 
     @State private var lastRequestedSize: CGSize = .zero
@@ -10,7 +11,19 @@ struct VMDisplayPanel: View {
         GeometryReader { geo in
             ZStack {
                 Color.black
-                if isActive {
+                if isActive, seamless.isActive {
+                    VStack(spacing: 8) {
+                        Text("Experimental seamless mode")
+                            .font(.headline)
+                        Text("\(seamless.windowCount) guest window(s) on screen")
+                            .foregroundStyle(.secondary)
+                        Text("Embedded display hidden; crops come from the shared framebuffer.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                } else if isActive {
                     VMMetalDisplayView(controller: controller)
                 } else {
                     Text("Start the VM to see the display")

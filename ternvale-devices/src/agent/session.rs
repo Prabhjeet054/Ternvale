@@ -27,7 +27,7 @@ pub(super) fn run(shared: &Shared, id: u64, mut stream: UnixStream) {
 
 /// Book-keeping when connection `conn` ends.
 pub(super) fn record_end(book: &mut Book, conn: Conn, why: &str) {
-    if let Some(wait) = book.clipboard_wait.take() {
+    if let Some(wait) = book.window_wait.take() {
         let _ = wait.send(Err(why.to_string()));
     }
     let reason = conn.failure.unwrap_or_else(|| why.to_string());
@@ -112,6 +112,14 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
                     let _ = wait.send(Ok(text));
                 } else {
                     tracing::debug!(target: "ternvale::agent", len = text.0.len(), "clipboard_get_ok without a waiter");
+                }
+            }
+            Some(Message::WindowListOk { windows }) => {
+                let mut book = shared.book();
+                if let Some(wait) = book.window_wait.take() {
+                    let _ = wait.send(Ok(windows));
+                } else {
+                    tracing::debug!(target: "ternvale::agent", count = windows.len(), "window_list_ok without a waiter");
                 }
             }
             Some(other) => {

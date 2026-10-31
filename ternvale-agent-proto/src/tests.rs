@@ -168,7 +168,7 @@ fn negotiation_picks_the_lower_version_and_rejects_old_peers() {
     assert_eq!(error.peer, MIN_PROTOCOL_VERSION - 1);
     assert_eq!(
         error.to_string(),
-        "protocol version 0 is not supported (this side speaks 1..=1)"
+        "protocol version 0 is not supported (this side speaks 1..=3)"
     );
 }
 

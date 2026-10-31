@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct VMControlBar: View {
+    @AppStorage(AppSettings.seamlessWindowsKey) private var seamlessWindows = false
     let vm: VMConfig?
     let state: String
     let phase: VMRuntimePhase
@@ -12,6 +13,7 @@ struct VMControlBar: View {
     let onStop: () -> Void
     let onPause: () -> Void
     let onResume: () -> Void
+    let onSeamlessDisabled: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -37,6 +39,15 @@ struct VMControlBar: View {
                     .disabled(vm == nil || isBusy || phase != .running)
                 Button("Resume", action: onResume)
                     .disabled(vm == nil || isBusy || phase != .paused)
+                Toggle("Seamless windows (experimental)", isOn: $seamlessWindows)
+                    .toggleStyle(.switch)
+                    .disabled(isBusy)
+                    .help("One macOS window per guest app (Linux + wmctrl). Turn off while running to restore the embedded display; turn on before Start.")
+                    .onChange(of: seamlessWindows) { _, enabled in
+                        if !enabled {
+                            onSeamlessDisabled()
+                        }
+                    }
             }
             if phase == .crashed, let crashSummary {
                 GroupBox("Crash summary") {

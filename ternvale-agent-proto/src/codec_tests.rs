@@ -25,9 +25,9 @@ fn golden() -> Vec<(Message, &'static str)> {
             Message::Reject {
                 reason: "old".to_string(),
                 min_version: 1,
-                max_version: 2,
+                max_version: 3,
             },
-            r#"{"type":"reject","reason":"old","min_version":1,"max_version":2}"#,
+            r#"{"type":"reject","reason":"old","min_version":1,"max_version":3}"#,
         ),
         (Message::Ping { seq: 0 }, r#"{"type":"ping","seq":0}"#),
         (
@@ -48,6 +48,20 @@ fn golden() -> Vec<(Message, &'static str)> {
             r#"{"type":"clipboard_set","text":"a\"b\n"}"#,
         ),
         (Message::Shutdown, r#"{"type":"shutdown"}"#),
+        (Message::WindowListGet, r#"{"type":"window_list_get"}"#),
+        (
+            Message::WindowListOk {
+                windows: vec![GuestWindow {
+                    id: 42,
+                    title: "Terminal".to_string(),
+                    x: 0,
+                    y: 0,
+                    width: 800,
+                    height: 600,
+                }],
+            },
+            r#"{"type":"window_list_ok","windows":[{"id":42,"title":"Terminal","x":0,"y":0,"width":800,"height":600}]}"#,
+        ),
     ]
 }
 

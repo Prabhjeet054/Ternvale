@@ -39,6 +39,9 @@ impl Actions for Recorder {
     fn mount_share(&mut self, _tag: &str, _mount_point: &str) -> Result<(), AgentError> {
         Ok(())
     }
+    fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError> {
+        Ok(Vec::new())
+    }
     fn shutdown(&mut self) -> Result<(), AgentError> {
         self.0.lock().expect("recorder").push("shutdown".into());
         Ok(())

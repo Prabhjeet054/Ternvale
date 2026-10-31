@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{MAX_DIMENSION, MAX_NAME};
+use crate::{validate_windows, GuestWindow, MAX_DIMENSION, MAX_NAME};
 
 /// One protocol message. JSON form: `{"type":"<snake_case name>", ...fields}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +70,13 @@ pub enum Message {
     },
     /// Host → agent: flush and power the guest off.
     Shutdown,
+    /// Host → agent: list mapped top-level windows (answer with `WindowListOk`, v3+).
+    WindowListGet,
+    /// Agent → host: answer to `WindowListGet`.
+    WindowListOk {
+        /// Windows in guest screen coordinates.
+        windows: Vec<GuestWindow>,
+    },
 }
 
 /// Clipboard contents. `Debug` prints only the length, so logging a message
@@ -100,6 +107,8 @@ impl Message {
             Self::ClipboardGetOk { .. } => "clipboard_get_ok",
             Self::ShareMount { .. } => "share_mount",
             Self::Shutdown => "shutdown",
+            Self::WindowListGet => "window_list_get",
+            Self::WindowListOk { .. } => "window_list_ok",
         }
     }
 
@@ -138,6 +147,7 @@ impl Message {
                     Ok(())
                 }
             }
+            Self::WindowListOk { windows } => validate_windows(windows),
             _ => Ok(()),
         }
     }

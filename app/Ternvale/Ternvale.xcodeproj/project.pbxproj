@@ -31,6 +31,10 @@
 		B10000000000000000000017 /* VMDisplayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000017 /* VMDisplayController.swift */; };
 		B10000000000000000000018 /* VMMetalDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000018 /* VMMetalDisplayView.swift */; };
 		B10000000000000000000019 /* VMDisplayPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000019 /* VMDisplayPanel.swift */; };
+		B1000000000000000000001A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001A /* AppSettings.swift */; };
+		B1000000000000000000001B /* SeamlessWindowsCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001B /* SeamlessWindowsCoordinator.swift */; };
+		B1000000000000000000001C /* SeamlessWindowSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001C /* SeamlessWindowSync.swift */; };
+		B1000000000000000000001D /* SeamlessWindowSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001D /* SeamlessWindowSyncTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -59,6 +63,10 @@
 		B20000000000000000000017 /* VMDisplayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMDisplayController.swift; sourceTree = "<group>"; };
 		B20000000000000000000018 /* VMMetalDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMMetalDisplayView.swift; sourceTree = "<group>"; };
 		B20000000000000000000019 /* VMDisplayPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMDisplayPanel.swift; sourceTree = "<group>"; };
+		B2000000000000000000001A /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		B2000000000000000000001B /* SeamlessWindowsCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessWindowsCoordinator.swift; sourceTree = "<group>"; };
+		B2000000000000000000001C /* SeamlessWindowSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessWindowSync.swift; sourceTree = "<group>"; };
+		B2000000000000000000001D /* SeamlessWindowSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessWindowSyncTests.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -111,6 +119,7 @@
 			isa = PBXGroup;
 			children = (
 				B20000000000000000000013 /* CrashBundleReaderTests.swift */,
+				B2000000000000000000001D /* SeamlessWindowSyncTests.swift */,
 			);
 			path = TernvaleTests;
 			sourceTree = "<group>";
@@ -141,6 +150,7 @@
 			children = (
 				B20000000000000000000007 /* VMConfig.swift */,
 				B2000000000000000000000F /* VMRuntimePhase.swift */,
+				B2000000000000000000001A /* AppSettings.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -167,6 +177,8 @@
 				B20000000000000000000016 /* DisplayInputSender.swift */,
 				B20000000000000000000017 /* VMDisplayController.swift */,
 				B20000000000000000000018 /* VMMetalDisplayView.swift */,
+				B2000000000000000000001B /* SeamlessWindowsCoordinator.swift */,
+				B2000000000000000000001C /* SeamlessWindowSync.swift */,
 			);
 			path = Display;
 			sourceTree = "<group>";
@@ -295,6 +307,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10000000000000000000013 /* CrashBundleReaderTests.swift in Sources */,
+				B1000000000000000000001D /* SeamlessWindowSyncTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -324,6 +337,9 @@
 				B10000000000000000000017 /* VMDisplayController.swift in Sources */,
 				B10000000000000000000018 /* VMMetalDisplayView.swift in Sources */,
 				B10000000000000000000019 /* VMDisplayPanel.swift in Sources */,
+				B1000000000000000000001A /* AppSettings.swift in Sources */,
+				B1000000000000000000001B /* SeamlessWindowsCoordinator.swift in Sources */,
+				B1000000000000000000001C /* SeamlessWindowSync.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

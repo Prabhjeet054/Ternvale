@@ -86,6 +86,35 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
     let vsock = crate::vsock::prepare(&config, &socket)
         .with_context(|| format!("set up vsock for vm {}", config.name))?;
     let agent = vsock.as_ref().and_then(|setup| setup.agent.clone());
+    let seamless =
+        agent.clone().and_then(
+            |agent| match crate::paths::seamless_socket_path(&config.name) {
+                Ok(path) => {
+                    match crate::seamless::SeamlessPublisher::start(&config.name, path, agent) {
+                        Ok(publisher) => Some(publisher),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                        Err(error) => {
+                            tracing::warn!(
+                                target: "ternvale::cli",
+                                vm = %config.name,
+                                error = %error,
+                                "could not start seamless windows publisher"
+                            );
+                            None
+                        }
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        target: "ternvale::cli",
+                        vm = %config.name,
+                        error = %error,
+                        "seamless socket path unavailable"
+                    );
+                    None
+                }
+            },
+        );
     let stats = SharedDevices::default();
     let diag = Arc::new(DiagSink::new(
         guard.log_path(),
@@ -124,6 +153,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
         tracing::error!(target: "ternvale::cli", "force-stop reaper thread panicked");
     }
     drop(server);
+    drop(seamless);
     let status = control.status();
     let code = match &exit {
         Ok(reason) => {

@@ -32,6 +32,33 @@ pub fn socket_path(name: &str) -> Result<PathBuf> {
     socket_path_in(&run_dir()?, name)
 }
 
+/// Seamless window updates socket for VM `name` in [`run_dir`].
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
+pub fn seamless_socket_path(name: &str) -> Result<PathBuf> {
+    seamless_socket_path_in(&run_dir()?, name)
+}
+
+/// Seamless updates socket for VM `name` in `dir`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
+pub fn seamless_socket_path_in(dir: &Path, name: &str) -> Result<PathBuf> {
+    let plain = !name.is_empty()
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_');
+    if !plain {
+        bail!("vm name {name:?} must be non-empty ASCII letters, digits, '-' or '_'");
+    }
+    let path = dir.join(format!("{name}.seamless.sock"));
+    let len = path.as_os_str().len();
+    if len > MAX_SOCKET_PATH {
+        bail!(
+            "seamless socket path {} is {len} bytes; macOS allows {MAX_SOCKET_PATH} (set {RUN_DIR_ENV} to a shorter directory)",
+            path.display()
+        );
+    }
+    Ok(path)
+}
+
 /// Control socket path for VM `name` in `dir`. The name must be a plain
 /// file-name token, and the result must fit in `sun_path`.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]

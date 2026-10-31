@@ -12,6 +12,7 @@ mod error;
 mod os;
 mod session;
 mod transport;
+mod windows;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;

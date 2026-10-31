@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use ternvale_agent_proto::{write_message, FrameError, Message};
+use ternvale_agent_proto::{write_message, FrameError, GuestWindow, Message};
 
 use status::Book;
 pub use status::{AgentState, AgentStatus};
@@ -82,6 +82,12 @@ pub enum AgentServerError {
     /// The agent did not answer `ClipboardGet` in time.
     #[error("clipboard_get timed out after {timeout_ms} ms")]
     ClipboardTimeout {
+        /// Wait duration in milliseconds.
+        timeout_ms: u64,
+    },
+    /// The agent did not answer `WindowListGet` in time.
+    #[error("window_list_get timed out after {timeout_ms} ms")]
+    WindowListTimeout {
         /// Wait duration in milliseconds.
         timeout_ms: u64,
     },
@@ -231,6 +237,7 @@ impl AgentServer {
                 | Message::ClipboardSet { .. }
                 | Message::ClipboardGet
                 | Message::ShareMount { .. }
+                | Message::WindowListGet
                 | Message::Shutdown
         ) {
             return Err(AgentServerError::NotARequest {
@@ -299,6 +306,50 @@ impl AgentServer {
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
                 state: "disconnected during clipboard_get",
+            }),
+        }
+    }
+
+    /// Ask the guest for top-level window geometry (protocol v3+).
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm, timeout_ms = status::millis(timeout)))]
+    pub fn window_list_get(&self, timeout: Duration) -> Result<Vec<GuestWindow>, AgentServerError> {
+        let (tx, rx) = mpsc::channel();
+        {
+            let mut book = self.shared.book();
+            let state = book.snapshot(Instant::now()).state;
+            if state != AgentState::Connected {
+                return Err(AgentServerError::NotConnected {
+                    state: state.as_str(),
+                });
+            }
+            if book.window_wait.is_some() {
+                return Err(AgentServerError::NotConnected {
+                    state: "window_list_get already pending",
+                });
+            }
+            book.window_wait = Some(tx);
+        }
+        self.send(&Message::WindowListGet)?;
+        match rx.recv_timeout(timeout) {
+            Ok(Ok(windows)) => {
+                tracing::info!(target: "ternvale::agent", count = windows.len(), "window_list_get ok");
+                Ok(windows)
+            }
+            Ok(Err(reason)) => {
+                tracing::warn!(target: "ternvale::agent", reason = %reason, "window_list_get failed in guest");
+                Err(AgentServerError::NotConnected {
+                    state: "window_list_get failed",
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let mut book = self.shared.book();
+                book.window_wait = None;
+                Err(AgentServerError::WindowListTimeout {
+                    timeout_ms: status::millis(timeout),
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
+                state: "disconnected during window_list_get",
             }),
         }
     }

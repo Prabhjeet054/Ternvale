@@ -48,7 +48,7 @@ final class VMProcessManager {
         userRequestedStop.remove(vmName)
     }
 
-    func start(vm: VMConfig) throws {
+    func start(vm: VMConfig, seamlessWindows: Bool = false) throws {
         if processes[vm.name] != nil {
             log.info("vm \(vm.name, privacy: .public) already has a helper process")
             return
@@ -62,6 +62,10 @@ final class VMProcessManager {
         var env = ProcessInfo.processInfo.environment
         env.removeValue(forKey: "TERNVALE_HELPER_PATH")
         env["TERNVALE_EMBEDDED_DISPLAY"] = "1"
+        if seamlessWindows {
+            env["TERNVALE_SEAMLESS_WINDOWS"] = "1"
+            log.info("TERNVALE_SEAMLESS_WINDOWS=1 (experimental seamless windows)")
+        }
         process.environment = env
         let pipe = Pipe()
         process.standardOutput = pipe

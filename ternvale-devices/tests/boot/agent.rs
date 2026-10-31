@@ -163,7 +163,7 @@ fn control(server: AgentServer, sock: &Path) -> Result<Summary, String> {
     if !os.starts_with("Linux ") || !os.ends_with(" aarch64") {
         return Err(format!("unexpected agent os {os:?}"));
     }
-    if first.version != Some(2) {
+    if first.version != Some(3) {
         return Err(format!("unexpected protocol version {:?}", first.version));
     }
 

@@ -4,7 +4,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-use ternvale_agent_proto::ClipboardText;
+use ternvale_agent_proto::{ClipboardText, GuestWindow};
 
 /// Where the agent connection is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +114,8 @@ pub(super) struct Book {
     pub last_error: Option<String>,
     /// Delivers `ClipboardGetOk` to a waiting [`super::AgentServer::clipboard_get`].
     pub clipboard_wait: Option<Sender<Result<ClipboardText, String>>>,
+    /// Delivers `WindowListOk` to a waiting [`super::AgentServer::window_list_get`].
+    pub window_wait: Option<Sender<Result<Vec<GuestWindow>, String>>>,
 }
 
 impl Book {

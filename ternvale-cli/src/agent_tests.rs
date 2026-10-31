@@ -120,11 +120,11 @@ fn status_reports_the_agent_from_waiting_to_connected() {
     };
     let line = serde_json::to_string(&connected).expect("encode");
     assert!(
-        line.contains(r#""agent":{"state":"connected","version":1,"os":""#),
+        line.contains(r#""agent":{"state":"connected","version":3,"os":""#),
         "{line}"
     );
     let text = render(connected.status.as_ref().expect("status"), None);
-    assert!(text.contains("  agent: connected (v1), "), "{text}");
+    assert!(text.contains("  agent: connected (v3), "), "{text}");
     assert!(text.contains("pings answered"), "{text}");
 
     stop.store(true, Ordering::Release);

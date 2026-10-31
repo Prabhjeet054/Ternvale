@@ -76,6 +76,8 @@ pub trait Actions {
     fn clipboard_get(&mut self) -> Result<String, AgentError>;
     /// `ShareMount` (virtio-9p on Linux).
     fn mount_share(&mut self, tag: &str, mount_point: &str) -> Result<(), AgentError>;
+    /// `WindowListGet` (seamless mode, protocol v3+).
+    fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError>;
     /// `Shutdown`. On Linux this does not return on success.
     fn shutdown(&mut self) -> Result<(), AgentError>;
 }
@@ -185,6 +187,11 @@ impl Actions for SystemActions {
             tracing::warn!(target: "ternvale::agent", tag, mount_point, "share_mount ignored on non-Linux guest");
             Ok(())
         }
+    }
+
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]
+    fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError> {
+        crate::windows::list_guest_windows()
     }
 
     #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]

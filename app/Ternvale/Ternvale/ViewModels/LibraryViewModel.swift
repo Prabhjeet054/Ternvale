@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import os
 
@@ -15,9 +16,11 @@ final class LibraryViewModel: ObservableObject {
     private let control = ControlSocketClient()
     private let processes = VMProcessManager()
     let display = VMDisplayController()
+    let seamless: SeamlessWindowsCoordinator
     private let log = Logger(subsystem: "com.ternvale.app", category: "library")
     private var pollTask: Task<Void, Never>?
     private var lastHelperExit: Int32?
+    private var seamlessSink: AnyCancellable?
 
     var liveState: String { phase.label }
 
@@ -31,6 +34,10 @@ final class LibraryViewModel: ObservableObject {
     }
 
     init() {
+        seamless = SeamlessWindowsCoordinator(display: display)
+        seamlessSink = seamless.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         processes.onTerminate = { [weak self] term in
             Task { @MainActor in
                 self?.handleHelperTermination(term)
@@ -161,7 +168,13 @@ final class LibraryViewModel: ObservableObject {
         display.connect(vmName: vm.name)
         Task {
             do {
-                try processes.start(vm: vm)
+                try processes.start(
+                    vm: vm,
+                    seamlessWindows: AppSettings.experimentalSeamlessWindows
+                )
+                if AppSettings.experimentalSeamlessWindows {
+                    seamless.start(vmName: vm.name)
+                }
                 statusMessage = "Starting \(vm.name)…"
                 log.info("started vm \(vm.name, privacy: .public)")
                 try await waitForRunning(vmName: vm.name, seconds: 30)
@@ -176,11 +189,19 @@ final class LibraryViewModel: ObservableObject {
         }
     }
 
+    func disableSeamlessWhileRunning() {
+        guard seamless.isActive else { return }
+        seamless.stop()
+        log.info("seamless disabled from settings; Step 56 embedded display restored for running VM")
+        statusMessage = "Seamless off — embedded display restored (restart VM to clear host env)"
+    }
+
     func stopSelected() {
         guard let vm = selection else { return }
         isBusy = true
         statusMessage = nil
         processes.markUserStop(vmName: vm.name)
+        seamless.stop()
         display.disconnect()
         phase = .stopping
         Task {
@@ -244,6 +265,7 @@ final class LibraryViewModel: ObservableObject {
     }
 
     private func markCrashed(vmName: String, reason: String?) {
+        seamless.stop()
         display.disconnect()
         phase = .crashed
         let bundle = CrashBundleReader.loadSummary(vmName: vmName, helperExitCode: lastHelperExit)
