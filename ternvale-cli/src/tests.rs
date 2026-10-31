@@ -141,6 +141,30 @@ fn parses_every_subcommand() {
     );
     assert!(Cli::try_parse_from(["ternvale", "stop"]).is_err());
     assert!(Cli::try_parse_from(["ternvale", "reboot", "a"]).is_err());
+    assert_eq!(
+        parse(&[
+            "ternvale",
+            "update-check",
+            "--feed",
+            "docs/updates/latest.json"
+        ]),
+        Command::UpdateCheck {
+            feed: "docs/updates/latest.json".into()
+        }
+    );
+    assert_eq!(
+        parse(&[
+            "ternvale",
+            "release-verify",
+            "--app",
+            "dist/app/Ternvale.app",
+            "--expect-gatekeeper"
+        ]),
+        Command::ReleaseVerify {
+            app: "dist/app/Ternvale.app".into(),
+            expect_gatekeeper: true
+        }
+    );
 }
 
 #[test]

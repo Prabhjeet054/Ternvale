@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var library = LibraryViewModel()
     @StateObject private var logTailer = HostLogTailer()
+    @StateObject private var updates = UpdateChecker()
 
     var body: some View {
         NavigationSplitView {
@@ -16,6 +17,10 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
             VStack(spacing: 0) {
+                if let banner = updates.banner {
+                    UpdateBannerView(banner: banner, onDismiss: updates.dismiss)
+                    Divider()
+                }
                 VMControlBar(
                     vm: library.selection,
                     state: library.liveState,
@@ -49,6 +54,7 @@ struct ContentView: View {
         }
         .onAppear {
             library.onAppear()
+            updates.check()
         }
         .onDisappear {
             library.onDisappear()

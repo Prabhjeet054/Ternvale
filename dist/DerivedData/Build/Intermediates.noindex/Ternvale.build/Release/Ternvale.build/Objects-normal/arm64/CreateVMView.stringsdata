@@ -1,0 +1,56 @@
+{
+  "source": "/Users/prabhjeet/Documents/Projects/Ternvale/app/Ternvale/Ternvale/Views/CreateVMView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "New VM",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 32
+        }
+      },
+      {
+        "comment": "",
+        "key": "Creates ~/Library/Application Support/Ternvale/vms/<name>/config.toml",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 14
+        }
+      },
+      {
+        "comment": "",
+        "key": "Name",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 12
+        }
+      },
+      {
+        "comment": "",
+        "key": "Kernel path (optional)",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 13
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 25
+        }
+      }
+    ]
+  },
+  "version": 1
+}

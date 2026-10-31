@@ -1,0 +1,40 @@
+{
+  "source": "/Users/prabhjeet/Documents/Projects/Ternvale/app/Ternvale/Ternvale/Views/UpdateBannerView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Learn more",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 24
+        }
+      },
+      {
+        "comment": "",
+        "key": "Dismiss",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 28
+        }
+      },
+      {
+        "comment": "",
+        "key": "New version available",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 11
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ is out (you have %@).",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 13
+        }
+      }
+    ]
+  },
+  "version": 1
+}

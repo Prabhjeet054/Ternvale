@@ -8,11 +8,26 @@ dest="${bundle}/Contents/Helpers"
 script_dir=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "${script_dir}/../.." && pwd) # repo root (Ternvale/)
 entitlements="${root}/entitlements/ternvale.entitlements"
-bin="${TERNVALE_HELPER_SRC:-${root}/target/debug/ternvale}"
+if [[ -n "${TERNVALE_HELPER_SRC:-}" ]]; then
+    bin="${TERNVALE_HELPER_SRC}"
+elif [[ "${CONFIGURATION:-}" == "Release" ]]; then
+    bin="${root}/target/aarch64-apple-darwin/release/ternvale"
+    if [[ ! -x "${bin}" ]]; then
+        bin="${root}/target/release/ternvale"
+    fi
+else
+    bin="${root}/target/debug/ternvale"
+fi
 
 if [[ ! -x "${bin}" ]]; then
     echo "copy-ternvale-helper: building ${bin}" >&2
-    cargo build -p ternvale-cli --manifest-path "${root}/Cargo.toml" --quiet
+    if [[ "${CONFIGURATION:-}" == "Release" ]]; then
+        cargo build --release --target aarch64-apple-darwin -p ternvale-cli --manifest-path "${root}/Cargo.toml" --quiet
+        bin="${root}/target/aarch64-apple-darwin/release/ternvale"
+    else
+        cargo build -p ternvale-cli --manifest-path "${root}/Cargo.toml" --quiet
+        bin="${root}/target/debug/ternvale"
+    fi
 fi
 
 mkdir -p "${dest}"

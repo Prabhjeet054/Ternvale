@@ -221,7 +221,7 @@ private final class SeamlessGuestWindowHost {
 
 private final class SeamlessCropMetalView: MTKView, MTKViewDelegate {
     var cropRect: CGRect = .zero {
-        didSet { setNeedsDisplay(true) }
+        didSet { needsDisplay = true }
     }
 
     private var queue: MTLCommandQueue?
@@ -240,7 +240,7 @@ private final class SeamlessCropMetalView: MTKView, MTKViewDelegate {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         autoresizingMask = [.width, .height]
-        contentScaleFactor = 1
+        layer?.contentsScale = 1
     }
 
     @available(*, unavailable)

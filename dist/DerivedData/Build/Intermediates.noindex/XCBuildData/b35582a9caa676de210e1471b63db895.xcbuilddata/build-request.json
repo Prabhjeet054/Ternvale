@@ -1,0 +1,74 @@
+{
+  "buildCommand" : {
+    "command" : "build",
+    "skipDependencies" : false,
+    "style" : "buildOnly"
+  },
+  "configuredTargets" : [
+    {
+      "guid" : "966f9535a6387083e097d4d66894bf4e9ba8fa44d184979afd83119e96f9bf23"
+    }
+  ],
+  "containerPath" : "/Users/prabhjeet/Documents/Projects/Ternvale/app/Ternvale/Ternvale.xcodeproj",
+  "continueBuildingAfterErrors" : false,
+  "dependencyScope" : "workspace",
+  "enableIndexBuildArena" : false,
+  "hideShellScriptEnvironment" : false,
+  "parameters" : {
+    "action" : "build",
+    "activeArchitecture" : "undefined_arch",
+    "activeRunDestination" : {
+      "disableOnlyActiveArch" : true,
+      "hostTargetedPlatform" : null,
+      "platform" : "macosx",
+      "sdk" : "macosx27.0",
+      "sdkVariant" : "macos",
+      "supportedArchitectures" : [
+        "arm64",
+        "arm64e",
+        "arm64e.x1",
+        "x86_64",
+        "x86_64h"
+      ],
+      "targetArchitecture" : "undefined_arch"
+    },
+    "arenaInfo" : {
+      "buildIntermediatesPath" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex",
+      "buildProductsPath" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Products",
+      "derivedDataPath" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData",
+      "indexDataStoreFolderPath" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Index.noindex/DataStore",
+      "indexEnableDataStore" : true,
+      "indexPCHPath" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Index.noindex/PrecompiledHeaders",
+      "pchPath" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/PrecompiledHeaders"
+    },
+    "configurationName" : "Release",
+    "overrides" : {
+      "commandLine" : {
+        "table" : {
+          "CODE_SIGN_IDENTITY" : "",
+          "CODE_SIGNING_ALLOWED" : "NO",
+          "CODE_SIGNING_REQUIRED" : "NO",
+          "CONFIGURATION_BUILD_DIR" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/app",
+          "DEVELOPMENT_TEAM" : "",
+          "TERNVALE_HELPER_SRC" : "/Users/prabhjeet/Documents/Projects/Ternvale/target/aarch64-apple-darwin/release/ternvale"
+        }
+      },
+      "synthesized" : {
+        "table" : {
+          "ACTION" : "build",
+          "CLANG_COVERAGE_MAPPING" : "YES",
+          "CLANG_PROFILE_DATA_DIRECTORY" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/ProfileData",
+          "ENABLE_PREVIEWS" : "NO",
+          "ENABLE_XOJIT_PREVIEWS" : "YES",
+          "ONLY_ACTIVE_ARCH" : "YES"
+        }
+      }
+    }
+  },
+  "schemeCommand" : "launch",
+  "showNonLoggedProgress" : true,
+  "useDryRun" : false,
+  "useImplicitDependencies" : true,
+  "useLegacyBuildLocations" : false,
+  "useParallelTargets" : true
+}

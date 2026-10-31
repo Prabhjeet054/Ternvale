@@ -1,0 +1,16 @@
+{
+  "source": "/Users/prabhjeet/Documents/Projects/Ternvale/app/Ternvale/Ternvale/Views/LogPanelView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Host log",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 10
+        }
+      }
+    ]
+  },
+  "version": 1
+}

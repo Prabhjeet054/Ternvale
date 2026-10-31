@@ -35,6 +35,10 @@
 		B1000000000000000000001B /* SeamlessWindowsCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001B /* SeamlessWindowsCoordinator.swift */; };
 		B1000000000000000000001C /* SeamlessWindowSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001C /* SeamlessWindowSync.swift */; };
 		B1000000000000000000001D /* SeamlessWindowSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001D /* SeamlessWindowSyncTests.swift */; };
+		B1000000000000000000001E /* UpdateFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001E /* UpdateFeed.swift */; };
+		B1000000000000000000001F /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000001F /* UpdateChecker.swift */; };
+		B10000000000000000000020 /* UpdateBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000020 /* UpdateBannerView.swift */; };
+		B10000000000000000000021 /* UpdateFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000021 /* UpdateFeedTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,6 +71,10 @@
 		B2000000000000000000001B /* SeamlessWindowsCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessWindowsCoordinator.swift; sourceTree = "<group>"; };
 		B2000000000000000000001C /* SeamlessWindowSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessWindowSync.swift; sourceTree = "<group>"; };
 		B2000000000000000000001D /* SeamlessWindowSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessWindowSyncTests.swift; sourceTree = "<group>"; };
+		B2000000000000000000001E /* UpdateFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeed.swift; sourceTree = "<group>"; };
+		B2000000000000000000001F /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		B20000000000000000000020 /* UpdateBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateBannerView.swift; sourceTree = "<group>"; };
+		B20000000000000000000021 /* UpdateFeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeedTests.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -120,6 +128,7 @@
 			children = (
 				B20000000000000000000013 /* CrashBundleReaderTests.swift */,
 				B2000000000000000000001D /* SeamlessWindowSyncTests.swift */,
+				B20000000000000000000021 /* UpdateFeedTests.swift */,
 			);
 			path = TernvaleTests;
 			sourceTree = "<group>";
@@ -133,6 +142,7 @@
 				B20000000000000000000005 /* LogPanelView.swift */,
 				B20000000000000000000012 /* CreateVMView.swift */,
 				B20000000000000000000019 /* VMDisplayPanel.swift */,
+				B20000000000000000000020 /* UpdateBannerView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -165,6 +175,8 @@
 				B2000000000000000000000C /* HostLogTailer.swift */,
 				B20000000000000000000010 /* CrashBundleReader.swift */,
 				B20000000000000000000011 /* VMCreator.swift */,
+				B2000000000000000000001E /* UpdateFeed.swift */,
+				B2000000000000000000001F /* UpdateChecker.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -308,6 +320,7 @@
 			files = (
 				B10000000000000000000013 /* CrashBundleReaderTests.swift in Sources */,
 				B1000000000000000000001D /* SeamlessWindowSyncTests.swift in Sources */,
+				B10000000000000000000021 /* UpdateFeedTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -340,6 +353,9 @@
 				B1000000000000000000001A /* AppSettings.swift in Sources */,
 				B1000000000000000000001B /* SeamlessWindowsCoordinator.swift in Sources */,
 				B1000000000000000000001C /* SeamlessWindowSync.swift in Sources */,
+				B1000000000000000000001E /* UpdateFeed.swift in Sources */,
+				B1000000000000000000001F /* UpdateChecker.swift in Sources */,
+				B10000000000000000000020 /* UpdateBannerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

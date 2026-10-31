@@ -1,0 +1,12 @@
+{
+  "/Users/prabhjeet/Documents/Projects/Ternvale/app/Ternvale/Ternvale/TernvaleApp.swift" : {
+    "abi-baseline-json" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale.abi.json",
+    "const-values" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale-primary.swiftconstvalues",
+    "dependencies" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale-primary.d",
+    "diagnostics" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale-primary.dia",
+    "objc-header" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale-Swift.h",
+    "swiftdoc" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale.swiftdoc",
+    "swiftmodule" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale.swiftmodule",
+    "swiftsourceinfo" : "/Users/prabhjeet/Documents/Projects/Ternvale/dist/DerivedData/Build/Intermediates.noindex/Ternvale.build/Release/Ternvale.build/Objects-normal/x86_64/Ternvale.swiftsourceinfo"
+  }
+}

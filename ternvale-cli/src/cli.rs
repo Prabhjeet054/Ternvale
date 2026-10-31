@@ -172,6 +172,21 @@ pub enum Command {
         #[arg(long)]
         offline: bool,
     },
+    /// Compare this binary's version to a JSON update feed (file only; no install).
+    UpdateCheck {
+        /// Feed JSON (`docs/updates/latest.json` or a downloaded copy of the hosted URL).
+        #[arg(long)]
+        feed: PathBuf,
+    },
+    /// Check a signed `.app`: `codesign --verify --deep --strict`, hypervisor entitlements, `spctl`.
+    ReleaseVerify {
+        /// Path to `Ternvale.app`.
+        #[arg(long)]
+        app: PathBuf,
+        /// Fail if Gatekeeper (`spctl -a -vvv`) rejects the bundle (set after notarize + staple).
+        #[arg(long)]
+        expect_gatekeeper: bool,
+    },
 }
 
 /// `ternvale vm …` subcommands.

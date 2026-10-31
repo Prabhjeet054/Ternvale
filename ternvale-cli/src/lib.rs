@@ -29,12 +29,14 @@ pub mod logfmt;
 pub mod logs;
 pub mod paths;
 pub mod protocol;
+pub mod release_verify;
 pub mod report;
 pub mod run;
 pub mod seamless;
 pub mod server;
 pub mod snapshot_cmd;
 pub mod summary;
+pub mod update_check;
 pub mod vsock;
 
 use std::process::ExitCode;
@@ -184,6 +186,11 @@ fn non_run(command: Command) -> Result<ExitCode> {
             cpus,
             offline,
         } => acpi::acpi_dump(&out, qemu_ram.as_deref(), ram_base, cpus, offline),
+        Command::UpdateCheck { feed } => update_check::update_check(&feed),
+        Command::ReleaseVerify {
+            app,
+            expect_gatekeeper,
+        } => release_verify::release_verify(&app, expect_gatekeeper),
     }
 }
 
