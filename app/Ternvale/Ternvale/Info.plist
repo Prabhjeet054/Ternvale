@@ -24,5 +24,7 @@
 	<string>Copyright © 2026 Ternvale.</string>
 	<key>TERNVALEUpdateFeedURL</key>
 	<string>https://updates.ternvale.dev/latest.json</string>
+	<key>TERNVALEFeedbackEmail</key>
+	<string>beta@ternvale.dev</string>
 </dict>
 </plist>

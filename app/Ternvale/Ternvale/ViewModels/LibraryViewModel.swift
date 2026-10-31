@@ -189,6 +189,37 @@ final class LibraryViewModel: ObservableObject {
         }
     }
 
+    func sendFeedback() {
+        guard let vm = selection else {
+            statusMessage = FeedbackMailer.FeedbackError.noVm.localizedDescription
+            return
+        }
+        isBusy = true
+        statusMessage = "Preparing crash bundle…"
+        let name = vm.name
+        Task {
+            do {
+                let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "")
+                let zip = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("ternvale-report-\(name)-\(stamp).zip")
+                let helper = try? processes.helperURL()
+                try FeedbackMailer.makeZip(
+                    vmName: name,
+                    helper: helper,
+                    config: vm.configURL,
+                    out: zip
+                )
+                try FeedbackMailer.presentDraft(vmName: name, zip: zip)
+                statusMessage = "Mail draft opened — send only if you want to share the zip"
+                log.info("feedback draft opened for \(name, privacy: .public)")
+            } catch {
+                statusMessage = error.localizedDescription
+                log.error("feedback failed: \(error.localizedDescription, privacy: .public)")
+            }
+            isBusy = false
+        }
+    }
+
     func disableSeamlessWhileRunning() {
         guard seamless.isActive else { return }
         seamless.stop()

@@ -20,6 +20,24 @@ use self::bundle::Item;
 use crate::diag::{self, DTB_SUFFIX, MMIO_SUFFIX, RUN_SUFFIX, SUMMARY_SUFFIX, TPM_SUFFIX};
 use crate::protocol::Request;
 
+/// Sidecars beside `ternvale-<vm>-<stamp>.log` (Step 30). The app's Send feedback
+/// zip uses the same suffixes when `ternvale report` cannot run.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn crash_sidecar_suffixes() -> &'static [&'static str] {
+    tracing::debug!(
+        target: "ternvale::cli",
+        count = 5,
+        "crash bundle sidecar suffixes"
+    );
+    &[
+        SUMMARY_SUFFIX,
+        RUN_SUFFIX,
+        MMIO_SUFFIX,
+        DTB_SUFFIX,
+        TPM_SUFFIX,
+    ]
+}
+
 /// Largest host log tail in a report.
 pub const HOST_LOG_CAP: u64 = 32 << 20;
 /// Largest guest serial log tail in a report.
@@ -170,7 +188,7 @@ fn plan_without_run(dir: &Path, inputs: &PlanInputs<'_>, config: &Path, stamp: &
             env!("CARGO_PKG_VERSION")
         ),
         format!(
-            "no host log for vm {name} in {}: `ternvale run` stops before logging when the config is invalid; doctor.txt checks the config",
+            "no host log for vm {name} in {}: the VM was never started, or logging did not write a file yet; doctor.txt still checks the library config",
             dir.display()
         ),
     ];
@@ -276,22 +294,47 @@ pub fn dump_live(name: &str) -> Result<Live> {
     })
 }
 
+/// Config path for a report: `--config`, else the run manifest, else the VM library.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
+pub fn resolve_config(name: &str, explicit: Option<&Path>, log_dir: &Path) -> Option<PathBuf> {
+    if let Some(path) = explicit {
+        tracing::debug!(target: "ternvale::cli", path = %path.display(), "report config from --config");
+        return Some(path.to_path_buf());
+    }
+    if let Some(path) = manifest_config(log_dir, name) {
+        tracing::debug!(target: "ternvale::cli", path = %path.display(), "report config from run manifest");
+        return Some(path);
+    }
+    match crate::paths::vm_config_path(name) {
+        Ok(path) if path.is_file() => {
+            tracing::info!(target: "ternvale::cli", path = %path.display(), "report config from VM library");
+            Some(path)
+        }
+        Ok(path) => {
+            tracing::debug!(target: "ternvale::cli", path = %path.display(), "library config.toml not present");
+            None
+        }
+        Err(error) => {
+            tracing::debug!(target: "ternvale::cli", error = %error, "library config path rejected");
+            None
+        }
+    }
+}
+
 /// `ternvale report`.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
 pub fn report(name: &str, out: Option<&Path>, config: Option<&Path>) -> Result<ExitCode> {
     let dir = LogConfig::default_log_dir().context("find the log directory")?;
     let live = dump_live(name).unwrap_or_else(|error| Live::Failed(format!("{error:#}")));
     tracing::info!(target: "ternvale::cli", live = ?live, "report diagnostics source");
-    let vm_config = config
-        .map(Path::to_path_buf)
-        .or_else(|| manifest_config(&dir, name));
-    let doctor = crate::doctor::render(&crate::doctor::all_checks(vm_config.as_deref()));
+    let config_path = resolve_config(name, config, &dir);
+    let doctor = crate::doctor::render(&crate::doctor::all_checks(config_path.as_deref()));
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let plan = plan(
         &dir,
         &PlanInputs {
             name,
-            config,
+            config: config_path.as_deref(),
             live,
             doctor: Some(doctor),
         },

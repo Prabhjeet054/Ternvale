@@ -14,6 +14,7 @@ struct VMControlBar: View {
     let onPause: () -> Void
     let onResume: () -> Void
     let onSeamlessDisabled: () -> Void
+    let onSendFeedback: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -39,6 +40,9 @@ struct VMControlBar: View {
                     .disabled(vm == nil || isBusy || phase != .running)
                 Button("Resume", action: onResume)
                     .disabled(vm == nil || isBusy || phase != .paused)
+                Button("Send feedback…", action: onSendFeedback)
+                    .disabled(vm == nil || isBusy)
+                    .help("Zip this VM's crash bundle (Step 30) and open a mail draft. Nothing is uploaded.")
                 Toggle("Seamless windows (experimental)", isOn: $seamlessWindows)
                     .toggleStyle(.switch)
                     .disabled(isBusy)

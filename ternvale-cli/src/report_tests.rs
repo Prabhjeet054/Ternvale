@@ -2,8 +2,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use super::bundle::{write_zip, Item, Source};
-use super::{plan, Live, PlanInputs};
+use super::{plan, resolve_config, Live, PlanInputs};
 use crate::diag::{self, write_manifest, RunManifest, TPM_SUFFIX};
+use crate::paths::VMS_DIR_ENV;
 
 fn scratch(test: &str) -> PathBuf {
     let dir =
@@ -331,4 +332,55 @@ fn big_files_keep_their_tail_from_a_line_start() {
     assert!(readme.contains("Missing:\n  gone.log: open "), "{readme}");
     assert!(readme.contains("  guest.dtb: never built"), "{readme}");
     assert_eq!(got.len(), 2, "big.log and README.txt");
+}
+
+#[test]
+fn resolve_config_prefers_explicit_then_library_toml() {
+    let _env = crate::tests::CHILD_PROCESS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let dir = scratch("libcfg");
+    let logs = dir.join("logs");
+    std::fs::create_dir_all(&logs).expect("logs");
+    let vms = dir.join("vms");
+    let vm = vms.join("betaram");
+    std::fs::create_dir_all(&vm).expect("vm dir");
+    let library = vm.join("config.toml");
+    std::fs::write(&library, "name = \"betaram\"\nram_mib = 24\n").expect("toml");
+    let run_dir = dir.join("run");
+    std::fs::create_dir_all(&run_dir).expect("run");
+    let prev_vms = std::env::var_os(VMS_DIR_ENV);
+    let prev_run = std::env::var_os(crate::paths::RUN_DIR_ENV);
+    // SAFETY: CHILD_PROCESS serializes env mutation in this crate's tests.
+    unsafe {
+        std::env::set_var(VMS_DIR_ENV, &vms);
+        std::env::set_var(crate::paths::RUN_DIR_ENV, &run_dir);
+    }
+    let explicit = dir.join("flag.toml");
+    std::fs::write(&explicit, "name = \"flag\"\n").expect("flag");
+    let explicit_hit = resolve_config("betaram", Some(&explicit), &logs);
+    let library_hit = resolve_config("betaram", None, &logs);
+    let missing = resolve_config("missingvm", None, &logs);
+    unsafe {
+        match prev_vms {
+            Some(value) => std::env::set_var(VMS_DIR_ENV, value),
+            None => std::env::remove_var(VMS_DIR_ENV),
+        }
+        match prev_run {
+            Some(value) => std::env::set_var(crate::paths::RUN_DIR_ENV, value),
+            None => std::env::remove_var(crate::paths::RUN_DIR_ENV),
+        }
+    }
+    assert_eq!(explicit_hit.as_deref(), Some(explicit.as_path()));
+    assert_eq!(library_hit.as_deref(), Some(library.as_path()));
+    assert!(missing.is_none());
+}
+
+#[test]
+fn crash_sidecar_suffixes_match_step30_diag() {
+    let suffixes = super::crash_sidecar_suffixes();
+    assert_eq!(
+        suffixes,
+        [".summary.txt", ".run.json", ".mmio.txt", ".dtb", ".tpm.txt"]
+    );
 }

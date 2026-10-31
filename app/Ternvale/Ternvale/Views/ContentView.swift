@@ -33,7 +33,8 @@ struct ContentView: View {
                     onStop: library.stopSelected,
                     onPause: library.pauseSelected,
                     onResume: library.resumeSelected,
-                    onSeamlessDisabled: library.disableSeamlessWhileRunning
+                    onSeamlessDisabled: library.disableSeamlessWhileRunning,
+                    onSendFeedback: library.sendFeedback
                 )
                 Divider()
                 VMDisplayPanel(
@@ -50,6 +51,15 @@ struct ContentView: View {
                 CreateVMView { name, kernel in
                     library.createVM(name: name, kernelPath: kernel)
                 }
+            }
+        }
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .help) {
+                Button("Send Feedback…") {
+                    library.sendFeedback()
+                }
+                .disabled(library.selection == nil || library.isBusy)
             }
         }
         .onAppear {

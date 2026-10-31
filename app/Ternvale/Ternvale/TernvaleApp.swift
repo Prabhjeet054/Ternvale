@@ -7,8 +7,5 @@ struct TernvaleApp: App {
             ContentView()
                 .frame(minWidth: 720, minHeight: 480)
         }
-        .commands {
-            CommandGroup(replacing: .newItem) {}
-        }
     }
 }
