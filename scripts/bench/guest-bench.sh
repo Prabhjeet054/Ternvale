@@ -21,7 +21,7 @@ bring_up_net() {
 bring_up_net || true
 
 python3 - "$nproc" <<'PY'
-import json, statistics, subprocess, sys
+import json, os, statistics, subprocess, sys
 from pathlib import Path
 
 NPROC = sys.argv[1]
@@ -52,15 +52,27 @@ def sysbench(threads, seconds):
     return None
 
 
-# Discarded warm-up so the timed run is not the first burst on a cold core.
-sysbench(1, 2)
-eps1 = sysbench(1, 10)
-epsn = sysbench(NPROC, 10)
-if eps1 is not None:
-    print(f"BENCH sysbench_cpu_1_eps={eps1:.4f}")
-if epsn is not None:
-    print(f"BENCH sysbench_cpu_n_eps={epsn:.4f}")
-print(f"BENCH sysbench_cpu_n_threads={NPROC}")
+FIO_ONLY = os.environ.get("BENCH_FIO_ONLY") == "1"
+
+if not FIO_ONLY:
+    # Discarded warm-up so the timed run is not the first burst on a cold core.
+    sysbench(1, 2)
+    eps1 = sysbench(1, 10)
+    epsn = sysbench(NPROC, 10)
+    if eps1 is not None:
+        print(f"BENCH sysbench_cpu_1_eps={eps1:.4f}")
+    if epsn is not None:
+        print(f"BENCH sysbench_cpu_n_eps={epsn:.4f}")
+    print(f"BENCH sysbench_cpu_n_threads={NPROC}")
+
+
+def clat_stats(side):
+    clat = side.get("clat_ns") or side.get("lat_ns") or {}
+    mean = float(clat.get("mean") or 0)
+    pct = clat.get("percentile") or {}
+    p50 = float(pct.get("50.000000") or pct.get("50") or mean)
+    p99 = float(pct.get("99.000000") or pct.get("99") or 0)
+    return mean, p50, p99
 
 
 def fio_once(name, rw, bs, size):
@@ -81,7 +93,8 @@ def fio_once(name, rw, bs, size):
         return None
     job = json.loads(proc.stdout)["jobs"][0]
     side = job["read"] if rw in ("read", "randread") else job["write"]
-    return float(side.get("bw", 0)), float(side.get("iops", 0))
+    mean, p50, p99 = clat_stats(side)
+    return float(side.get("bw", 0)), float(side.get("iops", 0)), mean, p50, p99
 
 
 def fio_job(name, rw, bs):
@@ -96,12 +109,18 @@ def fio_job(name, rw, bs):
         return
     print(f"BENCH fio_{name}_kbs={median([s[0] for s in samples]):.1f}")
     print(f"BENCH fio_{name}_iops={median([s[1] for s in samples]):.1f}")
+    print(f"BENCH fio_{name}_clat_ns={median([s[2] for s in samples]):.0f}")
+    print(f"BENCH fio_{name}_clat_p50_ns={median([s[3] for s in samples]):.0f}")
+    print(f"BENCH fio_{name}_clat_p99_ns={median([s[4] for s in samples]):.0f}")
 
 
 fio_job("seqread", "read", "1m")
 fio_job("seqwrite", "write", "1m")
 fio_job("randread", "randread", "4k")
 fio_job("randwrite", "randwrite", "4k")
+
+if FIO_ONLY:
+    raise SystemExit(0)
 
 iperf = run(["iperf3", "-c", "10.0.2.2", "-t", "10", "-J"], timeout=30)
 mbps = None
@@ -150,8 +169,10 @@ else:
         print(f"BENCH stream_{key}_mbs={median(vals):.2f}")
 PY
 
-idle=${BENCH_IDLE_SECS:-60}
-echo "BENCH idle_start=${idle}"
-sleep "${idle}"
-echo "BENCH idle_done=1"
+if [ "${BENCH_FIO_ONLY:-0}" != "1" ]; then
+    idle=${BENCH_IDLE_SECS:-60}
+    echo "BENCH idle_start=${idle}"
+    sleep "${idle}"
+    echo "BENCH idle_done=1"
+fi
 echo "BENCH finished=1"

@@ -49,6 +49,12 @@ class CompareTests(unittest.TestCase):
         old, new = sample(1000, 2000, 90), sample(1000, 1500, 90)
         self.assertEqual(self.fail_list(old, new), [])
 
+    def test_fio_clat_ns_rise_is_regression(self) -> None:
+        old = {"runs": {"qemu": {"fio_randwrite_clat_ns": 1000}}}
+        new = {"runs": {"qemu": {"fio_randwrite_clat_ns": 2000}}}
+        failures = self.fail_list(old, new)
+        self.assertTrue(any("clat_ns" in item for item in failures))
+
     def test_mmio_dispatch_ns_rise_is_regression(self) -> None:
         old = {"runs": {"ternvale": {"mmio_dispatch_ns": 800}}}
         new = {"runs": {"ternvale": {"mmio_dispatch_ns": 1_000_000}}}

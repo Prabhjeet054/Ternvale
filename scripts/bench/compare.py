@@ -49,7 +49,8 @@ def skip_path(path: str) -> bool:
 
 
 def lower_better(path: str) -> bool:
-    return leaf_name(path) in LOWER_BETTER
+    name = leaf_name(path)
+    return name in LOWER_BETTER or name.endswith("_ns")
 
 
 def load(path: str) -> dict[str, Any]:

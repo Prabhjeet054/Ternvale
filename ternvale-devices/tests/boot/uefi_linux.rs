@@ -77,6 +77,7 @@ fn boot(
         disks: vec![Disk {
             path: esp.to_path_buf(),
             read_only: true,
+            ..Default::default()
         }],
         nics: Vec::new(),
         serial_log: serial_log.to_path_buf(),

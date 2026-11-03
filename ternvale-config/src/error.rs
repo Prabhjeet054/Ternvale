@@ -177,6 +177,15 @@ pub enum ConfigError {
         /// What is wrong.
         reason: String,
     },
+
+    /// A `[[disks]]` cache/queue field is out of range.
+    #[error("{field}: {reason}")]
+    InvalidDisk {
+        /// Field, such as `disks[0].io_workers`.
+        field: String,
+        /// What is wrong.
+        reason: String,
+    },
 }
 
 /// Error type other Ternvale crates can return without depending on each other.

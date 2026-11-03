@@ -4,6 +4,7 @@
 //! unknown fields and runs validation before returning.
 
 mod audio;
+mod disk;
 mod error;
 mod firmware_tables;
 mod iso;
@@ -15,6 +16,7 @@ mod vm;
 mod vsock;
 
 pub use audio::AudioSection;
+pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEPTH};
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
 pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BYTES};
@@ -25,7 +27,7 @@ pub use profile::{
 pub use share::{Share, MAX_MOUNT_PATH, MAX_TAG_LEN};
 pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
 pub use usb::{UsbPassthroughEntry, UsbSection};
-pub use vm::{default_nvram_path, Disk, Nic, VmConfig};
+pub use vm::{default_nvram_path, Nic, VmConfig};
 pub use vsock::{VsockSection, MAX_UDS_DIR};
 
 #[cfg(test)]
@@ -128,6 +130,40 @@ backend = "user"
         let text = config.to_toml().expect("serialize");
         let again = VmConfig::from_toml(&text).expect("reparse");
         assert_eq!(config, again);
+    }
+
+    #[test]
+    fn disk_cache_flush_and_queue_fields_parse() {
+        let fix = Fixture::new();
+        let extra = format!(
+            r#"
+[[disks]]
+path = "{disk}"
+read_only = false
+cache = "none"
+flush = "fast"
+io_workers = 4
+queue_depth = 64
+multi_queue = true
+"#,
+            disk = toml_path(&fix.path("disk.img")),
+        );
+        let text = sample(&fix).replace(
+            &format!(
+                "[[disks]]\npath = \"{}\"\nread_only = false\n",
+                toml_path(&fix.path("disk.img"))
+            ),
+            &extra,
+        );
+        let config = VmConfig::from_toml(&text).expect("parse disk knobs");
+        assert_eq!(config.disks[0].cache, crate::DiskCache::None);
+        assert_eq!(config.disks[0].flush, crate::DiskFlush::Fast);
+        assert_eq!(config.disks[0].io_workers, 4);
+        assert_eq!(config.disks[0].queue_depth, 64);
+        assert!(config.disks[0].multi_queue);
+        let bad = sample(&fix).replace("read_only = false", "read_only = false\nio_workers = 0\n");
+        let error = VmConfig::from_toml(&bad).expect_err("io_workers 0");
+        assert!(matches!(error, ConfigError::InvalidDisk { .. }), "{error}");
     }
 
     #[test]

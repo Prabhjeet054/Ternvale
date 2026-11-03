@@ -19,6 +19,10 @@ fn fresh_region_is_zero_and_round_trips_little_endian() {
     let mut buf = [0; 4];
     memory.read_bytes(16, &mut buf).expect("read bytes");
     assert_eq!(&buf, b"tern");
+    let ptr = memory.host_ptr(16, 4).expect("host_ptr");
+    // SAFETY: `host_ptr` covers the 4 bytes just written.
+    let from_host = unsafe { std::slice::from_raw_parts(ptr, 4) };
+    assert_eq!(from_host, b"tern");
 }
 
 #[test]

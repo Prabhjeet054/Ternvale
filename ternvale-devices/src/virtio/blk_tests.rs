@@ -8,11 +8,11 @@ use ternvale_vmm::{GuestMemory, HOST_PAGE_SIZE};
 
 use super::backend::FileBackend;
 use super::{
-    VirtioBlk, SECTOR, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO, VIRTIO_BLK_S_IOERR, VIRTIO_BLK_S_OK,
-    VIRTIO_BLK_T_FLUSH, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT,
+    VirtioBlk, SECTOR, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO, VIRTIO_BLK_F_SEG_MAX,
+    VIRTIO_BLK_S_IOERR, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_FLUSH, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT,
 };
 use crate::virtio::irq::VirtioIrq;
-use crate::virtio::{QueueNotify, VirtioDevice};
+use crate::virtio::{QueueNotify, VirtioDevice, VIRTIO_F_EVENT_IDX};
 
 const NEXT: u16 = 1;
 const WRITE: u16 = 2;
@@ -159,6 +159,12 @@ fn config_reports_capacity_and_flush() {
         VIRTIO_BLK_F_FLUSH
     );
     assert_eq!(blk.device_features() & VIRTIO_BLK_F_RO, 0);
+    assert_ne!(blk.device_features() & VIRTIO_F_EVENT_IDX, 0);
+    assert_ne!(blk.device_features() & VIRTIO_BLK_F_SEG_MAX, 0);
+    assert_eq!(blk.device_features() & VIRTIO_BLK_F_MQ, 0);
+    assert_eq!(blk.num_queues(), 1);
+    assert_eq!(blk.read_config(12, 4), 64);
+    assert_eq!(blk.read_config(34, 2), 1);
     drop(fx);
 }
 
@@ -283,7 +289,7 @@ fn backend_pread_pwrite_round_trip() {
         .expect("create")
         .set_len(SECTOR * 2)
         .expect("len");
-    let be = FileBackend::open(&path, false).expect("open");
+    let be = FileBackend::open(&path, false, super::BlkOptions::default()).expect("open");
     be.write_at(&[0xcd; 512], SECTOR).expect("write");
     let mut buf = [0u8; 512];
     be.read_at(&mut buf, SECTOR).expect("read");
@@ -307,11 +313,78 @@ fn backend_rejects_writable_open_of_shared_clone_base() {
         .set_len(SECTOR * 2)
         .expect("len");
     ternvale_snapshot::acquire_base_ref(&base, "vm-a").expect("acquire");
-    let Err(err) = FileBackend::open(&base, false) else {
+    let Err(err) = FileBackend::open(&base, false, super::BlkOptions::default()) else {
         panic!("writable open of shared base should be rejected");
     };
     assert!(format!("{err:#}").contains("shared clone base"), "{err:#}");
     ternvale_snapshot::release_base_ref(&base, "vm-a").expect("release");
-    FileBackend::open(&base, false).expect("writable after release");
+    FileBackend::open(&base, false, super::BlkOptions::default()).expect("writable after release");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn chained_descriptors_round_trip() {
+    let (fx, mut blk) = Fixture::new(SECTOR * 4, false);
+    let hdr = fx.base + 0xc00;
+    let a = fx.data();
+    let b = fx.data() + 256;
+    {
+        let mut mem = fx.memory.lock().expect("mem");
+        write_header(&mut mem, hdr, VIRTIO_BLK_T_OUT, 0);
+        mem.write_bytes(a, &[0x11; 256]).expect("a");
+        mem.write_bytes(b, &[0x22; 256]).expect("b");
+        mem.write_u8(b + 256, 0xff).expect("status");
+    }
+    fx.write_desc(0, hdr, 16, NEXT, 1);
+    fx.write_desc(1, a, 256, NEXT, 2);
+    fx.write_desc(2, b, 256, NEXT, 3);
+    fx.write_desc(3, b + 256, 1, WRITE, 0);
+    fx.publish(0);
+    fx.notify(&mut blk);
+    fx.wait_used();
+    assert_eq!(fx.status(), VIRTIO_BLK_S_OK);
+    drop(blk);
+    drop(fx);
+}
+
+#[test]
+fn nocache_and_multi_queue_open() {
+    let dir = std::env::temp_dir().join(format!(
+        "ternvale-blk-opt-{}-{}",
+        std::process::id(),
+        NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let image = dir.join("disk.img");
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&image)
+        .expect("image")
+        .set_len(SECTOR * 8)
+        .expect("len");
+    let mut mem = GuestMemory::new().expect("memory");
+    mem.add_region(0x4000_0000, u64::from(HOST_PAGE_SIZE) * 2)
+        .expect("region");
+    let memory = Arc::new(Mutex::new(mem));
+    let irq = VirtioIrq::new();
+    let mut options = super::BlkOptions::default();
+    options.cache = ternvale_config::DiskCache::None;
+    options.flush = ternvale_config::DiskFlush::Fast;
+    options.num_queues = 4;
+    options.io_workers = 3;
+    let blk = VirtioBlk::open_media(
+        &image,
+        super::BlkMedia::Disk { read_only: false },
+        options,
+        memory,
+        irq,
+        Arc::new(ternvale_metrics::Metrics::new()),
+    )
+    .expect("open");
+    assert_ne!(blk.device_features() & VIRTIO_BLK_F_MQ, 0);
+    assert_eq!(blk.num_queues(), 4);
+    assert_eq!(blk.read_config(34, 2), 4);
+    drop(blk);
     let _ = std::fs::remove_dir_all(dir);
 }

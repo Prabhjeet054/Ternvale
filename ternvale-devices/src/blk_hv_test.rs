@@ -63,6 +63,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         disks: vec![ternvale_config::Disk {
             path: image.clone(),
             read_only: false,
+            ..Default::default()
         }],
         nics: Vec::new(),
         serial_log: serial_log.clone(),

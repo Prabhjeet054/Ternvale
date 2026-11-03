@@ -1,25 +1,29 @@
-//! virtio-blk device: request queue, file backend, and I/O thread.
+//! virtio-blk device: request queues, file backend, and I/O workers.
 
 mod backend;
+mod host_sync;
 mod media;
+mod options;
+mod pool;
 mod request;
+mod vectored;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
-use std::time::Instant;
 
 use ternvale_metrics::Metrics;
 use ternvale_vmm::pci::Bdf;
 use ternvale_vmm::{DeviceAttach, GuestMemory, MachineError};
 
 use super::irq::{IrqHook, VirtioIrq};
-use super::queue::SplitQueue;
 use super::{QueueNotify, VirtioDevice, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 use backend::BlkBackend;
-pub use media::{BlkMedia, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE};
+pub use media::{
+    BlkMedia, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_SEG_MAX,
+};
+pub use options::BlkOptions;
+use pool::{Kick, Pool};
 
 /// Virtio block device id.
 pub const VIRTIO_BLK_ID: u32 = 2;
@@ -37,8 +41,7 @@ pub(super) const VIRTIO_BLK_S_IOERR: u8 = 1;
 pub(super) const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 pub(super) const SECTOR: u64 = 512;
 pub(super) const ID_BYTES: usize = 20;
-
-const INT_VRING: u32 = 1;
+pub(super) const INT_VRING: u32 = 1;
 
 pub(super) use super::queue::Buffer;
 
@@ -93,16 +96,11 @@ impl BlkStats {
     }
 }
 
-enum Kick {
-    Notify(QueueNotify, Option<Instant>),
-    Reset,
-}
-
 #[inline]
-fn notify_mark() -> Option<Instant> {
+fn notify_mark() -> Option<std::time::Instant> {
     #[cfg(feature = "metrics")]
     {
-        Some(Instant::now())
+        Some(std::time::Instant::now())
     }
     #[cfg(not(feature = "metrics"))]
     {
@@ -119,20 +117,20 @@ fn notify_mark() -> Option<Instant> {
     fields(path = %path.display())
 )]
 pub fn try_open_disk_for_write(path: &Path) -> Result<(), VirtioBlkError> {
-    backend::FileBackend::open(path, false).map(|_| ())
+    backend::FileBackend::open(path, false, BlkOptions::default()).map(|_| ())
 }
 
-/// One virtio-blk device with a dedicated I/O thread.
+/// One virtio-blk device with a pool of I/O threads.
 pub struct VirtioBlk {
     media: BlkMedia,
-    config: [u8; 24],
+    options: BlkOptions,
+    config: [u8; 36],
     stats: Arc<BlkStats>,
-    kick: Option<Sender<Kick>>,
-    join: Option<JoinHandle<()>>,
+    pool: Option<Pool>,
 }
 
 impl VirtioBlk {
-    /// Open `path` and start the I/O thread.
+    /// Open `path` and start I/O workers.
     #[tracing::instrument(
         level = "debug",
         target = "ternvale::virtio::blk",
@@ -146,10 +144,17 @@ impl VirtioBlk {
         irq: Arc<VirtioIrq>,
         metrics: Arc<Metrics>,
     ) -> Result<Self, VirtioBlkError> {
-        Self::open_media(path, BlkMedia::Disk { read_only }, memory, irq, metrics)
+        Self::open_media(
+            path,
+            BlkMedia::Disk { read_only },
+            BlkOptions::default(),
+            memory,
+            irq,
+            metrics,
+        )
     }
 
-    /// Open `path` as `media` and start the I/O thread.
+    /// Open `path` as `media` with `options` and start I/O workers.
     #[tracing::instrument(
         level = "debug",
         target = "ternvale::virtio::blk",
@@ -159,19 +164,22 @@ impl VirtioBlk {
     pub fn open_media(
         path: &Path,
         media: BlkMedia,
+        options: BlkOptions,
         memory: Arc<Mutex<GuestMemory>>,
         irq: Arc<VirtioIrq>,
         metrics: Arc<Metrics>,
     ) -> Result<Self, VirtioBlkError> {
-        let backend = BlkBackend::open(path, media.read_only())?;
+        let backend = BlkBackend::open(path, media.read_only(), options)?;
         let capacity = backend.capacity();
-        tracing::debug!(
+        tracing::info!(
             target: "ternvale::virtio::blk",
             path = %path.display(),
             media = media.name(),
             capacity_sectors = capacity,
-            features = format!("{:#x}", media.features()),
-            blk_size = ?media.block_size(),
+            features = format!("{:#x}", Self::feature_bits(media, &options)),
+            io_workers = options.io_workers,
+            queue_depth = options.queue_depth,
+            num_queues = options.num_queues,
             "virtio-blk medium"
         );
         let mut serial = [0u8; ID_BYTES];
@@ -183,22 +191,37 @@ impl VirtioBlk {
         let n = bytes.len().min(ID_BYTES);
         serial[..n].copy_from_slice(&bytes[..n]);
         let stats = Arc::new(BlkStats::default());
-        let (tx, rx) = mpsc::channel();
-        let worker_stats = Arc::clone(&stats);
-        let join = std::thread::Builder::new()
-            .name("ternvale-virtio-blk".into())
-            .spawn(move || worker(rx, backend, memory, irq, worker_stats, serial, metrics))
-            .map_err(|source| VirtioBlkError::Open {
-                path: path.to_path_buf(),
-                source,
-            })?;
+        let disk_id = metrics.register_blk_disk(name);
+        let pool = Pool::spawn(
+            options,
+            backend,
+            memory,
+            irq,
+            Arc::clone(&stats),
+            serial,
+            metrics,
+            disk_id,
+        )
+        .map_err(|source| VirtioBlkError::Open {
+            path: path.to_path_buf(),
+            source,
+        })?;
         Ok(Self {
             media,
-            config: media.config_space(capacity),
+            options,
+            config: media.config_space(capacity, options.num_queues),
             stats,
-            kick: Some(tx),
-            join: Some(join),
+            pool: Some(pool),
         })
+    }
+
+    fn feature_bits(media: BlkMedia, options: &BlkOptions) -> u64 {
+        let mut bits =
+            media.features() | VIRTIO_F_EVENT_IDX | VIRTIO_F_INDIRECT_DESC | VIRTIO_BLK_F_SEG_MAX;
+        if options.num_queues > 1 {
+            bits |= VIRTIO_BLK_F_MQ;
+        }
+        bits
     }
 
     /// Build a transport on `slot` for this open image.
@@ -220,6 +243,7 @@ impl VirtioBlk {
             slot,
             path,
             BlkMedia::Disk { read_only },
+            BlkOptions::default(),
             memory,
             irq_hook,
             metrics,
@@ -237,13 +261,14 @@ impl VirtioBlk {
         slot: u32,
         path: &Path,
         media: BlkMedia,
+        options: BlkOptions,
         memory: Arc<Mutex<GuestMemory>>,
         irq_hook: IrqHook,
         metrics: Arc<Metrics>,
     ) -> Result<AttachedBlk, VirtioBlkError> {
         let irq = VirtioIrq::new();
         irq.set_hook(irq_hook);
-        let blk = Self::open_media(path, media, memory, Arc::clone(&irq), metrics)?;
+        let blk = Self::open_media(path, media, options, memory, Arc::clone(&irq), metrics)?;
         let stats = Arc::clone(&blk.stats);
         let base = crate::virtio::slot_base(slot).ok_or_else(|| VirtioBlkError::Open {
             path: path.to_path_buf(),
@@ -270,7 +295,12 @@ impl VirtioBlk {
         path: &Path,
         read_only: bool,
     ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
-        Self::attach_pci_media(attach, path, BlkMedia::Disk { read_only })
+        Self::attach_pci_media(
+            attach,
+            path,
+            BlkMedia::Disk { read_only },
+            BlkOptions::default(),
+        )
     }
 
     /// Open `path` as `media` on the next free virtio-pci function of bus 0.
@@ -284,11 +314,13 @@ impl VirtioBlk {
         attach: &DeviceAttach,
         path: &Path,
         media: BlkMedia,
+        options: BlkOptions,
     ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
         let irq = VirtioIrq::new();
         let blk = Self::open_media(
             path,
             media,
+            options,
             Arc::clone(&attach.memory),
             Arc::clone(&irq),
             Arc::clone(&attach.metrics),
@@ -305,7 +337,10 @@ impl VirtioBlk {
     }
 
     fn send(&self, kick: Kick) {
-        let Some(tx) = self.kick.as_ref() else {
+        let Some(pool) = self.pool.as_ref() else {
+            return;
+        };
+        let Some(tx) = pool.kick.as_ref() else {
             return;
         };
         if let Err(error) = tx.send(kick) {
@@ -320,16 +355,7 @@ impl VirtioBlk {
 
 impl Drop for VirtioBlk {
     fn drop(&mut self) {
-        self.kick.take();
-        if let Some(join) = self.join.take() {
-            if let Err(error) = join.join() {
-                tracing::error!(
-                    target: "ternvale::virtio::blk",
-                    ?error,
-                    "virtio-blk worker panicked"
-                );
-            }
-        }
+        self.pool.take();
     }
 }
 
@@ -339,15 +365,19 @@ impl VirtioDevice for VirtioBlk {
     }
 
     fn device_features(&self) -> u64 {
-        self.media.features()
+        Self::feature_bits(self.media, &self.options)
     }
 
     fn num_queues(&self) -> u16 {
-        1
+        self.options.num_queues.max(1)
+    }
+
+    fn queue_num_max(&self, _queue: u16) -> u16 {
+        self.options.queue_depth.max(16)
     }
 
     fn read_config(&self, offset: u64, size: u8) -> u64 {
-        read_le(&self.config, offset, size)
+        media::read_le(&self.config, offset, size)
     }
 
     fn notify(&self, queue: QueueNotify) {
@@ -361,88 +391,10 @@ impl VirtioDevice for VirtioBlk {
     }
 }
 
-fn worker(
-    rx: Receiver<Kick>,
-    mut backend: BlkBackend,
-    memory: Arc<Mutex<GuestMemory>>,
-    irq: Arc<VirtioIrq>,
-    stats: Arc<BlkStats>,
-    serial: [u8; ID_BYTES],
-    metrics: Arc<Metrics>,
-) {
-    #[cfg(not(feature = "metrics"))]
-    let _ = &metrics;
-    let mut queue: Option<SplitQueue> = None;
-    let mut rings: Option<(u16, u64, u64, u64)> = None;
-    while let Ok(kick) = rx.recv() {
-        match kick {
-            Kick::Reset => {
-                queue = None;
-                rings = None;
-                tracing::debug!(target: "ternvale::virtio::blk", "virtio-blk queues reset");
-            }
-            Kick::Notify(notify, started) => {
-                #[cfg(not(feature = "metrics"))]
-                let _ = started;
-                let key = (notify.size, notify.desc, notify.avail, notify.used);
-                if rings != Some(key) {
-                    let indirect = notify.features & VIRTIO_F_INDIRECT_DESC != 0;
-                    let event_idx = notify.features & VIRTIO_F_EVENT_IDX != 0;
-                    queue = Some(SplitQueue::new(
-                        notify.size,
-                        notify.desc,
-                        notify.avail,
-                        notify.used,
-                        indirect,
-                        event_idx,
-                    ));
-                    rings = Some(key);
-                }
-                let Some(q) = queue.as_mut() else {
-                    continue;
-                };
-                let mut mem = ternvale_vmm::lockwatch::lock(&memory, "guest-memory");
-                let mut completed = false;
-                #[cfg(feature = "metrics")]
-                let before = stats.snapshot();
-                let chains: Vec<_> = q.chains(&mem).collect();
-                #[cfg(feature = "metrics")]
-                let nreq = chains.len() as u64;
-                for chain in chains {
-                    let used = request::process(&mut mem, &mut backend, &chain, &serial, &stats);
-                    if q.add_used(&mut mem, chain.head, used) {
-                        completed = true;
-                    }
-                }
-                #[cfg(feature = "metrics")]
-                let after = stats.snapshot();
-                #[cfg(feature = "metrics")]
-                if nreq > 0 {
-                    metrics.record_blk(
-                        nreq,
-                        after.1.saturating_sub(before.1),
-                        started.map(|at| at.elapsed()),
-                    );
-                }
-                if completed && q.notification_needed(&mem) {
-                    irq.raise(INT_VRING);
-                }
-            }
-        }
-    }
-}
-
-fn read_le(bytes: &[u8], offset: u64, size: u8) -> u64 {
-    let start = offset as usize;
-    if start >= bytes.len() {
-        return 0;
-    }
-    let mut tmp = [0u8; 8];
-    let n = (size as usize).min(8).min(bytes.len() - start);
-    tmp[..n].copy_from_slice(&bytes[start..start + n]);
-    u64::from_le_bytes(tmp)
-}
-
 #[cfg(test)]
 #[path = "blk_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "blk_cache_tests.rs"]
+mod cache_tests;

@@ -109,6 +109,9 @@ pub fn render_metrics(metrics: &Snapshot) -> String {
         ));
     }
     lines.push(io_line("blk", &metrics.blk));
+    for disk in &metrics.disks {
+        lines.push(io_line(&format!("blk[{}]", disk.name), &disk.io));
+    }
     lines.push(io_line("net", &metrics.net));
     lines.push(String::new());
     lines.join("\n")

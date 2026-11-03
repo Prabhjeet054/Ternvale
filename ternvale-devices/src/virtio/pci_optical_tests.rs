@@ -14,6 +14,7 @@ use crate::virtio::irq::VirtioIrq;
 use crate::virtio::{
     BlkMedia, VirtioBlk, OPTICAL_BLOCK_SIZE, STATUS_ACKNOWLEDGE, STATUS_DRIVER, STATUS_DRIVER_OK,
     STATUS_FEATURES_OK, VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO,
+    VIRTIO_BLK_F_SEG_MAX, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC,
 };
 
 const RAM: u64 = 0x4000_0000;
@@ -124,6 +125,7 @@ fn optical_disc_reads_2048_byte_blocks_and_refuses_writes() {
     let blk = VirtioBlk::open_media(
         &disc.image,
         BlkMedia::Optical,
+        crate::virtio::BlkOptions::default(),
         Arc::clone(&disc.memory),
         Arc::clone(&irq),
         Arc::new(ternvale_metrics::Metrics::new()),
@@ -140,8 +142,12 @@ fn optical_disc_reads_2048_byte_blocks_and_refuses_writes() {
     guest.set_common(0x00, 4, 0);
     let features = guest.common(0x04, 4);
     assert_eq!(
-        features,
-        VIRTIO_BLK_F_RO | VIRTIO_BLK_F_BLK_SIZE,
+        u64::from(features),
+        VIRTIO_BLK_F_RO
+            | VIRTIO_BLK_F_BLK_SIZE
+            | VIRTIO_BLK_F_SEG_MAX
+            | VIRTIO_F_EVENT_IDX
+            | VIRTIO_F_INDIRECT_DESC,
         "device features, low word"
     );
     let config = guest.bar0 + DEVICE_OFFSET;

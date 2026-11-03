@@ -252,6 +252,7 @@ impl Machine {
             Arc::clone(&gic),
             Arc::clone(&spi_levels),
             Arc::clone(control.metrics()),
+            config.cpus,
         );
         let devices = attach(&attached)?;
         // The PCI count includes the host bridge.

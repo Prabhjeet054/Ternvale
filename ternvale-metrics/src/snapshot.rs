@@ -14,8 +14,11 @@ pub struct Snapshot {
     /// Per-MMIO-device access counts and handling latency.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub devices: Vec<DeviceSnapshot>,
-    /// virtio-blk requests and notify-to-completion latency.
+    /// virtio-blk requests and notify-to-completion latency (all disks).
     pub blk: IoSnapshot,
+    /// Per-disk virtio-blk latency. Empty on VMs with no named disks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disks: Vec<NamedIoSnapshot>,
     /// virtio-net packets and notify-to-completion latency.
     pub net: IoSnapshot,
     /// `hv_gic_set_spi` / PPI injections that asserted a line.
@@ -64,6 +67,16 @@ pub struct DeviceSnapshot {
     pub accesses: u64,
     /// Time spent in the device `read`/`write` call.
     pub latency: HistSnapshot,
+}
+
+/// One named virtio-blk device in [`Snapshot::disks`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamedIoSnapshot {
+    /// Image file name (or `"disk"`).
+    pub name: String,
+    /// Request counts and latency for this disk.
+    #[serde(flatten)]
+    pub io: IoSnapshot,
 }
 
 /// Request or packet I/O plus completion latency.

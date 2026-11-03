@@ -142,6 +142,7 @@ fn run_once(
             .map(|path| Disk {
                 path: path.clone(),
                 read_only: false,
+                ..Default::default()
             })
             .collect(),
         nics: Vec::new(),

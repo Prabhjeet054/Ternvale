@@ -31,7 +31,11 @@ than 5% run-to-run on QEMU/HVF (cache fill and frequency scaling); the median
 keeps `compare.py`'s 10% gate from firing on noise.
 
 Default disk is 1024 MiB (`SIZE_MIB`). Default VM is 4 vCPUs and 2048 MiB
-(`BENCH_CPUS`, `BENCH_RAM_MIB`).
+(`BENCH_CPUS`, `BENCH_RAM_MIB`). `BENCH_DISK_CACHE` (`writeback` /
+`writethrough` / `none`) is written into Ternvale `[[disks]] cache` and QEMU
+`-drive cache=`. `BENCH_FIO_ONLY=1` skips sysbench, iperf, STREAM, and idle.
+
+fio lines include `fio_*_iops`, `fio_*_kbs`, and `fio_*_clat_{,p50_,p99_}ns`.
 
 ## Networking
 
@@ -51,8 +55,9 @@ python3 scripts/bench/test_compare.py
 ```
 
 Higher-is-better metrics (throughput, events/sec, STREAM, host idle %) regress
-when they drop by more than the threshold. Lower-is-better (`boot_to_login_ms`)
-regress when they rise. Missing/`null` metrics are skipped.
+when they drop by more than the threshold. Lower-is-better (`boot_to_login_ms`
+and any `*_ns` latency, including fio clat) regress when they rise.
+Missing/`null` metrics are skipped.
 
 Idle host CPU is sampled with `top -l 2 -s 60` while the guest runs `sleep 60`
 (`BENCH_IDLE_SECS`, default 60).

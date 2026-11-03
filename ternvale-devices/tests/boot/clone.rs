@@ -357,6 +357,7 @@ fn boot_once(
         disks: vec![Disk {
             path: stack.to_path_buf(),
             read_only: false,
+            ..Default::default()
         }],
         nics: Vec::new(),
         serial_log: serial_log.clone(),

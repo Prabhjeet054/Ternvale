@@ -40,12 +40,12 @@ ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 ternvale-config = { path = "../ternvale-config" }
 ternvale-audio-host = { path = "../ternvale-audio-host" }
 ternvale-snapshot = { path = "../ternvale-snapshot" }
+# preadv/pwritev, F_NOCACHE, F_FULLFSYNC for virtio-blk.
+libc = "0.2"
 
 [dev-dependencies]
 # AgentServer tests run the real agent loop over a Unix socket.
 ternvale-agent = { path = "../ternvale-agent" }
-# Capture stdout while the hello payload writes through the real PL011.
-libc = "0.2"
 # Log file checks in unit tests.
 ternvale-log = { path = "../ternvale-log" }
 # Expected ACPI tables for the firmware-acpi boot scenario (what EDK2 installed vs the builder).

@@ -17,7 +17,7 @@ struct Header {
 /// Run one chain. Returns the used-ring length (writable bytes touched).
 pub fn process(
     mem: &mut GuestMemory,
-    backend: &mut BlkBackend,
+    backend: &BlkBackend,
     chain: &Chain,
     serial: &[u8; ID_BYTES],
     stats: &BlkStats,
@@ -114,7 +114,7 @@ fn data_bytes(chain: &Chain, ty: u32) -> u32 {
 
 fn read_req(
     mem: &mut GuestMemory,
-    backend: &mut BlkBackend,
+    backend: &BlkBackend,
     chain: &Chain,
     sector: u64,
     len: u32,
@@ -131,8 +131,8 @@ fn read_req(
         stats.error();
         return VIRTIO_BLK_S_IOERR;
     }
-    let mut buf = vec![0u8; len as usize];
-    if let Err(error) = backend.read_at(&mut buf, sector * SECTOR) {
+    let bufs = data_writable(chain);
+    if let Err(error) = backend.read_guest(mem, &bufs, sector * SECTOR) {
         tracing::error!(
             target: "ternvale::virtio::blk",
             sector,
@@ -143,17 +143,13 @@ fn read_req(
         stats.error();
         return VIRTIO_BLK_S_IOERR;
     }
-    if copy_to(mem, &data_writable(chain), &buf).is_err() {
-        stats.error();
-        return VIRTIO_BLK_S_IOERR;
-    }
     stats.ok(len);
     VIRTIO_BLK_S_OK
 }
 
 fn write_req(
     mem: &GuestMemory,
-    backend: &mut BlkBackend,
+    backend: &BlkBackend,
     chain: &Chain,
     sector: u64,
     len: u32,
@@ -180,12 +176,8 @@ fn write_req(
         stats.error();
         return VIRTIO_BLK_S_IOERR;
     }
-    let mut buf = vec![0u8; len as usize];
-    if copy_from(mem, &out_readable(chain), &mut buf).is_err() {
-        stats.error();
-        return VIRTIO_BLK_S_IOERR;
-    }
-    if let Err(error) = backend.write_at(&buf, sector * SECTOR) {
+    let bufs = out_readable(chain);
+    if let Err(error) = backend.write_guest(mem, &bufs, sector * SECTOR) {
         tracing::error!(
             target: "ternvale::virtio::blk",
             sector,

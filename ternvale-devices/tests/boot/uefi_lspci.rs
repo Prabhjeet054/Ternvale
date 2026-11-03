@@ -143,6 +143,7 @@ fn boot(
             .map(|path| Disk {
                 path: path.clone(),
                 read_only: true,
+                ..Default::default()
             })
             .collect(),
         nics: Vec::new(),

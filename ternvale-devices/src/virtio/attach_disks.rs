@@ -7,7 +7,7 @@ use ternvale_config::{BlockDevice, BlockRole, VirtioTransport};
 use ternvale_vmm::pci::{Bdf, PciIdentity};
 use ternvale_vmm::{DeviceAttach, MachineError, MmioDevice};
 
-use super::blk::{BlkMedia, BlkStats};
+use super::blk::{BlkMedia, BlkOptions, BlkStats};
 use super::VirtioBlk;
 
 /// Base, size, and MMIO device for one attached disk.
@@ -83,10 +83,12 @@ pub fn attach_blocks(
                 device.path.display()
             ))
         };
+        let options = BlkOptions::from_device(device, attach.vcpus);
         let (placement, stats) = match transport {
             VirtioTransport::Pci => {
-                let (bdf, stats) = VirtioBlk::attach_pci_media(attach, &device.path, media)
-                    .map_err(|error| fail(error.to_string()))?;
+                let (bdf, stats) =
+                    VirtioBlk::attach_pci_media(attach, &device.path, media, options)
+                        .map_err(|error| fail(error.to_string()))?;
                 if ternvale_vmm::pci_disk_bdf(index) != Some(bdf) {
                     tracing::warn!(target: "ternvale::virtio::blk", index, %bdf, "block device is not on the PCI slot the uefi boot order names");
                 }
@@ -100,6 +102,7 @@ pub fn attach_blocks(
                     slot,
                     &device.path,
                     media,
+                    options,
                     Arc::clone(&attach.memory),
                     attach.virtio_irq_hook(slot),
                     Arc::clone(&attach.metrics),

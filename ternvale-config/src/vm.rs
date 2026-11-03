@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::disk::Disk;
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
 use crate::{AudioSection, IsoSection, Profile, Share, TpmSection, UsbSection, VsockSection};
@@ -11,16 +12,6 @@ use crate::{AudioSection, IsoSection, Profile, Share, TpmSection, UsbSection, Vs
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
 const MAX_CPUS: u32 = 16;
-
-/// One virtual disk. `path` must be an existing file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Disk {
-    /// Host path of the disk image.
-    pub path: PathBuf,
-    /// When true, the guest sees a read-only disk.
-    pub read_only: bool,
-}
 
 /// One virtual NIC. Only `backend` is defined until the net device lands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,13 +203,7 @@ impl VmConfig {
         }
         for (index, disk) in self.disks.iter().enumerate() {
             require_file(&format!("disks[{index}].path"), &disk.path)?;
-            tracing::debug!(
-                target: "ternvale::config",
-                index,
-                path = %disk.path.display(),
-                read_only = disk.read_only,
-                "accepted disk"
-            );
+            disk.validate(index)?;
         }
         if let Some(iso) = &self.iso {
             iso.validate(self)?;

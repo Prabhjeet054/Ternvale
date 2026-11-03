@@ -263,6 +263,28 @@ impl GuestMemory {
         Ok(buf)
     }
 
+    /// Host pointer for `len` bytes at `gpa`. Valid until this region is unmapped.
+    ///
+    /// Used by virtio-blk `preadv`/`pwritev` so chained descriptors become one
+    /// syscall. The caller must not use the pointer after `GuestMemory` drops
+    /// the region.
+    #[tracing::instrument(
+        level = "trace",
+        target = "ternvale::mem",
+        skip_all,
+        fields(gpa = format!("{:#x}", gpa), size = len)
+    )]
+    pub fn host_ptr(&self, gpa: u64, len: usize) -> Result<*mut u8, MemoryError> {
+        if len == 0 {
+            return Ok(std::ptr::NonNull::<u8>::dangling().as_ptr());
+        }
+        let region = self.access(gpa, len, "host")?;
+        let offset = (gpa - region.gpa) as usize;
+        // SAFETY: `access` proved `offset + len <= region.size`. `host` is an
+        // anonymous mapping that lives until this `GuestMemory` drops the region.
+        Ok(unsafe { region.host.as_ptr().add(offset) })
+    }
+
     /// Write `src` at `gpa`.
     #[tracing::instrument(
         level = "debug",

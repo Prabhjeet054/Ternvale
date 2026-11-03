@@ -12,7 +12,7 @@ pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 pub use virtio::try_open_disk_for_write;
 pub use virtio::{
     attach_blocks, attach_disks, attach_disks_pci, attach_pci, AttachedBlock, AttachedBlocks,
-    BlkMedia, BlkPlacement, VirtioPci, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE,
+    BlkMedia, BlkOptions, BlkPlacement, VirtioPci, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE,
     VIRTIO_PCI_DEVICE_BASE, VIRTIO_PCI_VENDOR_ID,
 };
 pub use virtio::{
@@ -37,8 +37,8 @@ pub use virtio::{
     slot_base, AttachedBlk, BlkStats, Buffer, Chain, FixedDevice, IrqHook, QueueNotify, SplitQueue,
     VirtioBlk, VirtioBlkError, VirtioDevice, VirtioIrq, VirtioMmio, VirtioMmioError,
     STATUS_ACKNOWLEDGE, STATUS_DEVICE_NEEDS_RESET, STATUS_DRIVER, STATUS_DRIVER_OK, STATUS_FAILED,
-    STATUS_FEATURES_OK, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_RO, VIRTIO_BLK_ID, VIRTIO_F_EVENT_IDX,
-    VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
+    STATUS_FEATURES_OK, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO, VIRTIO_BLK_F_SEG_MAX,
+    VIRTIO_BLK_ID, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
 };
 pub use virtio::{AttachedP9, P9Error, P9Stats, VirtioP9, VIRTIO_9P_ID, VIRTIO_9P_TAG_LEN};
 pub use virtio::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};

@@ -147,6 +147,7 @@ fn disk_check_finds_a_zeroed_superblock_on_the_root_disk() {
     let disk = |path: PathBuf| Disk {
         path,
         read_only: false,
+        ..Default::default()
     };
     let good = check_disk(0, &disk(ext_disk(&dir, 0xef53)), Some('a'));
     assert_eq!(good.outcome, Outcome::Pass, "{good:?}");

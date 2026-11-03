@@ -26,15 +26,22 @@
 //! fallbacks are `blk_size` = 512 (QEMU's virtio-blk default) or a virtio-scsi
 //! CD-ROM.
 
+/// virtio-blk `VIRTIO_BLK_F_SEG_MAX`: `seg_max` in config space is valid.
+pub const VIRTIO_BLK_F_SEG_MAX: u64 = 1 << 2;
 /// virtio-blk `VIRTIO_BLK_F_BLK_SIZE`: `blk_size` in config space is valid.
 pub const VIRTIO_BLK_F_BLK_SIZE: u64 = 1 << 6;
+/// virtio-blk `VIRTIO_BLK_F_MQ`: `num_queues` in config space is valid.
+pub const VIRTIO_BLK_F_MQ: u64 = 1 << 12;
 /// `blk_size` of optical media.
 pub const OPTICAL_BLOCK_SIZE: u32 = 2048;
+/// Max descriptors per request advertised in `seg_max` (virtio 1.2 §5.2.4).
+pub const SEG_MAX: u32 = 64;
 
-/// Bytes of `struct virtio_blk_config` the device fills: `capacity` (le64 at
-/// 0), `size_max`, `seg_max`, `geometry` (unset), then `blk_size` (le32 at 20).
-const CONFIG_BYTES: usize = 24;
+/// Bytes through `num_queues` (le16 at offset 34). virtio 1.2 §5.2.4.
+const CONFIG_BYTES: usize = 36;
+const SEG_MAX_OFFSET: usize = 12;
 const BLK_SIZE_OFFSET: usize = 20;
+const NUM_QUEUES_OFFSET: usize = 34;
 
 /// What the guest is told the image is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,12 +95,25 @@ impl BlkMedia {
     }
 
     /// Device config space for an image of `capacity` 512-byte sectors.
-    pub(super) fn config_space(self, capacity: u64) -> [u8; CONFIG_BYTES] {
+    pub(super) fn config_space(self, capacity: u64, num_queues: u16) -> [u8; CONFIG_BYTES] {
         let mut bytes = [0u8; CONFIG_BYTES];
         bytes[..8].copy_from_slice(&capacity.to_le_bytes());
+        bytes[SEG_MAX_OFFSET..SEG_MAX_OFFSET + 4].copy_from_slice(&SEG_MAX.to_le_bytes());
         if let Some(size) = self.block_size() {
             bytes[BLK_SIZE_OFFSET..BLK_SIZE_OFFSET + 4].copy_from_slice(&size.to_le_bytes());
         }
+        bytes[NUM_QUEUES_OFFSET..NUM_QUEUES_OFFSET + 2].copy_from_slice(&num_queues.to_le_bytes());
         bytes
     }
+}
+
+pub(super) fn read_le(bytes: &[u8], offset: u64, size: u8) -> u64 {
+    let start = offset as usize;
+    if start >= bytes.len() {
+        return 0;
+    }
+    let mut tmp = [0u8; 8];
+    let n = (size as usize).min(8).min(bytes.len() - start);
+    tmp[..n].copy_from_slice(&bytes[start..start + n]);
+    u64::from_le_bytes(tmp)
 }

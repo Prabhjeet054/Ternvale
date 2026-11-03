@@ -12,5 +12,7 @@ mod snapshot;
 pub use counter::Counter;
 pub use histogram::{HistSnapshot, Histogram, BUCKETS};
 pub use kind::{ExitKind, EXIT_KINDS};
-pub use registry::{Metrics, MAX_DEVICES, MAX_VCPUS};
-pub use snapshot::{DeviceSnapshot, ExitCount, IoSnapshot, Snapshot, VcpuSnapshot};
+pub use registry::{Metrics, MAX_BLK_DISKS, MAX_DEVICES, MAX_VCPUS};
+pub use snapshot::{
+    DeviceSnapshot, ExitCount, IoSnapshot, NamedIoSnapshot, Snapshot, VcpuSnapshot,
+};

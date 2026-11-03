@@ -146,9 +146,14 @@ def signed_ternvale() -> Path:
     return binary if helper.is_file() else binary
 
 
+def disk_cache() -> str:
+    return os.environ.get("BENCH_DISK_CACHE", "writeback")
+
+
 def write_config(work: Path, disk: Path, cpus: int, ram_mib: int) -> Path:
     serial = work / "guest-serial.log"
     serial.write_text("")
+    cache = disk_cache()
     text = f"""name = "bench"
 cpus = {cpus}
 ram_mib = {ram_mib}
@@ -160,6 +165,7 @@ serial_log = "{serial}"
 [[disks]]
 path = "{disk}"
 read_only = false
+cache = "{cache}"
 
 [[nics]]
 backend = "loopback"
@@ -201,7 +207,11 @@ def run_ternvale(
         wait_serial(serial, "BENCH_LOGIN", timeout, proc)
         result["boot_to_login_ms"] = int((time.monotonic() - started) * 1000)
         log(f"ternvale login in {result['boot_to_login_ms']} ms")
-        cmd = f"BENCH_IDLE_SECS={idle_secs} /root/guest-bench.sh\n"
+        cmd = (
+            f"BENCH_IDLE_SECS={idle_secs} "
+            f"BENCH_FIO_ONLY={os.environ.get('BENCH_FIO_ONLY', '0')} "
+            f"/root/guest-bench.sh\n"
+        )
         type_chunks(proc, cmd, CHUNK)
         idle_stop = threading.Event()
         idle_holder: list[float | None] = [None]
@@ -267,7 +277,7 @@ def run_qemu(work: Path, cpus: int, ram_mib: int, idle_secs: int, timeout: float
         "-nographic",
         "-no-reboot",
         "-drive",
-        f"if=none,id=hd,format=raw,file={disk}",
+        f"if=none,id=hd,format=raw,cache={disk_cache()},file={disk}",
         "-device",
         "virtio-blk-device,drive=hd",
         "-netdev",
@@ -313,7 +323,14 @@ def run_qemu(work: Path, cpus: int, ram_mib: int, idle_secs: int, timeout: float
         wait_serial(serial, "BENCH_LOGIN", timeout, proc)
         result["boot_to_login_ms"] = int((time.monotonic() - started) * 1000)
         log(f"qemu login in {result['boot_to_login_ms']} ms")
-        os.write(master, f"BENCH_IDLE_SECS={idle_secs} /root/guest-bench.sh\r\n".encode())
+        os.write(
+            master,
+            (
+                f"BENCH_IDLE_SECS={idle_secs} "
+                f"BENCH_FIO_ONLY={os.environ.get('BENCH_FIO_ONLY', '0')} "
+                f"/root/guest-bench.sh\r\n"
+            ).encode(),
+        )
         idle_stop = threading.Event()
         idle_holder: list[float | None] = [None]
 
@@ -387,6 +404,7 @@ def main() -> int:
             "cpus": args.cpus,
             "ram_mib": args.ram_mib,
             "idle_secs": args.idle_secs,
+            "disk_cache": disk_cache(),
             "guest_image": str(ASSETS),
         },
         "runs": {},

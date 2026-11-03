@@ -65,6 +65,16 @@ pub struct BlockDevice {
     pub path: PathBuf,
     /// Read-only to the guest (always true for the `[iso]` slots).
     pub read_only: bool,
+    /// Host cache mode.
+    pub cache: crate::DiskCache,
+    /// Guest FLUSH durability.
+    pub flush: crate::DiskFlush,
+    /// Host I/O threads.
+    pub io_workers: u32,
+    /// Virtqueue size / in-flight cap.
+    pub queue_depth: u32,
+    /// Offer multi-queue aligned with vCPU count.
+    pub multi_queue: bool,
 }
 
 impl BlockDevice {
@@ -140,12 +150,22 @@ impl VmConfig {
             role: BlockRole::Disk,
             path: disk.path.clone(),
             read_only: disk.read_only,
+            cache: disk.cache,
+            flush: disk.flush,
+            io_workers: disk.io_workers,
+            queue_depth: disk.queue_depth,
+            multi_queue: disk.multi_queue,
         });
         let isos = self.iso.iter().flat_map(|iso| {
             iso.slots().map(|(_, role, path)| BlockDevice {
                 role,
                 path: path.to_path_buf(),
                 read_only: true,
+                cache: crate::DiskCache::Writeback,
+                flush: crate::DiskFlush::Safe,
+                io_workers: 1,
+                queue_depth: crate::DEFAULT_QUEUE_DEPTH,
+                multi_queue: false,
             })
         });
         let devices: Vec<_> = disks.chain(isos).collect();

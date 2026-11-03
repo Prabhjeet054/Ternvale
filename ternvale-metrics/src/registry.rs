@@ -13,6 +13,8 @@ use crate::snapshot::{DeviceSnapshot, IoSnapshot, Snapshot, VcpuSnapshot};
 pub const MAX_VCPUS: usize = 16;
 /// MMIO devices that can carry their own latency histogram.
 pub const MAX_DEVICES: usize = 64;
+/// Named virtio-blk disks with their own latency histogram.
+pub const MAX_BLK_DISKS: usize = 16;
 
 /// Lock-free counters and histograms for one VM.
 #[derive(Debug)]
@@ -20,6 +22,7 @@ pub struct Metrics {
     vcpus: [VcpuCell; MAX_VCPUS],
     devices: [DeviceCell; MAX_DEVICES],
     blk: IoCell,
+    disks: [BlkDiskCell; MAX_BLK_DISKS],
     net: IoCell,
     interrupts: Counter,
 }
@@ -43,6 +46,12 @@ struct IoCell {
     count: Counter,
     bytes: Counter,
     latency: Histogram,
+}
+
+#[derive(Debug, Default)]
+struct BlkDiskCell {
+    name: OnceLock<String>,
+    io: IoCell,
 }
 
 impl Default for VcpuCell {
@@ -80,6 +89,7 @@ impl Metrics {
             vcpus: std::array::from_fn(|_| VcpuCell::default()),
             devices: std::array::from_fn(|_| DeviceCell::default()),
             blk: IoCell::default(),
+            disks: std::array::from_fn(|_| BlkDiskCell::default()),
             net: IoCell::default(),
             interrupts: Counter::default(),
         }
@@ -112,6 +122,37 @@ impl Metrics {
             device = name,
             max = MAX_DEVICES,
             "metrics device table full"
+        );
+        None
+    }
+
+    /// Bind `name` to a virtio-blk disk histogram. Not a hot path.
+    #[tracing::instrument(level = "debug", target = "ternvale::metrics", skip_all, fields(disk = name))]
+    pub fn register_blk_disk(&self, name: &str) -> Option<u8> {
+        for (index, cell) in self.disks.iter().enumerate() {
+            if cell.name.get().is_some_and(|have| have == name) {
+                return u8::try_from(index).ok();
+            }
+        }
+        for (index, cell) in self.disks.iter().enumerate() {
+            if cell.name.set(name.to_string()).is_ok() {
+                tracing::debug!(
+                    target: "ternvale::metrics",
+                    disk = name,
+                    id = index,
+                    "registered blk disk metrics"
+                );
+                return u8::try_from(index).ok();
+            }
+            if cell.name.get().is_some_and(|have| have == name) {
+                return u8::try_from(index).ok();
+            }
+        }
+        tracing::warn!(
+            target: "ternvale::metrics",
+            disk = name,
+            max = MAX_BLK_DISKS,
+            "metrics blk disk table full"
         );
         None
     }
@@ -151,13 +192,18 @@ impl Metrics {
         cell.latency.record(nanos(elapsed));
     }
 
-    /// Completed virtio-blk requests from one virtqueue notify.
+    /// Completed virtio-blk requests from one virtqueue notify (VM total).
     #[inline]
     pub fn record_blk(&self, requests: u64, bytes: u64, complete: Option<Duration>) {
-        self.blk.count.add(requests);
-        self.blk.bytes.add(bytes);
-        if let Some(elapsed) = complete {
-            self.blk.latency.record(nanos(elapsed));
+        record_io(&self.blk, requests, bytes, complete);
+    }
+
+    /// Completed requests on one registered disk, also counted in [`Self::record_blk`].
+    #[inline]
+    pub fn record_blk_disk(&self, id: u8, requests: u64, bytes: u64, complete: Option<Duration>) {
+        record_io(&self.blk, requests, bytes, complete);
+        if let Some(cell) = self.disks.get(id as usize) {
+            record_io(&cell.io, requests, bytes, complete);
         }
     }
 
@@ -184,6 +230,7 @@ impl Metrics {
             vcpus: self.vcpu_snapshots(),
             devices: self.device_snapshots(),
             blk: io_snapshot(&self.blk),
+            disks: self.disk_snapshots(),
             net: io_snapshot(&self.net),
             interrupts: self.interrupts.get(),
         }
@@ -207,6 +254,7 @@ impl Metrics {
             blk_bytes = snap.blk.bytes,
             blk_p50_ns = snap.blk.latency.p50_ns,
             blk_p99_ns = snap.blk.latency.p99_ns,
+            blk_disks = snap.disks.len(),
             net_count = snap.net.count,
             net_bytes = snap.net.bytes,
             net_p50_ns = snap.net.latency.p50_ns,
@@ -257,6 +305,27 @@ impl Metrics {
             })
             .collect()
     }
+
+    fn disk_snapshots(&self) -> Vec<crate::snapshot::NamedIoSnapshot> {
+        self.disks
+            .iter()
+            .filter_map(|cell| {
+                let name = cell.name.get()?;
+                Some(crate::snapshot::NamedIoSnapshot {
+                    name: name.clone(),
+                    io: io_snapshot(&cell.io),
+                })
+            })
+            .collect()
+    }
+}
+
+fn record_io(cell: &IoCell, requests: u64, bytes: u64, complete: Option<Duration>) {
+    cell.count.add(requests);
+    cell.bytes.add(bytes);
+    if let Some(elapsed) = complete {
+        cell.latency.record(nanos(elapsed));
+    }
 }
 
 fn io_snapshot(cell: &IoCell) -> IoSnapshot {
@@ -287,14 +356,19 @@ mod tests {
         let id = metrics.register_device("uart").expect("id");
         metrics.record_mmio(id, Duration::from_nanos(25));
         metrics.record_blk(1, 512, Some(Duration::from_micros(10)));
+        let disk = metrics.register_blk_disk("root.img").expect("disk");
+        metrics.record_blk_disk(disk, 2, 1024, Some(Duration::from_micros(20)));
         metrics.record_net(1, 64, Some(Duration::from_micros(2)));
         metrics.record_interrupt();
         let snap = metrics.snapshot();
         assert_eq!(snap.vcpus[0].exits[ExitKind::Mmio.index()].count, 1);
         assert_eq!(snap.devices[0].name, "uart");
         assert_eq!(snap.devices[0].accesses, 1);
-        assert_eq!(snap.blk.count, 1);
-        assert_eq!(snap.blk.bytes, 512);
+        assert_eq!(snap.blk.count, 3);
+        assert_eq!(snap.blk.bytes, 1536);
+        assert_eq!(snap.disks.len(), 1);
+        assert_eq!(snap.disks[0].name, "root.img");
+        assert_eq!(snap.disks[0].io.count, 2);
         assert_eq!(snap.net.count, 1);
         assert_eq!(snap.interrupts, 1);
     }

@@ -33,6 +33,8 @@ pub struct DeviceAttach {
     pub pci: Arc<PciRoot>,
     /// Lock-free VM metrics (virtio notify latency, interrupt counts).
     pub metrics: Arc<Metrics>,
+    /// Guest vCPU count, used to size virtio-blk multi-queue.
+    pub vcpus: u32,
 }
 
 impl DeviceAttach {
@@ -43,6 +45,7 @@ impl DeviceAttach {
         gic: Arc<ternvale_hv::Gic>,
         spi_levels: SpiLevels,
         metrics: Arc<Metrics>,
+        vcpus: u32,
     ) -> Self {
         let hooks: [LineHook; PCI_INTX_LINES] = std::array::from_fn(|i| {
             spi_hook(
@@ -58,6 +61,7 @@ impl DeviceAttach {
             spi_levels,
             pci: PciRoot::new(hooks),
             metrics,
+            vcpus,
         }
     }
 

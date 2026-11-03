@@ -100,6 +100,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         disks: vec![Disk {
             path: esp.to_path_buf(),
             read_only: true,
+            ..Default::default()
         }],
         nics: Vec::new(),
         serial_log: serial_log.to_path_buf(),
