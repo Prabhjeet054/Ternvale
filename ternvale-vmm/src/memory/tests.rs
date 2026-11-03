@@ -1,5 +1,5 @@
 use super::host::require_host_alignment;
-use super::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
+use super::{GuestMemory, MemAdvice, MemoryError, HOST_PAGE_SIZE};
 
 fn memory() -> GuestMemory {
     GuestMemory::new().expect("host page size")
@@ -152,4 +152,41 @@ fn maps_guest_region_with_hv() {
             None => std::env::remove_var("TERNVALE_LOG"),
         }
     }
+}
+
+#[test]
+fn madvise_free_reusable_succeeds_on_anonymous_guest_ram() {
+    let mut memory = memory();
+    memory.add_region(0, HOST_PAGE_SIZE).expect("region");
+    memory.write_bytes(0, &[0x11; 64]).expect("touch");
+    memory
+        .advise(0, HOST_PAGE_SIZE as usize, MemAdvice::FreeReusable)
+        .expect("reusable");
+    memory
+        .advise(0, HOST_PAGE_SIZE as usize, MemAdvice::FreeReuse)
+        .expect("reuse");
+}
+
+#[test]
+fn madvise_free_reusable_drops_anonymous_phys_footprint() {
+    const SPAN: u64 = 32 << 20;
+    let mut memory = memory();
+    memory.add_region(0, SPAN).expect("region");
+    let step = HOST_PAGE_SIZE;
+    let mut off = 0u64;
+    while off < SPAN {
+        memory.write_u8(off, 0xa5).expect("touch");
+        off += step;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let after_touch = ternvale_hv::phys_footprint().expect("footprint");
+    memory
+        .advise(0, SPAN as usize, MemAdvice::FreeReusable)
+        .expect("reusable");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let after_free = ternvale_hv::phys_footprint().expect("footprint");
+    assert!(
+        after_touch > after_free + (SPAN / 4),
+        "anonymous madvise did not drop phys_footprint: touch={after_touch} free={after_free} span={SPAN}"
+    );
 }

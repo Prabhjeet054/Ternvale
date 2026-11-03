@@ -42,6 +42,8 @@ ternvale-audio-host = { path = "../ternvale-audio-host" }
 ternvale-snapshot = { path = "../ternvale-snapshot" }
 # preadv/pwritev, F_NOCACHE, F_FULLFSYNC for virtio-blk.
 libc = "0.2"
+# BalloonSnapshot in query-stats JSON.
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 # AgentServer tests run the real agent loop over a Unix socket.

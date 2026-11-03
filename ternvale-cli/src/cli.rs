@@ -46,6 +46,20 @@ pub enum Command {
         /// Must be a multiple of 512.
         size: String,
     },
+    /// Set virtio-balloon size (`balloon-set`) or resume auto policy.
+    Balloon {
+        /// VM name (the config's `name`).
+        name: String,
+        /// Inflate to this many MiB of ballooned pages (capped by floor / in-use).
+        #[arg(long)]
+        target_mib: Option<u64>,
+        /// Follow host memory pressure again.
+        #[arg(long)]
+        auto: bool,
+        /// Print the raw JSON response.
+        #[arg(long)]
+        json: bool,
+    },
     /// Show lock-free VM metrics (`query-stats`).
     Stats {
         /// VM name (the config's `name`).

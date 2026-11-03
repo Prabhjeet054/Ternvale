@@ -31,6 +31,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         iso: None,
         cpus: 1,
         ram_mib: 256,
+        ram_min_mib: None,
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: String::new(),

@@ -56,6 +56,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         iso: None,
         cpus: 1,
         ram_mib: 256,
+        ram_min_mib: None,
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: String::new(),

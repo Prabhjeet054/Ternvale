@@ -176,6 +176,26 @@ multi_queue = true
     }
 
     #[test]
+    fn ram_min_mib_is_the_balloon_floor() {
+        let fix = Fixture::new();
+        let text = sample(&fix).replace("ram_mib = 512", "ram_mib = 512\nram_min_mib = 256");
+        let config = VmConfig::from_toml(&text).expect("ram_min");
+        assert_eq!(config.ram_min_mib, Some(256));
+        assert_eq!(config.balloon_floor_mib(), 256);
+        let omitted = VmConfig::from_toml(&sample(&fix)).expect("omit ram_min");
+        assert_eq!(omitted.balloon_floor_mib(), omitted.ram_mib);
+        let over = sample(&fix).replace("ram_mib = 512", "ram_mib = 512\nram_min_mib = 1024");
+        let error = VmConfig::from_toml(&over).expect_err("floor above ram");
+        assert!(matches!(
+            error,
+            ConfigError::InvalidRamMin {
+                ram_min_mib: 1024,
+                ram_mib: 512
+            }
+        ));
+    }
+
+    #[test]
     fn rejects_zero_cpus() {
         let fix = Fixture::new();
         let text = sample(&fix).replace("cpus = 2", "cpus = 0");

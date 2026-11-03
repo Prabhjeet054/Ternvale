@@ -11,7 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use ternvale_devices::{AgentServer, BlkStats, NetStats, VsockStats};
+use ternvale_devices::{
+    AgentServer, BalloonHandle, BalloonSnapshot, BlkStats, NetStats, VsockStats,
+};
 use ternvale_vmm::{lockwatch, VmControl};
 
 use crate::summary::{self, DiskSummary, Exit, NicSummary, VmSummary};
@@ -29,6 +31,7 @@ pub struct DeviceStats {
     pub disks: Vec<(PathBuf, Arc<BlkStats>)>,
     pub nics: Vec<(String, Arc<NetStats>)>,
     pub vsock: Option<Arc<VsockStats>>,
+    pub balloon: Option<Arc<BalloonHandle>>,
 }
 
 /// Shared between the attach closure and the [`DiagSink`].
@@ -134,6 +137,37 @@ impl DiagSink {
             vsock: devices.vsock.as_ref().map(|stats| stats.snapshot()),
             agent: self.agent.as_ref().map(|agent| agent.status()),
         }
+    }
+
+    /// Live virtio-balloon snapshot, if the device attached.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn balloon(&self) -> Option<BalloonSnapshot> {
+        lockwatch::lock(&self.devices, "device-stats")
+            .balloon
+            .as_ref()
+            .map(|handle| handle.snapshot())
+    }
+
+    /// Manual `num_pages` or resume auto policy (`balloon-set`).
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn apply_balloon(
+        &self,
+        target_mib: Option<u64>,
+        auto: Option<bool>,
+    ) -> Result<BalloonSnapshot> {
+        let devices = lockwatch::lock(&self.devices, "device-stats");
+        let Some(handle) = devices.balloon.as_ref() else {
+            anyhow::bail!("virtio-balloon is not attached");
+        };
+        if auto == Some(true) {
+            tracing::info!(target: "ternvale::cli", "balloon-set auto");
+            return Ok(handle.set_auto());
+        }
+        let Some(mib) = target_mib else {
+            anyhow::bail!("balloon-set needs target_mib or auto=true");
+        };
+        tracing::info!(target: "ternvale::cli", target_mib = mib, "balloon-set");
+        Ok(handle.set_target_mib(mib))
     }
 
     /// Write `.dtb` (once the machine built one), `.mmio.txt`, `.tpm.txt`

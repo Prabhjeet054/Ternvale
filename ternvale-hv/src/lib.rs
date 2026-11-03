@@ -7,11 +7,13 @@ mod clock;
 mod entropy;
 mod error;
 mod ffi;
+mod footprint;
 mod gic;
 mod gic_order;
 mod host;
 mod map;
 mod osver;
+mod pressure;
 mod vcpu;
 mod vm;
 
@@ -21,12 +23,14 @@ pub use error::{
     HvError, HV_BAD_ARGUMENT, HV_BUSY, HV_DENIED, HV_ERROR, HV_EXISTS, HV_ILLEGAL_GUEST_STATE,
     HV_NO_DEVICE, HV_NO_RESOURCES, HV_SUCCESS, HV_UNSUPPORTED,
 };
+pub use footprint::phys_footprint;
 pub use gic::{raise_ppi, Gic, IccReg, VTIMER_PPI};
 pub use host::{hypervisor_supported, macos_version, MacosVersion};
 pub use map::{
     map_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX, HV_MEMORY_WRITE,
 };
 pub use osver::GIC_MIN_MACOS_MAJOR;
+pub use pressure::{watch_memory_pressure, MemoryPressure, PressureWatch};
 pub use vcpu::{
     get_reg, get_sys_reg, get_vtimer_offset, set_reg, set_sys_reg, set_vtimer_mask,
     set_vtimer_offset, vcpu_create, vcpu_destroy, vcpu_run, vcpus_exit, Reg, SysReg, VcpuExit,

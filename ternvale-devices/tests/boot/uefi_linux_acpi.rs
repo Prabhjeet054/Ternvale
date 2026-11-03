@@ -93,6 +93,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         iso: None,
         cpus: 2,
         ram_mib: 512,
+        ram_min_mib: None,
         kernel: Default::default(),
         initrd: None,
         cmdline: String::new(),

@@ -1359,6 +1359,7 @@ name = "ternvale-devices"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "serde",
  "sha2",
  "ternvale-acpi",
  "ternvale-agent",

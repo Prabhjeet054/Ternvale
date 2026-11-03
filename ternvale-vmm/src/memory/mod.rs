@@ -14,6 +14,24 @@ pub use error::MemoryError;
 pub use host::HOST_PAGE_SIZE;
 pub use pages::HostPages;
 
+/// Darwin `madvise` advice used by virtio-balloon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemAdvice {
+    /// Inflated / unused guest RAM: `MADV_FREE_REUSABLE`.
+    FreeReusable,
+    /// Guest will use the pages again: `MADV_FREE_REUSE`.
+    FreeReuse,
+}
+
+impl MemAdvice {
+    fn as_raw(self) -> i32 {
+        match self {
+            Self::FreeReusable => libc::MADV_FREE_REUSABLE,
+            Self::FreeReuse => libc::MADV_FREE_REUSE,
+        }
+    }
+}
+
 use host::{host_page_size, mmap_anonymous, munmap_region};
 
 #[rustfmt::skip]
@@ -285,6 +303,57 @@ impl GuestMemory {
         Ok(unsafe { region.host.as_ptr().add(offset) })
     }
 
+    /// `madvise` host pages covering `gpa..gpa+len`.
+    ///
+    /// Virtio-balloon inflate uses [`MemAdvice::FreeReusable`] (`MADV_FREE_REUSABLE`
+    /// on Darwin). Deflate uses [`MemAdvice::FreeReuse`].
+    ///
+    /// TODO(verify): pages stay in the `hv_vm_map` GPA map. We do **not**
+    /// `hv_vm_unmap` first. Anonymous host pages (no `hv_vm_map`) drop
+    /// `phys_footprint` after `MADV_FREE_REUSABLE` (unit test, 32 MiB).
+    /// The signed `needs-hv` test still SIGKILLs on `hv_vm_create` here, so
+    /// the mapped-GPA case is unconfirmed. Re-run
+    /// `memory::balloon_hv_test::madvise_without_unmap_drops_phys_footprint`.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::mem",
+        skip_all,
+        fields(gpa = format!("{:#x}", gpa), size = len, advice = ?advice)
+    )]
+    pub fn advise(&self, gpa: u64, len: usize, advice: MemAdvice) -> Result<(), MemoryError> {
+        if len == 0 {
+            return Ok(());
+        }
+        let ptr = self.host_ptr(gpa, len)?;
+        // SAFETY: `host_ptr` is inside a live anonymous mapping of at least
+        // `len` bytes. `madvise` does not unmap the range.
+        let rc = unsafe { libc::madvise(ptr.cast(), len, advice.as_raw()) };
+        if rc != 0 {
+            let source = std::io::Error::last_os_error();
+            tracing::warn!(
+                target: "ternvale::mem",
+                gpa = format!("{gpa:#x}"),
+                size = len,
+                advice = ?advice,
+                error = %source,
+                "madvise failed"
+            );
+            return Err(MemoryError::Advise {
+                gpa,
+                size: len,
+                source,
+            });
+        }
+        tracing::debug!(
+            target: "ternvale::mem",
+            gpa = format!("{gpa:#x}"),
+            size = len,
+            advice = ?advice,
+            "madvise ok"
+        );
+        Ok(())
+    }
+
     /// Write `src` at `gpa`.
     #[tracing::instrument(
         level = "debug",
@@ -433,3 +502,7 @@ fn check_layout(gpa: u64, size: u64) -> Result<usize, MemoryError> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "balloon_hv_test.rs"]
+mod balloon_hv_test;

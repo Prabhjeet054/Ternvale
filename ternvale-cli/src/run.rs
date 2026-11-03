@@ -17,7 +17,8 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use ternvale_config::{BlockDevice, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
-    attach_blocks, open_backend, Pl011, VirtioNet, VirtioP9, VirtioVsock, VsockConfig, DEFAULT_MAC,
+    attach_blocks, open_backend, BalloonConfig, Pl011, VirtioBalloon, VirtioNet, VirtioP9,
+    VirtioVsock, VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -133,6 +134,9 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
     let device = vsock.as_ref().map(|setup| setup.device.clone());
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();
+    let ram_mib = config.ram_mib;
+    let ram_min_mib = config.balloon_floor_mib();
+    let cpus = config.cpus;
     let share = config.shares.first();
     let session_slot = Arc::clone(&session);
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
@@ -144,6 +148,9 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
             share,
             display: plan.as_ref(),
             audio,
+            ram_mib,
+            ram_min_mib,
+            cpus,
         };
         attach_devices(attach, &wanted, &stats, &session_slot)
     });
@@ -229,6 +236,9 @@ struct Wanted<'a> {
     display: Option<&'a DisplayPlan>,
     /// Attach virtio-sound on the next free virtio-mmio slot.
     audio: bool,
+    ram_mib: u64,
+    ram_min_mib: u64,
+    cpus: u32,
 }
 
 /// Block devices first ([`attach_blocks`]: virtio-mmio slots `0..d`, or PCI
@@ -328,8 +338,9 @@ fn attach_devices(
             .map_err(|error| MachineError::Attach(format!("{error:#}")))?;
         *lockwatch::lock(session, "display-session") = Some(started);
     }
+    let mut extra = display_slots;
     if wanted.audio {
-        let slot = u32::try_from(mmio_after_net + display_slots)
+        let slot = u32::try_from(mmio_after_net + extra)
             .map_err(|_| MachineError::Attach("virtio-sound slot does not fit in u32".into()))?;
         let (base, size, device) = ternvale_devices::VirtioSound::attach(
             slot,
@@ -339,7 +350,34 @@ fn attach_devices(
         .map_err(|error| MachineError::Attach(format!("virtio-sound: {error}")))?;
         tracing::info!(target: "ternvale::virtio::sound", slot, base = %format!("{base:#x}"), "attached virtio-sound (output)");
         devices.push((base, size, device));
+        extra += 1;
     }
+    let slot = u32::try_from(mmio_after_net + extra)
+        .map_err(|_| MachineError::Attach("virtio-balloon slot does not fit in u32".into()))?;
+    let (base, size, device, handle) = VirtioBalloon::attach(
+        slot,
+        Arc::clone(&attach.memory),
+        attach.virtio_irq_hook(slot),
+        BalloonConfig {
+            ram_mib: wanted.ram_mib,
+            ram_min_mib: wanted.ram_min_mib,
+            metrics: Some(Arc::clone(&attach.metrics)),
+            vcpus: wanted.cpus,
+            watch_pressure: true,
+            auto_policy: true,
+            reclaim: None,
+        },
+    )
+    .map_err(|error| MachineError::Attach(format!("virtio-balloon: {error}")))?;
+    tracing::info!(
+        target: "ternvale::balloon",
+        slot,
+        ram_mib = wanted.ram_mib,
+        ram_min_mib = wanted.ram_min_mib,
+        "attached virtio-balloon"
+    );
+    stats.balloon = Some(handle);
+    devices.push((base, size, device));
     Ok(devices)
 }
 

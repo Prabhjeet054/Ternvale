@@ -350,6 +350,7 @@ fn boot_once(
         iso: None,
         cpus: 1,
         ram_mib: 256,
+        ram_min_mib: None,
         kernel: kernel.to_path_buf(),
         initrd: Some(initrd.to_path_buf()),
         cmdline,

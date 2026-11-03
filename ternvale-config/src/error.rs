@@ -48,6 +48,17 @@ pub enum ConfigError {
         ram_mib: u64,
     },
 
+    /// `ram_min_mib` was not a multiple of 16 or was larger than `ram_mib`.
+    #[error(
+        "ram_min_mib must be a multiple of 16 and at most ram_mib ({ram_mib}), got {ram_min_mib}"
+    )]
+    InvalidRamMin {
+        /// The rejected floor, in MiB.
+        ram_min_mib: u64,
+        /// Configured guest RAM maximum, in MiB.
+        ram_mib: u64,
+    },
+
     /// An input file named by the config is missing.
     #[error("{field} is not an existing file: {}", path.display())]
     MissingFile {

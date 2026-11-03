@@ -54,7 +54,7 @@ pub use machine::{
     guest_cmdline, guest_cmdline_for, DeviceAttach, Machine, MachineError, DEFAULT_CMDLINE,
     DISK_ROOT_CMDLINE,
 };
-pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
+pub use memory::{GuestMemory, MemAdvice, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, KickPort, MmioBus, MmioDevice, MmioError};
 pub use platform::{
     Layout, PlatformError, Region, ACPI_BASE, ACPI_SIZE, FLASH_BANK_SIZE, FLASH_CODE_BASE,

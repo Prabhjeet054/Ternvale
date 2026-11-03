@@ -44,6 +44,7 @@ pub fn run() -> Result<(), String> {
         dir = %log_dir.display(),
         host_log = %guard.log_path().display(),
         ram_mib,
+        ram_min_mib: None,
         scenario = "vm-snapshot",
         "boot harness logs"
     );
@@ -56,6 +57,7 @@ pub fn run() -> Result<(), String> {
         iso: None,
         cpus: boot_cpus(1)?,
         ram_mib,
+        ram_min_mib: None,
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: CMDLINE.to_string(),
@@ -128,6 +130,7 @@ pub fn run() -> Result<(), String> {
         target: "ternvale::boot",
         scenario = "vm-snapshot",
         ram_mib,
+        ram_min_mib: None,
         total_ms = started.elapsed().as_millis() as u64,
         create_ms = summary.create_ms,
         restore_ms = summary.restore_ms,
@@ -153,6 +156,7 @@ fn rewind_test(
     serial: &Path,
     bundle: &PathBuf,
     ram_mib: u64,
+    ram_min_mib: None,
 ) -> Result<SnapSummary, String> {
     wait_for(serial, READY, Duration::from_secs(120))?;
     wait_tick_at_least(serial, SNAP_TICK, Duration::from_secs(30))?;
@@ -161,6 +165,7 @@ fn rewind_test(
         target: "ternvale::snapshot",
         tick = tick_at_snap,
         ram_mib,
+        ram_min_mib: None,
         "creating vm snapshot at counter"
     );
     if bundle.exists() {
@@ -175,6 +180,7 @@ fn rewind_test(
     tracing::info!(
         target: "ternvale::snapshot",
         ram_mib,
+        ram_min_mib: None,
         ram_bytes = ram_mib * 1024 * 1024,
         create_ms,
         bundle = %bundle.display(),
@@ -203,6 +209,7 @@ fn rewind_test(
     tracing::info!(
         target: "ternvale::snapshot",
         ram_mib,
+        ram_min_mib: None,
         ram_bytes = ram_mib * 1024 * 1024,
         restore_ms,
         "vm snapshot restore timing"

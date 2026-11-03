@@ -255,7 +255,19 @@ pub fn handle_line_with(
     tracing::info!(target: "ternvale::cli", cmd = request.name(), "control request");
     let result = match request {
         Request::Status => Ok(Response::status(&control.status())),
-        Request::QueryStats => Ok(Response::stats(&control.stats())),
+        Request::QueryStats => Ok(Response::stats(
+            &control.stats(),
+            diag.and_then(|diag| diag.balloon()),
+        )),
+        Request::BalloonSet { target_mib, auto } => {
+            let Some(diag) = diag else {
+                return Response::error("this vm has no virtio-balloon");
+            };
+            match diag.apply_balloon(target_mib, auto) {
+                Ok(balloon) => Ok(Response::stats(&control.stats(), Some(balloon))),
+                Err(error) => return Response::error(error.to_string()),
+            }
+        }
         Request::Pause { timeout_ms } => {
             let wait = timeout_ms.unwrap_or(DEFAULT_PAUSE_MS).min(MAX_PAUSE_MS);
             control

@@ -63,6 +63,7 @@ pub fn run() -> Result<(), String> {
         iso: None,
         cpus: boot_cpus(2)?,
         ram_mib: 1024,
+        ram_min_mib: None,
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: CMDLINE.to_string(),

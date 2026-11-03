@@ -116,6 +116,24 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(
+        parse(&["ternvale", "balloon", "a", "--target-mib", "1024", "--json"]),
+        Command::Balloon {
+            name: "a".into(),
+            target_mib: Some(1024),
+            auto: false,
+            json: true
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "balloon", "a", "--auto"]),
+        Command::Balloon {
+            name: "a".into(),
+            target_mib: None,
+            auto: true,
+            json: false
+        }
+    );
+    assert_eq!(
         parse(&["ternvale", "stats", "a", "--watch", "--json"]),
         Command::Stats {
             name: "a".into(),

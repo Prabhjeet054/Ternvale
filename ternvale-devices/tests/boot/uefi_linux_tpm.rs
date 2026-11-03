@@ -195,6 +195,7 @@ fn boot_once(
         iso: None,
         cpus: CPUS,
         ram_mib: 1024,
+        ram_min_mib: None,
         kernel: Default::default(),
         initrd: None,
         cmdline: String::new(),

@@ -36,7 +36,12 @@ pub struct VmConfig {
     /// vCPU count, from 1 through 16. Required unless the profile has a default.
     pub cpus: u32,
     /// Guest RAM in MiB, a positive multiple of 16. Required unless the profile has a default.
+    /// This is the balloon **maximum** (fully deflated size).
     pub ram_mib: u64,
+    /// Balloon floor in MiB. The device never asks the guest for more than
+    /// `ram_mib - ram_min_mib` pages. Omitted: same as `ram_mib` (no auto inflate).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ram_min_mib: Option<u64>,
     /// Linux kernel (or other boot image) on the host. Required unless `firmware`
     /// is set; with firmware the guest boots UEFI and the kernel is ignored.
     #[serde(default, skip_serializing_if = "path_is_empty")]
@@ -193,6 +198,7 @@ impl VmConfig {
         validate_name(&self.name)?;
         validate_cpus(self.cpus)?;
         validate_ram(self.ram_mib)?;
+        validate_ram_min(self.ram_min_mib, self.ram_mib)?;
         self.validate_boot_source()?;
         firmware_tables::validate(self.firmware_tables, self.firmware.is_some())?;
         self.profile.validate(self)?;
@@ -287,6 +293,12 @@ impl VmConfig {
         }
     }
 
+    /// Balloon floor: `ram_min_mib`, or `ram_mib` when omitted.
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
+    pub fn balloon_floor_mib(&self) -> u64 {
+        self.ram_min_mib.unwrap_or(self.ram_mib)
+    }
+
     /// The hardware description the OS gets: `firmware_tables`, else `acpi`
     /// for a firmware boot and `fdt` for a direct kernel boot.
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
@@ -369,6 +381,32 @@ fn validate_ram(ram_mib: u64) -> Result<(), ConfigError> {
     } else {
         tracing::error!(target: "ternvale::config", ram_mib, "rejected ram_mib");
         Err(ConfigError::InvalidRam { ram_mib })
+    }
+}
+
+fn validate_ram_min(ram_min_mib: Option<u64>, ram_mib: u64) -> Result<(), ConfigError> {
+    let Some(ram_min_mib) = ram_min_mib else {
+        return Ok(());
+    };
+    if ram_min_mib % RAM_QUANTUM_MIB == 0 && ram_min_mib <= ram_mib {
+        tracing::debug!(
+            target: "ternvale::config",
+            ram_min_mib,
+            ram_mib,
+            "accepted ram_min_mib"
+        );
+        Ok(())
+    } else {
+        tracing::error!(
+            target: "ternvale::config",
+            ram_min_mib,
+            ram_mib,
+            "rejected ram_min_mib"
+        );
+        Err(ConfigError::InvalidRamMin {
+            ram_min_mib,
+            ram_mib,
+        })
     }
 }
 

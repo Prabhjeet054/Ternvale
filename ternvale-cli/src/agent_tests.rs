@@ -41,6 +41,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         iso: None,
         cpus: 1,
         ram_mib: 256,
+        ram_min_mib: None,
         kernel: PathBuf::from("/nonexistent/Image"),
         initrd: None,
         cmdline: String::new(),

@@ -52,11 +52,12 @@ pub fn checks_for_path(path: &Path) -> Vec<Check> {
             NAME,
             Outcome::Pass,
             format!(
-                "{} is valid (vm {}, {} cpus, {} MiB)",
+                "{} is valid (vm {}, {} cpus, {} MiB, balloon floor {} MiB)",
                 path.display(),
                 config.name,
                 config.cpus,
-                config.ram_mib
+                config.ram_mib,
+                config.balloon_floor_mib()
             ),
         ),
         Err(error) => Check::new(NAME, Outcome::Fail, format!("{}: {error}", path.display()))

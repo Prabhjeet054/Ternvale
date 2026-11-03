@@ -134,6 +134,7 @@ fn boot(
         iso: None,
         cpus: CPUS,
         ram_mib: 512,
+        ram_min_mib: None,
         kernel: Default::default(),
         initrd: None,
         cmdline: String::new(),

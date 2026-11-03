@@ -126,4 +126,15 @@ pub enum MemoryError {
         /// Access length, in bytes.
         size: usize,
     },
+
+    /// `madvise` on a guest RAM mapping failed.
+    #[error("madvise gpa {gpa:#x} size {size:#x}: {source}")]
+    Advise {
+        /// Guest physical address of the advised span.
+        gpa: u64,
+        /// Length passed to `madvise`.
+        size: usize,
+        /// OS error from `madvise`.
+        source: std::io::Error,
+    },
 }

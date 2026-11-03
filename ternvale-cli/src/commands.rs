@@ -13,6 +13,8 @@ use ternvale_config::VmConfig;
 use crate::client::{self, Reach};
 use crate::disk;
 use crate::paths;
+use ternvale_devices::BalloonSnapshot;
+
 use crate::protocol::{AgentJson, Request, Response, StatsJson, StatusJson};
 
 /// How long `stop` waits for an orderly exit.
@@ -281,9 +283,37 @@ pub fn render(status: &StatusJson, stats: Option<&StatsJson>) -> String {
                 cpu.vtimer_exits.unwrap_or(0)
             ));
         }
+        if let Some(balloon) = &stats.balloon {
+            lines.push(render_balloon(balloon));
+        }
     }
     lines.push(String::new());
     lines.join("\n")
+}
+
+/// Balloon size and last guest memory stats.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn render_balloon(balloon: &BalloonSnapshot) -> String {
+    let mut line = format!(
+        "  balloon: {} MiB actual / {} MiB target (ram {} MiB, floor {} MiB, {}, {}, {})",
+        balloon.actual_mib,
+        balloon.target_mib,
+        balloon.ram_mib,
+        balloon.ram_min_mib,
+        balloon.pressure,
+        if balloon.idle { "idle" } else { "busy" },
+        if balloon.auto { "auto" } else { "manual" }
+    );
+    if let Some(used) = balloon.guest_in_use_bytes {
+        line.push_str(&format!("; guest in-use {} MiB", used >> 20));
+        if let Some(tot) = balloon.guest_memtot_bytes {
+            line.push_str(&format!(" of {} MiB", tot >> 20));
+        }
+        if let Some(avail) = balloon.guest_memavail_bytes {
+            line.push_str(&format!(", avail {} MiB", avail >> 20));
+        }
+    }
+    line
 }
 
 /// One `agent:` line for `ternvale status`.

@@ -81,6 +81,7 @@ fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Re
         iso: None,
         cpus: 1,
         ram_mib: 512,
+        ram_min_mib: None,
         kernel: Default::default(),
         initrd: None,
         cmdline: String::new(),

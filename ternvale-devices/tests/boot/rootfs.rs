@@ -133,6 +133,7 @@ fn run_once(
         iso: None,
         cpus: 1,
         ram_mib: 256,
+        ram_min_mib: None,
         kernel: root.join("Image"),
         initrd: Some(root.join("initramfs.cpio")),
         cmdline: String::new(),

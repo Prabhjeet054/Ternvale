@@ -9,7 +9,7 @@
 //! agent server.
 
 use serde::{Deserialize, Serialize};
-use ternvale_devices::AgentStatus;
+use ternvale_devices::{AgentStatus, BalloonSnapshot};
 use ternvale_vmm::{VmStats, VmStatus};
 
 /// Longest request line accepted, in bytes.
@@ -69,6 +69,15 @@ pub enum Request {
         /// New clipboard contents.
         text: String,
     },
+    /// Set virtio-balloon `num_pages` (`target_mib`) or resume auto policy.
+    BalloonSet {
+        /// Requested balloon size in MiB (capped by floor and guest in-use).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_mib: Option<u64>,
+        /// When true, drop a manual target and follow host memory pressure.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auto: Option<bool>,
+    },
 }
 
 impl Request {
@@ -89,6 +98,7 @@ impl Request {
             Self::SnapshotDelete { .. } => "snapshot-delete",
             Self::ClipboardGet { .. } => "clipboard-get",
             Self::ClipboardSet { .. } => "clipboard-set",
+            Self::BalloonSet { .. } => "balloon-set",
         }
     }
 
@@ -108,6 +118,7 @@ impl Request {
             Self::SnapshotDelete { .. } => "snapshot delete for",
             Self::ClipboardGet { .. } => "clipboard get for",
             Self::ClipboardSet { .. } => "clipboard set for",
+            Self::BalloonSet { .. } => "set balloon for",
         }
     }
 }
@@ -200,6 +211,9 @@ pub struct StatsJson {
     /// Lock-free VM metrics. Optional so older clients ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metrics: Option<ternvale_metrics::Snapshot>,
+    /// virtio-balloon size and guest memory stats. Optional so older clients ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub balloon: Option<BalloonSnapshot>,
 }
 
 /// One response line.
@@ -267,7 +281,7 @@ impl Response {
 
     /// Success with status and per-vCPU counters.
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
-    pub fn stats(stats: &VmStats) -> Self {
+    pub fn stats(stats: &VmStats, balloon: Option<BalloonSnapshot>) -> Self {
         let cpus = stats
             .cpus
             .iter()
@@ -289,6 +303,7 @@ impl Response {
                 cpus,
                 process_cpu_ms: stats.process_cpu_ms,
                 metrics: Some(stats.metrics.clone()),
+                balloon,
             }),
             files: None,
             snapshots: None,
@@ -376,6 +391,20 @@ mod tests {
                 r#"{"cmd":"clipboard-set","text":"hi"}"#,
                 Request::ClipboardSet { text: "hi".into() },
             ),
+            (
+                r#"{"cmd":"balloon-set","target_mib":1024}"#,
+                Request::BalloonSet {
+                    target_mib: Some(1024),
+                    auto: None,
+                },
+            ),
+            (
+                r#"{"cmd":"balloon-set","auto":true}"#,
+                Request::BalloonSet {
+                    target_mib: None,
+                    auto: Some(true),
+                },
+            ),
         ];
         for (line, want) in cases {
             let got: Request = serde_json::from_str(line).expect(line);
@@ -400,7 +429,7 @@ mod tests {
             line.starts_with(r#"{"ok":true,"status":{"name":"p","state":"created","cpus":2"#),
             "{line}"
         );
-        let stats = Response::stats(&control.stats());
+        let stats = Response::stats(&control.stats(), None);
         assert_eq!(stats.stats.as_ref().map(|s| s.cpus.len()), Some(2));
         assert_eq!(stats.stats.as_ref().and_then(|s| s.cpus[0].runs), None);
         let error = serde_json::to_string(&Response::error("nope")).expect("encode");

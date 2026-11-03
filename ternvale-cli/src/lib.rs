@@ -15,6 +15,7 @@
 
 pub mod acpi;
 pub mod acpi_fault;
+pub mod balloon_cmd;
 pub mod cli;
 pub mod client;
 pub mod clipboard;
@@ -137,6 +138,12 @@ fn non_run(command: Command) -> Result<ExitCode> {
             interval_ms,
             json,
         } => stats_cmd::stats(&name, watch, interval_ms, json),
+        Command::Balloon {
+            name,
+            target_mib,
+            auto,
+            json,
+        } => balloon_cmd::balloon(&name, target_mib, auto, json),
         Command::Pause {
             name,
             timeout_ms,

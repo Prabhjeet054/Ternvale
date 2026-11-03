@@ -5,6 +5,7 @@
 //! offers `VIRTIO_F_VERSION_1`.
 
 mod attach_disks;
+mod balloon;
 mod blk;
 mod core;
 mod input;
@@ -21,6 +22,10 @@ mod vsock;
 
 pub use attach_disks::{
     attach_blocks, attach_disks, attach_disks_pci, AttachedBlock, AttachedBlocks, BlkPlacement,
+};
+pub use balloon::{
+    AttachedBalloon, BalloonConfig, BalloonError, BalloonHandle, BalloonSnapshot, VirtioBalloon,
+    F_DEFLATE_ON_OOM, F_MUST_TELL_HOST, F_PAGE_REPORTING, F_STATS_VQ, VIRTIO_BALLOON_ID,
 };
 #[doc(hidden)]
 pub use blk::try_open_disk_for_write;
