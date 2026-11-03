@@ -140,11 +140,11 @@ impl VirtioDevice for Dummy {
         1 << 3
     }
 
-    fn read_config(&mut self, offset: u64, _size: u8) -> u64 {
+    fn read_config(&self, offset: u64, _size: u8) -> u64 {
         u64::from(0x1122_3344u32 >> (offset * 8))
     }
 
-    fn notify(&mut self, queue: QueueNotify) {
+    fn notify(&self, queue: QueueNotify) {
         self.notified.lock().expect("notified").push(queue.index);
     }
 }

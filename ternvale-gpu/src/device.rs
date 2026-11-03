@@ -316,7 +316,7 @@ impl VirtioDevice for VirtioGpu {
         2
     }
 
-    fn read_config(&mut self, offset: u64, size: u8) -> u64 {
+    fn read_config(&self, offset: u64, size: u8) -> u64 {
         let bytes = self.config_bytes();
         let config_len = self.config_len();
         let value = match offset.checked_add(u64::from(size)) {
@@ -334,7 +334,7 @@ impl VirtioDevice for VirtioGpu {
         value
     }
 
-    fn write_config(&mut self, offset: u64, size: u8, value: u64) {
+    fn write_config(&self, offset: u64, size: u8, value: u64) {
         tracing::trace!(target: "ternvale::gpu", offset = format!("{offset:#x}"), size, value = format!("{value:#x}"), "virtio-gpu config write");
         if offset == 4 && size == 4 {
             // events_clear: write-to-clear bits of events_read (§5.7.4).
@@ -348,11 +348,11 @@ impl VirtioDevice for VirtioGpu {
         }
     }
 
-    fn notify(&mut self, queue: QueueNotify) {
+    fn notify(&self, queue: QueueNotify) {
         self.send(Kick::Notify(queue));
     }
 
-    fn status_changed(&mut self, status: u32) {
+    fn status_changed(&self, status: u32) {
         if status == 0 {
             self.events_read.store(0, Ordering::Release);
             self.send(Kick::Reset);

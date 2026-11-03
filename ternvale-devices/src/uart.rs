@@ -106,12 +106,6 @@ impl Pl011 {
     }
 
     /// Read a register. `offset` is from [`PL011_BASE`].
-    #[tracing::instrument(
-        level = "debug",
-        target = "ternvale::uart",
-        skip_all,
-        fields(offset = format!("{:#x}", offset), size)
-    )]
     pub fn read(&mut self, offset: u64, size: u8) -> u64 {
         let value = self.read_reg(offset);
         self.trace(offset, size, value, "read");
@@ -119,12 +113,6 @@ impl Pl011 {
     }
 
     /// Write a register. `offset` is from [`PL011_BASE`].
-    #[tracing::instrument(
-        level = "debug",
-        target = "ternvale::uart",
-        skip_all,
-        fields(offset = format!("{:#x}", offset), size, value = format!("{:#x}", value))
-    )]
     pub fn write(&mut self, offset: u64, size: u8, value: u64) {
         let value = mask(value, size);
         self.trace(offset, size, value, "write");
@@ -250,15 +238,17 @@ impl Pl011 {
     }
 
     fn trace(&self, offset: u64, size: u8, value: u64, direction: &'static str) {
-        tracing::trace!(
-            target: "ternvale::uart",
-            reg = reg_name(offset),
-            offset = format!("{:#x}", offset),
-            size,
-            value = format!("{:#x}", value),
-            direction,
-            "uart register"
-        );
+        if tracing::enabled!(target: "ternvale::uart", tracing::Level::TRACE) {
+            tracing::trace!(
+                target: "ternvale::uart",
+                reg = reg_name(offset),
+                offset = format!("{:#x}", offset),
+                size,
+                value = format!("{:#x}", value),
+                direction,
+                "uart register"
+            );
+        }
     }
 }
 

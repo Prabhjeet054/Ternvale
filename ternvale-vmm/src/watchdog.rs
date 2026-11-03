@@ -6,12 +6,19 @@ use std::time::{Duration, Instant};
 
 const EVENT_LIMIT: usize = 20;
 
+#[derive(Clone, Copy)]
+struct MmioNote {
+    write: bool,
+    gpa: u64,
+    size: u8,
+}
+
 /// Last exits the hang log prints.
 pub struct Watchdog {
     interval: Duration,
     last: Mutex<Instant>,
     pc: Mutex<u64>,
-    events: Mutex<VecDeque<String>>,
+    events: Mutex<VecDeque<MmioNote>>,
     reported: Mutex<bool>,
 }
 
@@ -49,13 +56,12 @@ impl Watchdog {
     }
 
     /// Remember one MMIO access. Only the last 20 are kept.
-    #[tracing::instrument(level = "debug", target = "ternvale::mmio", skip_all)]
-    pub fn note_mmio(&self, line: String) {
+    pub fn note_mmio(&self, write: bool, gpa: u64, size: u8) {
         let mut events = self.lock(&self.events);
         if events.len() == EVENT_LIMIT {
             events.pop_front();
         }
-        events.push_back(line);
+        events.push_back(MmioNote { write, gpa, size });
     }
 
     /// `Some` once when the guest has been idle for the interval.
@@ -71,12 +77,23 @@ impl Watchdog {
         }
         *reported = true;
         let pc = *self.lock(&self.pc);
-        let events: Vec<String> = self.lock(&self.events).iter().cloned().collect();
+        let events: Vec<String> = self
+            .lock(&self.events)
+            .iter()
+            .map(|note| {
+                format!(
+                    "{} {:#x} size={}",
+                    if note.write { "write" } else { "read" },
+                    note.gpa,
+                    note.size
+                )
+            })
+            .collect();
         let text = format!(
             "no guest exit for {}s pc={pc:#x} last_mmio={events:?}",
             idle.as_secs()
         );
-        tracing::warn!(target: "ternvale::vcpu", pc = format!("{:#x}", pc), events = ?events, "guest hang");
+        tracing::warn!(target: "ternvale::vcpu", pc, events = ?events, "guest hang");
         Some(text)
     }
 
@@ -94,7 +111,7 @@ mod tests {
         let dog = Watchdog::new(Duration::from_millis(1));
         dog.note_exit(0x4000_1000);
         for index in 0..25 {
-            dog.note_mmio(format!("write {index:#x}"));
+            dog.note_mmio(true, index, 1);
         }
         *dog.lock(&dog.last) = Instant::now() - Duration::from_secs(11);
         let text = dog.poll().expect("hang");

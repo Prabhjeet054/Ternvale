@@ -65,7 +65,7 @@ impl VirtioCore {
     }
 
     /// Driver kick for queue `index`. Reaches the device only once it is ready.
-    pub(crate) fn notify(&mut self, index: u32) {
+    pub(crate) fn notify(&self, index: u32) {
         let notify = {
             let Some(queue) = self.queue(index) else {
                 tracing::warn!(

@@ -6,9 +6,13 @@ edition.workspace = true
 publish.workspace = true
 
 [features]
-default = ["metrics"]
+default = ["metrics", "quiet-trace"]
 # Hot-path exit/MMIO/interrupt counters. Disable for an overhead baseline.
 metrics = []
+# Compile TRACE out of release builds (`tracing` checks this before `release_max_level_trace`).
+quiet-trace = ["tracing/release_max_level_debug"]
+# Re-enable TRACE in release: `cargo build --release --no-default-features --features metrics,trace-hot`.
+trace-hot = []
 
 [dependencies]
 # mmap, munmap, and sysconf(_SC_PAGESIZE) for guest RAM. Hypervisor FFI stays in ternvale-hv.

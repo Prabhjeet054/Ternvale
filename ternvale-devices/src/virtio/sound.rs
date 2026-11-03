@@ -134,15 +134,15 @@ impl VirtioDevice for VirtioSound {
         256
     }
 
-    fn read_config(&mut self, offset: u64, size: u8) -> u64 {
+    fn read_config(&self, offset: u64, size: u8) -> u64 {
         read_le(&self.config, offset, size)
     }
 
-    fn notify(&mut self, queue: QueueNotify) {
+    fn notify(&self, queue: QueueNotify) {
         self.send(worker::Kick::Notify(queue));
     }
 
-    fn status_changed(&mut self, status: u32) {
+    fn status_changed(&self, status: u32) {
         if status == 0 {
             self.send(worker::Kick::Reset);
         }

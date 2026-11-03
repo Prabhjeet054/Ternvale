@@ -122,9 +122,13 @@ pub struct LockWatch {
 }
 
 /// Lock `mutex` through the process-wide [`LockWatch`] (threshold [`LONG_WAIT`]).
-#[tracing::instrument(level = "debug", target = "ternvale::lock", skip_all, fields(lock = name))]
 pub fn lock<'a, T: ?Sized>(mutex: &'a Mutex<T>, name: &str) -> Guard<'a, T> {
-    LockWatch::global().lock(mutex, name)
+    LockWatch::global().lock_named(mutex, Arc::from(name))
+}
+
+/// Like [`lock`], but reuses a shared name so the uncontended path does not allocate.
+pub fn lock_named<'a, T: ?Sized>(mutex: &'a Mutex<T>, name: Arc<str>) -> Guard<'a, T> {
+    LockWatch::global().lock_named(mutex, name)
 }
 
 impl LockWatch {
@@ -157,13 +161,16 @@ impl LockWatch {
         }
     }
 
+    /// Like [`lock`]: records the holder and watches a contended wait.
+    pub fn lock<'a, T: ?Sized>(&self, mutex: &'a Mutex<T>, name: &str) -> Guard<'a, T> {
+        self.lock_named(mutex, Arc::from(name))
+    }
+
     /// Like `Mutex::lock`, but the holder is recorded, a contended wait is
     /// watched, and a poisoned lock is recovered with a WARN.
-    #[tracing::instrument(level = "debug", target = "ternvale::lock", skip_all, fields(lock = name))]
-    pub fn lock<'a, T: ?Sized>(&self, mutex: &'a Mutex<T>, name: &str) -> Guard<'a, T> {
+    pub fn lock_named<'a, T: ?Sized>(&self, mutex: &'a Mutex<T>, name: Arc<str>) -> Guard<'a, T> {
         let slot = registry::slot(&self.inner);
         let id = mutex as *const Mutex<T> as *const () as usize;
-        let name: Arc<str> = Arc::from(name);
         let guard = match mutex.try_lock() {
             Ok(guard) => guard,
             Err(TryLockError::Poisoned(poison)) => recover(poison.into_inner(), &name),

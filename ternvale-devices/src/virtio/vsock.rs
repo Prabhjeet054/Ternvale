@@ -294,7 +294,7 @@ impl VirtioDevice for VirtioVsock {
         3
     }
 
-    fn read_config(&mut self, offset: u64, size: u8) -> u64 {
+    fn read_config(&self, offset: u64, size: u8) -> u64 {
         let bytes = u64::from(self.lease.cid()).to_le_bytes();
         let value = match usize::try_from(offset) {
             Ok(start) if start < bytes.len() => {
@@ -315,7 +315,7 @@ impl VirtioDevice for VirtioVsock {
         value
     }
 
-    fn write_config(&mut self, offset: u64, size: u8, value: u64) {
+    fn write_config(&self, offset: u64, size: u8, value: u64) {
         tracing::warn!(
             target: "ternvale::virtio::vsock",
             offset,
@@ -325,11 +325,11 @@ impl VirtioDevice for VirtioVsock {
         );
     }
 
-    fn notify(&mut self, queue: QueueNotify) {
+    fn notify(&self, queue: QueueNotify) {
         self.send(worker::Kick::Notify(queue));
     }
 
-    fn status_changed(&mut self, status: u32) {
+    fn status_changed(&self, status: u32) {
         if status == 0 {
             self.send(worker::Kick::Reset);
         }

@@ -143,12 +143,14 @@ impl Vcpu {
         virtual_address: u64,
         physical_address: u64,
     ) -> Result<Loop, VcpuError> {
-        tracing::trace!(
-            target: "ternvale::vcpu",
-            vcpu_id = self.id,
-            syndrome = format!("{:#x}", syndrome),
-            "vcpu exception exit"
-        );
+        if tracing::enabled!(target: "ternvale::vcpu", tracing::Level::TRACE) {
+            tracing::trace!(
+                target: "ternvale::vcpu",
+                vcpu_id = self.id,
+                syndrome = format!("{:#x}", syndrome),
+                "vcpu exception exit"
+            );
+        }
         let event = crate::esr::decode(syndrome, physical_address);
         match event {
             crate::esr::ExitEvent::Hvc { .. } => {

@@ -55,7 +55,7 @@ pub use machine::{
     DISK_ROOT_CMDLINE,
 };
 pub use memory::{GuestMemory, MemoryError, HOST_PAGE_SIZE};
-pub use mmio::{GuestRegs, MmioBus, MmioDevice, MmioError};
+pub use mmio::{GuestRegs, KickPort, MmioBus, MmioDevice, MmioError};
 pub use platform::{
     Layout, PlatformError, Region, ACPI_BASE, ACPI_SIZE, FLASH_BANK_SIZE, FLASH_CODE_BASE,
     FLASH_VARS_BASE, FW_CFG_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE,

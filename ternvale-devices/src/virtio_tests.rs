@@ -1,7 +1,10 @@
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use ternvale_vmm::{ExitEvent, GuestRegs, MmioBus, MmioError, VIRTIO_MMIO_BASE};
+use ternvale_vmm::{
+    ExitEvent, GuestRegs, MmioBus, MmioError, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOT_SIZE,
+};
 
 use super::{
     VirtioDevice, VirtioMmio, STATUS_ACKNOWLEDGE, STATUS_DRIVER, STATUS_DRIVER_OK,
@@ -10,18 +13,18 @@ use super::{
 
 struct Dummy {
     features: u64,
-    config: u32,
+    config: AtomicU32,
     notified: Arc<Mutex<Vec<u16>>>,
-    status: RefCell<Vec<u32>>,
+    status: Mutex<Vec<u32>>,
 }
 
 impl Dummy {
     fn new(features: u64) -> Self {
         Self {
             features,
-            config: 0x1122_3344,
+            config: AtomicU32::new(0x1122_3344),
             notified: Arc::new(Mutex::new(Vec::new())),
-            status: RefCell::new(Vec::new()),
+            status: Mutex::new(Vec::new()),
         }
     }
 }
@@ -35,26 +38,30 @@ impl VirtioDevice for Dummy {
         self.features
     }
 
-    fn read_config(&mut self, offset: u64, _size: u8) -> u64 {
-        u64::from(self.config >> (offset * 8))
+    fn read_config(&self, offset: u64, _size: u8) -> u64 {
+        u64::from(self.config.load(Ordering::Relaxed) >> (offset * 8))
     }
 
-    fn write_config(&mut self, offset: u64, size: u8, value: u64) {
+    fn write_config(&self, offset: u64, size: u8, value: u64) {
         let shift = offset * 8;
         let mask = match size {
             1 => 0xffu32,
             2 => 0xffff,
             _ => 0xffff_ffff,
         };
-        self.config = (self.config & !(mask << shift)) | ((value as u32 & mask) << shift);
+        let _ = self
+            .config
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |config| {
+                Some((config & !(mask << shift)) | ((value as u32 & mask) << shift))
+            });
     }
 
-    fn notify(&mut self, queue: super::QueueNotify) {
+    fn notify(&self, queue: super::QueueNotify) {
         self.notified.lock().expect("notified").push(queue.index);
     }
 
-    fn status_changed(&mut self, status: u32) {
-        self.status.borrow_mut().push(status);
+    fn status_changed(&self, status: u32) {
+        self.status.lock().expect("status").push(status);
     }
 }
 
@@ -206,6 +213,30 @@ fn notify_reaches_the_device_after_the_queue_is_ready() {
     assert!(notified.lock().expect("notified").is_empty());
     configure_queue(&mut dev);
     dev.write(0x050, 4, 0);
+    assert_eq!(notified.lock().expect("notified").as_slice(), &[0]);
+}
+
+#[test]
+fn bus_queue_notify_kicks_without_blocking_on_the_device_lock() {
+    let device = Dummy::new(1);
+    let notified = device.notified.clone();
+    let mut dev = VirtioMmio::new(0, Box::new(device));
+    negotiate(&mut dev);
+    configure_queue(&mut dev);
+    let mut bus = MmioBus::new();
+    bus.register(VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOT_SIZE, Box::new(dev))
+        .expect("register");
+    let regs = Regs(RefCell::new([0; 31]));
+    bus.dispatch(
+        &regs,
+        ExitEvent::Mmio {
+            gpa: VIRTIO_MMIO_BASE + 0x050,
+            size: 4,
+            write: true,
+            reg: 0,
+        },
+    )
+    .expect("notify");
     assert_eq!(notified.lock().expect("notified").as_slice(), &[0]);
 }
 

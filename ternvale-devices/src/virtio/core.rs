@@ -35,7 +35,7 @@ pub(crate) enum QueueAddr {
 
 /// Device, negotiated features, status, and queues shared by both transports.
 pub(crate) struct VirtioCore {
-    pub(crate) device: Box<dyn VirtioDevice>,
+    pub(crate) device: Arc<dyn VirtioDevice>,
     pub(crate) name: String,
     pub(crate) driver_features: u64,
     pub(crate) queues: Vec<Queue>,
@@ -55,6 +55,7 @@ impl VirtioCore {
         device: Box<dyn VirtioDevice>,
         interrupt: Arc<VirtioIrq>,
     ) -> Self {
+        let device: Arc<dyn VirtioDevice> = Arc::from(device);
         let queues = (0..device.num_queues())
             .map(|index| Queue {
                 num_max: u32::from(device.queue_num_max(index)),

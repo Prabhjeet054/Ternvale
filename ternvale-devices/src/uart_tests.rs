@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
-use super::{Pl011, PL011_BASE, PL011_SIZE};
+use super::{ByteSink, Pl011, PL011_BASE, PL011_SIZE};
 use ternvale_vmm::{ExitEvent, GuestRegs, MmioBus, MmioError};
 
 fn uart(sink: Vec<u8>) -> (Pl011, Arc<Mutex<Vec<u8>>>) {
@@ -120,4 +120,26 @@ fn tx_line_is_logged_at_debug() {
         "{text}"
     );
     std::fs::remove_dir_all(&dir).expect("remove log dir");
+}
+
+/// Mean ns per TX byte for Step 63 UART batching when `TERNVALE_UART_BENCH` is set.
+#[test]
+fn stdout_batch_timing_when_env_set() {
+    let Ok(path) = std::env::var("TERNVALE_UART_BENCH") else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("ternvale-uart-bench-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let serial = dir.join("serial.log");
+    let mut sink = super::StdoutFile::create(&serial).expect("serial");
+    let samples = 10_000u32;
+    let started = std::time::Instant::now();
+    for _ in 0..samples {
+        sink.write_all(&[b'x']).expect("tx");
+    }
+    sink.write_all(&[b'\n']).expect("nl");
+    drop(sink);
+    let ns = started.elapsed().as_nanos() / u128::from(samples);
+    std::fs::write(&path, format!("{ns}\n")).expect("write uart bench");
+    std::fs::remove_dir_all(&dir).expect("remove");
 }

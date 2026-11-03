@@ -7,6 +7,7 @@
 //! the window list is read-only and [`MmioBus::dispatch`] takes `&self`: each
 //! device sits behind its own mutex, so vCPUs only contend on the same device.
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "metrics")]
@@ -31,6 +32,17 @@ pub trait MmioDevice: Send {
 
     /// Write `val` at `offset`. `val` is already masked to `size` bytes.
     fn write(&mut self, offset: u64, size: u8, val: u64);
+
+    /// Optional lock-free kick (virtio `QueueNotify`). `None` uses the mutex path.
+    fn kick_port(&self) -> Option<Arc<dyn KickPort>> {
+        None
+    }
+}
+
+/// A write that can complete without taking the device mutex.
+pub trait KickPort: Send + Sync {
+    /// `true` when this write was a notify and the device was kicked.
+    fn try_kick(&self, offset: u64, val: u64) -> bool;
 }
 
 /// Guest general-purpose registers touched by an MMIO exit.
@@ -119,8 +131,9 @@ pub enum MmioError {
 struct Slot {
     base: u64,
     size: u64,
-    name: String,
+    name: Arc<str>,
     device: Mutex<Box<dyn MmioDevice>>,
+    kick: Option<Arc<dyn KickPort>>,
     accesses: Arc<AtomicU64>,
     trace_id: Option<u16>,
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
@@ -129,16 +142,26 @@ struct Slot {
 
 impl Slot {
     fn lock(&self) -> Guard<'_, Box<dyn MmioDevice>> {
-        crate::lockwatch::lock(&self.device, &self.name)
+        crate::lockwatch::lock_named(&self.device, Arc::clone(&self.name))
+    }
+
+    fn contains(&self, gpa: u64, end: u64) -> bool {
+        gpa >= self.base && end <= self.base + self.size
     }
 }
 
 /// Registered MMIO devices, dispatched from [`ExitEvent::Mmio`].
 pub struct MmioBus {
     devices: Vec<Slot>,
+    generation: AtomicU64,
     trace: Option<Arc<MmioTrace>>,
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
     metrics: Option<Arc<Metrics>>,
+}
+
+thread_local! {
+    /// One last-hit window per vCPU thread (`(bus ptr, generation, index)`).
+    static LAST_HIT: Cell<(usize, u64, usize)> = const { Cell::new((0, 0, usize::MAX)) };
 }
 
 impl std::fmt::Debug for MmioBus {
@@ -162,6 +185,7 @@ impl MmioBus {
     pub fn new() -> Self {
         Self {
             devices: Vec::new(),
+            generation: AtomicU64::new(1),
             trace: None,
             metrics: None,
         }
@@ -172,6 +196,7 @@ impl MmioBus {
     pub fn with_trace(trace: Arc<MmioTrace>) -> Self {
         Self {
             devices: Vec::new(),
+            generation: AtomicU64::new(1),
             trace: Some(trace),
             metrics: None,
         }
@@ -210,7 +235,7 @@ impl MmioBus {
             return Err(MmioError::Overflow { base, size });
         };
         if let Some(other) = self.devices.iter().find(|slot| {
-            let other_end = slot.base + slot.size;
+            let other_end = slot.base.saturating_add(slot.size);
             base < other_end && slot.base < end
         }) {
             let error = MmioError::Overlap {
@@ -238,16 +263,55 @@ impl MmioBus {
             .trace
             .as_ref()
             .map(|trace| trace.add_window(device.name(), base, size, Arc::clone(&accesses)));
-        self.devices.push(Slot {
+        let kick = device.kick_port();
+        let slot = Slot {
             base,
             size,
-            name: device.name().to_string(),
+            name: Arc::from(device.name()),
             device: Mutex::new(device),
+            kick,
             accesses,
             trace_id,
             metrics_id,
-        });
+        };
+        let index = self.devices.partition_point(|other| other.base < base);
+        self.devices.insert(index, slot);
+        self.generation.fetch_add(1, Ordering::Release);
         Ok(())
+    }
+
+    fn lookup(&self, gpa: u64, end: u64) -> Option<usize> {
+        let bus = self as *const Self as usize;
+        let gen = self.generation.load(Ordering::Acquire);
+        LAST_HIT.with(|cell| {
+            let (cached_bus, cached_gen, cached_idx) = cell.get();
+            if cached_bus == bus && cached_gen == gen {
+                if let Some(slot) = self.devices.get(cached_idx) {
+                    if slot.contains(gpa, end) {
+                        return Some(cached_idx);
+                    }
+                }
+            }
+            let found = self.lookup_sorted(gpa, end);
+            if let Some(index) = found {
+                cell.set((bus, gen, index));
+            }
+            found
+        })
+    }
+
+    fn lookup_sorted(&self, gpa: u64, end: u64) -> Option<usize> {
+        let index = self.devices.partition_point(|slot| slot.base <= gpa);
+        if index == 0 {
+            return None;
+        }
+        let index = index - 1;
+        let slot = &self.devices[index];
+        if slot.contains(gpa, end) {
+            Some(index)
+        } else {
+            None
+        }
     }
 
     /// How many accesses `name` has handled. `None` if it is not registered.
@@ -255,7 +319,7 @@ impl MmioBus {
     pub fn access_count(&self, name: &str) -> Option<u64> {
         self.devices
             .iter()
-            .find(|slot| slot.name == name)
+            .find(|slot| slot.name.as_ref() == name)
             .map(|slot| slot.accesses.load(Ordering::Relaxed))
     }
 
@@ -266,7 +330,6 @@ impl MmioBus {
     /// returns 0 on read and is ignored on write.
     ///
     /// Holds only the matching device's lock, and only for the device call.
-    #[tracing::instrument(level = "debug", target = "ternvale::mmio", skip_all)]
     pub fn dispatch(&self, regs: &impl GuestRegs, event: ExitEvent) -> Result<(), MmioError> {
         let ExitEvent::Mmio {
             gpa,
@@ -287,33 +350,32 @@ impl MmioBus {
             return Err(MmioError::BadReg { reg });
         }
         let Some(end) = gpa.checked_add(u64::from(size)) else {
-            tracing::warn!(
-                target: "ternvale::mmio",
-                gpa = format!("{:#x}", gpa),
-                size,
-                "rejected overflowing mmio access"
-            );
+            tracing::warn!(target: "ternvale::mmio", gpa, size, "rejected overflowing mmio access");
             return Err(MmioError::Overflow {
                 base: gpa,
                 size: u64::from(size),
             });
         };
-        let Some(index) = self.devices.iter().position(|slot| {
-            let slot_end = slot.base + slot.size;
-            gpa >= slot.base && end <= slot_end
-        }) else {
+        let Some(index) = self.lookup(gpa, end) else {
             return self.unmapped(regs, gpa, size, write, reg);
         };
         let slot = &self.devices[index];
         let offset = gpa - slot.base;
-        let direction = if write { "write" } else { "read" };
         #[cfg(feature = "metrics")]
         let started = Instant::now();
         let value = if write {
             let raw = if reg == 31 { 0 } else { regs.get_reg(reg)? };
             let value = mask(raw, size);
-            slot.lock().write(offset, size, value);
-            value
+            if slot
+                .kick
+                .as_ref()
+                .is_some_and(|kick| kick.try_kick(offset, value))
+            {
+                value
+            } else {
+                slot.lock().write(offset, size, value);
+                value
+            }
         } else {
             let value = mask(slot.lock().read(offset, size), size);
             if reg != 31 {
@@ -329,15 +391,17 @@ impl MmioBus {
         if let Some(trace) = &self.trace {
             trace.record(slot.trace_id, regs.cpu_id(), write, gpa, size, value);
         }
-        tracing::trace!(
-            target: "ternvale::mmio",
-            device = %slot.name,
-            offset = format!("{:#x}", offset),
-            size,
-            value = format!("{:#x}", value),
-            direction,
-            "mmio access"
-        );
+        if tracing::enabled!(target: "ternvale::mmio", tracing::Level::TRACE) {
+            tracing::trace!(
+                target: "ternvale::mmio",
+                device = slot.name.as_ref(),
+                offset = format!("{:#x}", offset),
+                size,
+                value = format!("{:#x}", value),
+                direction = if write { "write" } else { "read" },
+                "mmio access"
+            );
+        }
         Ok(())
     }
 
@@ -349,12 +413,11 @@ impl MmioBus {
         write: bool,
         reg: u8,
     ) -> Result<(), MmioError> {
-        let direction = if write { "write" } else { "read" };
         tracing::warn!(
             target: "ternvale::mmio",
-            gpa = format!("{:#x}", gpa),
+            gpa,
             size,
-            direction,
+            write,
             "unmapped mmio access"
         );
         let value = if write {
@@ -372,15 +435,17 @@ impl MmioBus {
         if let Some(trace) = &self.trace {
             trace.record(None, regs.cpu_id(), write, gpa, size, value);
         }
-        tracing::trace!(
-            target: "ternvale::mmio",
-            device = "unmapped",
-            offset = format!("{:#x}", gpa),
-            size,
-            value = format!("{:#x}", value),
-            direction,
-            "mmio access"
-        );
+        if tracing::enabled!(target: "ternvale::mmio", tracing::Level::TRACE) {
+            tracing::trace!(
+                target: "ternvale::mmio",
+                device = "unmapped",
+                gpa,
+                size,
+                value,
+                write,
+                "mmio access"
+            );
+        }
         Ok(())
     }
 }

@@ -136,17 +136,19 @@ fn decode_data_abort(ec: u8, iss: u32, gpa: u64) -> ExitEvent {
         return ExitEvent::Unknown { ec, iss };
     }
     let size = 1u8 << sas;
-    tracing::trace!(
-        target: "ternvale::vcpu",
-        isv,
-        sas,
-        sf,
-        srt = reg,
-        wnr = write,
-        gpa = format!("{:#x}", gpa),
-        size,
-        "decoded data abort"
-    );
+    if tracing::enabled!(target: "ternvale::vcpu", tracing::Level::TRACE) {
+        tracing::trace!(
+            target: "ternvale::vcpu",
+            isv,
+            sas,
+            sf,
+            srt = reg,
+            wnr = write,
+            gpa = format!("{:#x}", gpa),
+            size,
+            "decoded data abort"
+        );
+    }
     ExitEvent::Mmio {
         gpa,
         size,
@@ -164,12 +166,16 @@ fn log_event(esr: u64, event: &ExitEvent) {
             iss = format!("{:#x}", iss),
             "unknown esr"
         ),
-        other => tracing::trace!(
-            target: "ternvale::vcpu",
-            esr = format!("{:#x}", esr),
-            event = %DisplayEvent(other),
-            "decoded esr"
-        ),
+        other => {
+            if tracing::enabled!(target: "ternvale::vcpu", tracing::Level::TRACE) {
+                tracing::trace!(
+                    target: "ternvale::vcpu",
+                    esr = format!("{:#x}", esr),
+                    event = %DisplayEvent(other),
+                    "decoded esr"
+                );
+            }
+        }
     }
 }
 

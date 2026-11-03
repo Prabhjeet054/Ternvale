@@ -160,13 +160,26 @@ fn shutdown_logs_the_access_count() {
     let path = guard.log_path().to_path_buf();
     drop(guard);
     let text = std::fs::read_to_string(&path).expect("log");
-    assert!(text.contains("mmio access"), "{text}");
-    assert!(text.contains("device=\"counter\""), "{text}");
-    assert!(text.contains("offset=\"0x4\""), "{text}");
-    assert!(text.contains("direction=\"write\""), "{text}");
     assert!(text.contains("unmapped mmio access"), "{text}");
     assert!(text.contains("mmio access count"), "{text}");
     assert!(text.contains("accesses=1"), "{text}");
+    // TRACE lines exist only when compiled in (debug, or release `trace-hot`
+    // without `quiet-trace`). `contains("mmio access")` also matches WARN.
+    let trace_compiled = cfg!(any(
+        debug_assertions,
+        all(feature = "trace-hot", not(feature = "quiet-trace"))
+    ));
+    if trace_compiled {
+        assert!(text.contains("device=\"counter\""), "{text}");
+        assert!(text.contains("offset=\"0x4\""), "{text}");
+        assert!(text.contains("direction=\"write\""), "{text}");
+    } else {
+        assert!(
+            !text.contains("offset=\"0x4\""),
+            "quiet-trace release must not emit MMIO TRACE: {text}"
+        );
+        assert!(!text.contains("direction=\"write\""), "{text}");
+    }
     std::fs::remove_dir_all(&dir).expect("remove log dir");
 }
 
@@ -211,6 +224,63 @@ fn concurrent_vcpu_threads_share_one_bus_and_lose_no_access() {
         .all(|(offset, _, val)| offset == val && val % 2 == 1));
 }
 
+#[test]
+fn reverse_registration_still_dispatches() {
+    let writes = Arc::new(Mutex::new(Vec::new()));
+    let mut bus = MmioBus::new();
+    bus.register(
+        0x2000,
+        0x100,
+        Box::new(recording("high", Arc::clone(&writes))),
+    )
+    .expect("high");
+    bus.register(
+        0x1000,
+        0x100,
+        Box::new(recording("low", Arc::clone(&writes))),
+    )
+    .expect("low");
+    let regs = MockRegs {
+        regs: RefCell::new([0; 31]),
+    };
+    regs.regs.borrow_mut()[1] = 0x11;
+    bus.dispatch(&regs, mmio(0x1000, 1, true, 1)).expect("low");
+    regs.regs.borrow_mut()[1] = 0x22;
+    bus.dispatch(&regs, mmio(0x2000, 1, true, 1)).expect("high");
+    regs.regs.borrow_mut()[1] = 0x33;
+    bus.dispatch(&regs, mmio(0x1000, 1, true, 1))
+        .expect("low hit");
+    assert_eq!(
+        writes.lock().expect("writes").as_slice(),
+        &[(0, 1, 0x11), (0, 1, 0x22), (0, 1, 0x33)]
+    );
+}
+
+/// Release `quiet-trace` compiles TRACE out; `trace-hot` without `quiet-trace` keeps it.
+#[test]
+fn static_max_level_matches_trace_features() {
+    use tracing::level_filters::{LevelFilter, STATIC_MAX_LEVEL};
+    assert!(
+        STATIC_MAX_LEVEL >= LevelFilter::DEBUG,
+        "DEBUG must stay compiled in"
+    );
+    #[cfg(all(not(debug_assertions), feature = "quiet-trace"))]
+    assert!(
+        STATIC_MAX_LEVEL < LevelFilter::TRACE,
+        "quiet-trace release must compile TRACE out, got {STATIC_MAX_LEVEL:?}"
+    );
+    #[cfg(all(
+        not(debug_assertions),
+        feature = "trace-hot",
+        not(feature = "quiet-trace")
+    ))]
+    assert_eq!(
+        STATIC_MAX_LEVEL,
+        LevelFilter::TRACE,
+        "trace-hot release without quiet-trace must keep TRACE"
+    );
+}
+
 /// Mean ns per `dispatch` for `scripts/bench` / `compare.py` when
 /// `TERNVALE_MMIO_BENCH` is a destination path. No-op in ordinary `cargo test`.
 #[test]
@@ -219,12 +289,14 @@ fn write_dispatch_timing_when_env_set() {
         return;
     };
     let mut bus = MmioBus::new();
-    bus.register(0x1000, 0x100, Box::new(dev("probe")))
-        .expect("register");
+    for i in 0..32u64 {
+        bus.register(0x1000 + i * 0x100, 0x100, Box::new(dev("probe")))
+            .expect("register");
+    }
     let regs = MockRegs {
         regs: RefCell::new([0; 31]),
     };
-    let event = mmio(0x1000, 1, false, 0);
+    let event = mmio(0x1000 + 31 * 0x100, 1, false, 0);
     for _ in 0..50 {
         bus.dispatch(&regs, event).expect("warmup");
     }

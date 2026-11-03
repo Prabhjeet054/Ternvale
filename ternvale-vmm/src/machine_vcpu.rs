@@ -361,10 +361,7 @@ fn dispatch_exit(
         crate::esr::ExitEvent::Mmio {
             gpa, size, write, ..
         } => {
-            shared.watchdog.note_mmio(format!(
-                "{} {gpa:#x} size={size}",
-                if write { "write" } else { "read" }
-            ));
+            shared.watchdog.note_mmio(write, gpa, size);
             shared.bus.dispatch(vcpu, event)?;
             let pc = vcpu.get_pc()?;
             vcpu.set_pc(pc + 4)?;

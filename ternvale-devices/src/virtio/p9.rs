@@ -301,7 +301,7 @@ impl VirtioDevice for VirtioP9 {
         1
     }
 
-    fn read_config(&mut self, offset: u64, size: u8) -> u64 {
+    fn read_config(&self, offset: u64, size: u8) -> u64 {
         let mut tmp = [0u8; 8];
         let start = usize::try_from(offset).unwrap_or(VIRTIO_9P_TAG_LEN + 2);
         if start < VIRTIO_9P_TAG_LEN {
@@ -314,11 +314,11 @@ impl VirtioDevice for VirtioP9 {
         u64::from_le_bytes(tmp)
     }
 
-    fn notify(&mut self, queue: QueueNotify) {
+    fn notify(&self, queue: QueueNotify) {
         self.send(Kick::Notify(queue));
     }
 
-    fn status_changed(&mut self, status: u32) {
+    fn status_changed(&self, status: u32) {
         if status == 0 {
             self.send(Kick::Reset);
         }

@@ -11,6 +11,7 @@ mod input;
 mod irq;
 mod mmio;
 mod net;
+mod notify_hub;
 mod p9;
 mod pci;
 mod queue;
@@ -93,7 +94,7 @@ pub struct QueueNotify {
 }
 
 /// A virtio 1.x device behind the MMIO transport.
-pub trait VirtioDevice: Send {
+pub trait VirtioDevice: Send + Sync {
     /// Virtio device id (`VIRTIO_ID_*`). Zero means an empty slot.
     fn device_id(&self) -> u32;
 
@@ -118,18 +119,18 @@ pub trait VirtioDevice: Send {
     }
 
     /// Read device-specific config at `offset` from the start of config space.
-    fn read_config(&mut self, _offset: u64, _size: u8) -> u64 {
+    fn read_config(&self, _offset: u64, _size: u8) -> u64 {
         0
     }
 
     /// Write device-specific config.
-    fn write_config(&mut self, _offset: u64, _size: u8, _value: u64) {}
+    fn write_config(&self, _offset: u64, _size: u8, _value: u64) {}
 
-    /// The driver kicked a ready queue.
-    fn notify(&mut self, _queue: QueueNotify) {}
+    /// The driver kicked a ready queue. Must not block the vCPU on host I/O.
+    fn notify(&self, _queue: QueueNotify) {}
 
     /// `status` changed, including a reset to 0.
-    fn status_changed(&mut self, _status: u32) {}
+    fn status_changed(&self, _status: u32) {}
 
     /// Bumped when config space changes.
     fn config_generation(&self) -> u32 {

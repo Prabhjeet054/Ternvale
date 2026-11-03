@@ -13,7 +13,7 @@ mod config;
 mod keymap;
 mod sink;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ternvale_vmm::pci::Bdf;
@@ -70,9 +70,9 @@ pub struct AttachedInput {
 /// virtio-input device state (the vCPU side).
 pub struct VirtioInput {
     shared: Arc<Shared>,
-    select: u8,
-    subsel: u8,
-    statusq: Option<(QueueKey, SplitQueue)>,
+    select: AtomicU8,
+    subsel: AtomicU8,
+    statusq: Mutex<Option<(QueueKey, SplitQueue)>>,
 }
 
 impl VirtioInput {
@@ -95,9 +95,9 @@ impl VirtioInput {
                 kick: AtomicBool::new(false),
                 kicked: Mutex::new(None),
             }),
-            select: 0,
-            subsel: 0,
-            statusq: None,
+            select: AtomicU8::new(0),
+            subsel: AtomicU8::new(0),
+            statusq: Mutex::new(None),
         }
     }
 
@@ -176,8 +176,12 @@ impl VirtioInput {
         ));
     }
 
-    fn serve_status(&mut self) {
-        let Some((_, queue)) = self.statusq.as_mut() else {
+    fn serve_status(&self) {
+        let mut held = self
+            .statusq
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let Some((_, queue)) = held.as_mut() else {
             return;
         };
         let device = self.shared.kind.short();
@@ -234,14 +238,16 @@ impl VirtioDevice for VirtioInput {
         64
     }
 
-    fn read_config(&mut self, offset: u64, size: u8) -> u64 {
-        let payload = config::payload(self.shared.kind, self.select, self.subsel);
+    fn read_config(&self, offset: u64, size: u8) -> u64 {
+        let select = self.select.load(Ordering::Relaxed);
+        let subsel = self.subsel.load(Ordering::Relaxed);
+        let payload = config::payload(self.shared.kind, select, subsel);
         let mut value = 0u64;
         for i in 0..u64::from(size.min(8)) {
             let at = offset + i;
             let byte = match at {
-                0 => self.select,
-                1 => self.subsel,
+                0 => select,
+                1 => subsel,
                 // payload is at most UNION_LEN bytes.
                 2 => payload.len().min(UNION_LEN) as u8,
                 _ if (UNION_OFFSET..CONFIG_LEN).contains(&at) => payload
@@ -263,14 +269,14 @@ impl VirtioDevice for VirtioInput {
         value
     }
 
-    fn write_config(&mut self, offset: u64, size: u8, value: u64) {
+    fn write_config(&self, offset: u64, size: u8, value: u64) {
         let device = self.shared.kind.short();
         // Byte-wide writes to select/subsel; a 2-byte write covers both.
         for i in 0..u64::from(size.min(8)) {
             let byte = (value >> (8 * i)) as u8;
             match offset + i {
-                0 => self.select = byte,
-                1 => self.subsel = byte,
+                0 => self.select.store(byte, Ordering::Relaxed),
+                1 => self.subsel.store(byte, Ordering::Relaxed),
                 at => {
                     tracing::warn!(
                         target: "ternvale::virtio::input",
@@ -282,23 +288,31 @@ impl VirtioDevice for VirtioInput {
                 }
             }
         }
-        let size = config::payload(self.shared.kind, self.select, self.subsel).len();
+        let select = self.select.load(Ordering::Relaxed);
+        let subsel = self.subsel.load(Ordering::Relaxed);
+        let size = config::payload(self.shared.kind, select, subsel).len();
         tracing::debug!(
             target: "ternvale::virtio::input",
             device,
-            select = %format!("{:#x}", self.select),
-            subsel = %format!("{:#x}", self.subsel),
+            select = %format!("{:#x}", select),
+            subsel = %format!("{:#x}", subsel),
             size,
             "virtio-input config select"
         );
     }
 
-    fn notify(&mut self, notify: QueueNotify) {
+    fn notify(&self, notify: QueueNotify) {
         let device = self.shared.kind.short();
         match notify.index {
             INPUT_EVENTQ => self.shared.kick_eventq(notify),
             INPUT_STATUSQ => {
-                Self::bind(&mut self.statusq, &notify, device);
+                {
+                    let mut held = self
+                        .statusq
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner());
+                    Self::bind(&mut held, &notify, device);
+                }
                 self.serve_status();
             }
             other => tracing::warn!(
@@ -310,11 +324,14 @@ impl VirtioDevice for VirtioInput {
         }
     }
 
-    fn status_changed(&mut self, status: u32) {
+    fn status_changed(&self, status: u32) {
         if status == 0 {
-            self.statusq = None;
-            self.select = 0;
-            self.subsel = 0;
+            *self
+                .statusq
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner()) = None;
+            self.select.store(0, Ordering::Relaxed);
+            self.subsel.store(0, Ordering::Relaxed);
             self.shared.reset();
         }
     }

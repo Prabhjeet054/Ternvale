@@ -10,9 +10,17 @@ name = "ternvale"
 path = "src/main.rs"
 
 [features]
-default = ["metrics"]
+default = ["metrics", "quiet-trace"]
 # Lock-free VM counters on the vCPU/MMIO/virtio hot path.
 metrics = ["ternvale-vmm/metrics", "ternvale-devices/metrics"]
+# Compile TRACE out of release (tracing applies `release_max_level_debug` before `…_trace`).
+quiet-trace = [
+    "tracing/release_max_level_debug",
+    "ternvale-vmm/quiet-trace",
+    "ternvale-devices/quiet-trace",
+]
+# Release TRACE: `cargo build --release --no-default-features --features metrics,trace-hot`.
+trace-hot = ["ternvale-vmm/trace-hot", "ternvale-devices/trace-hot"]
 # Test builds only: lets TERNVALE_ACPI_CORRUPT=<SIG> corrupt one table's checksum in
 # `acpi-dump` (src/acpi_fault.rs), so scripts/acpi-check.sh can be shown to catch it.
 acpi-fault-injection = []

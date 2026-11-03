@@ -10,9 +10,12 @@ pub trait ByteSink: Send {
     fn write_all(&mut self, bytes: &[u8]) -> io::Result<()>;
 }
 
+const TX_BATCH: usize = 256;
+
 /// Stdout plus an appended serial log file.
 pub struct StdoutFile {
     file: std::fs::File,
+    buf: Vec<u8>,
 }
 
 impl StdoutFile {
@@ -40,18 +43,45 @@ impl StdoutFile {
             path = %path.display(),
             "serial log opened"
         );
-        Ok(Self { file })
+        Ok(Self {
+            file,
+            buf: Vec::with_capacity(TX_BATCH),
+        })
+    }
+
+    fn flush_buf(&mut self) -> io::Result<()> {
+        if self.buf.is_empty() {
+            return Ok(());
+        }
+        let mut out = io::stdout().lock();
+        out.write_all(&self.buf)?;
+        out.flush()?;
+        self.file.write_all(&self.buf)?;
+        self.file.flush()?;
+        self.buf.clear();
+        Ok(())
     }
 }
 
 impl ByteSink for StdoutFile {
     fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
-        let mut out = io::stdout().lock();
-        out.write_all(bytes)?;
-        out.flush()?;
-        self.file.write_all(bytes)?;
-        self.file.flush()?;
+        self.buf.extend_from_slice(bytes);
+        if self.buf.len() >= TX_BATCH || bytes.contains(&b'\n') {
+            self.flush_buf()?;
+        }
         Ok(())
+    }
+}
+
+impl Drop for StdoutFile {
+    fn drop(&mut self) {
+        if let Err(error) = self.flush_buf() {
+            tracing::error!(
+                target: "ternvale::uart",
+                error = %error,
+                "uart tx batch flush failed"
+            );
+        }
     }
 }
 

@@ -57,11 +57,13 @@ impl RngStats {
     }
 }
 
+type BoundQueue = ((u16, u64, u64, u64), SplitQueue);
+
 /// virtio-rng device state.
 pub struct VirtioRng {
     memory: Arc<Mutex<GuestMemory>>,
     irq: Arc<VirtioIrq>,
-    queue: Option<((u16, u64, u64, u64), SplitQueue)>,
+    queue: Mutex<Option<BoundQueue>>,
     stats: Arc<RngStats>,
 }
 
@@ -73,7 +75,7 @@ impl VirtioRng {
         Self {
             memory,
             irq,
-            queue: None,
+            queue: Mutex::new(None),
             stats: Arc::new(RngStats::default()),
         }
     }
@@ -117,8 +119,12 @@ impl VirtioRng {
         ternvale_vmm::lockwatch::lock(&self.memory, "guest-memory")
     }
 
-    fn serve(&mut self) {
-        let Some((key, mut queue)) = self.queue.take() else {
+    fn serve(&self) {
+        let mut held = self
+            .queue
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let Some((key, mut queue)) = held.take() else {
             return;
         };
         let mut completed = false;
@@ -142,7 +148,7 @@ impl VirtioRng {
                 self.irq.raise(INT_VRING);
             }
         }
-        self.queue = Some((key, queue));
+        *held = Some((key, queue));
     }
 }
 
@@ -199,7 +205,7 @@ impl VirtioDevice for VirtioRng {
         VIRTIO_RNG_ID
     }
 
-    fn notify(&mut self, notify: QueueNotify) {
+    fn notify(&self, notify: QueueNotify) {
         if notify.index != 0 {
             tracing::warn!(
                 target: "ternvale::virtio::rng",
@@ -209,28 +215,41 @@ impl VirtioDevice for VirtioRng {
             return;
         }
         let key = (notify.size, notify.desc, notify.avail, notify.used);
-        if self.queue.as_ref().is_none_or(|(bound, _)| *bound != key) {
-            tracing::debug!(
-                target: "ternvale::virtio::rng",
-                size = notify.size,
-                desc = %format!("{:#x}", notify.desc),
-                "virtio-rng queue bound"
-            );
-            let queue = SplitQueue::new(
-                notify.size,
-                notify.desc,
-                notify.avail,
-                notify.used,
-                notify.features & VIRTIO_F_INDIRECT_DESC != 0,
-                notify.features & VIRTIO_F_EVENT_IDX != 0,
-            );
-            self.queue = Some((key, queue));
+        {
+            let mut held = self
+                .queue
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            if held.as_ref().is_none_or(|(bound, _)| *bound != key) {
+                tracing::debug!(
+                    target: "ternvale::virtio::rng",
+                    size = notify.size,
+                    desc = %format!("{:#x}", notify.desc),
+                    "virtio-rng queue bound"
+                );
+                let queue = SplitQueue::new(
+                    notify.size,
+                    notify.desc,
+                    notify.avail,
+                    notify.used,
+                    notify.features & VIRTIO_F_INDIRECT_DESC != 0,
+                    notify.features & VIRTIO_F_EVENT_IDX != 0,
+                );
+                *held = Some((key, queue));
+            }
         }
         self.serve();
     }
 
-    fn status_changed(&mut self, status: u32) {
-        if status == 0 && self.queue.take().is_some() {
+    fn status_changed(&self, status: u32) {
+        if status == 0
+            && self
+                .queue
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .take()
+                .is_some()
+        {
             tracing::debug!(target: "ternvale::virtio::rng", "virtio-rng queue reset");
         }
     }

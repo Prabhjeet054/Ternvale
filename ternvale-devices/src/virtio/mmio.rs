@@ -6,11 +6,13 @@
 use std::sync::Arc;
 
 use ternvale_vmm::{
-    MmioBus, MmioDevice, MmioError, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
+    KickPort, MmioBus, MmioDevice, MmioError, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS,
+    VIRTIO_MMIO_SLOT_SIZE,
 };
 
 use super::core::{feature_word, mask, QueueAddr, VirtioCore};
 use super::irq::VirtioIrq;
+use super::notify_hub::NotifyHub;
 use super::VirtioDevice;
 
 const MAGIC: u32 = 0x7472_6976;
@@ -91,6 +93,7 @@ pub enum VirtioMmioError {
 /// Virtio-mmio v2 transport for one [`VirtioDevice`].
 pub struct VirtioMmio {
     core: VirtioCore,
+    hub: Arc<NotifyHub>,
     device_features_sel: u32,
     driver_features_sel: u32,
     queue_sel: u32,
@@ -123,8 +126,11 @@ impl VirtioMmio {
             queues = device.num_queues(),
             "virtio-mmio transport created"
         );
+        let core = VirtioCore::new(format!("virtio-mmio-{slot}"), device, interrupt);
+        let hub = NotifyHub::new(core.queues.len() as u16, Arc::clone(&core.device));
         Self {
-            core: VirtioCore::new(format!("virtio-mmio-{slot}"), device, interrupt),
+            core,
+            hub,
             device_features_sel: 0,
             driver_features_sel: 0,
             queue_sel: 0,
@@ -174,12 +180,6 @@ impl VirtioMmio {
     }
 
     /// Guest read of one register or a config-space field.
-    #[tracing::instrument(
-        level = "debug",
-        target = "ternvale::virtio::mmio",
-        skip(self),
-        fields(name = %self.core.name, offset = format!("{offset:#x}"), size)
-    )]
     pub fn read(&mut self, offset: u64, size: u8) -> u64 {
         let value = if offset >= CONFIG {
             self.core.device.read_config(offset - CONFIG, size)
@@ -194,12 +194,6 @@ impl VirtioMmio {
     }
 
     /// Guest write of one register or a config-space field.
-    #[tracing::instrument(
-        level = "debug",
-        target = "ternvale::virtio::mmio",
-        skip(self),
-        fields(name = %self.core.name, offset = format!("{offset:#x}"), size, value = format!("{value:#x}"))
-    )]
     pub fn write(&mut self, offset: u64, size: u8, value: u64) {
         self.trace(offset, size, value, "write");
         if offset >= CONFIG {
@@ -250,14 +244,24 @@ impl VirtioMmio {
                 .write_driver_features(self.driver_features_sel, value),
             QUEUE_SEL => self.queue_sel = value,
             QUEUE_NUM => self.core.set_queue_num(sel, value),
-            QUEUE_READY => self.core.set_queue_ready(sel, value),
-            QUEUE_NOTIFY => self.core.notify(value),
+            QUEUE_READY => {
+                self.core.set_queue_ready(sel, value);
+                if let Some(queue) = self.core.queue(sel) {
+                    self.hub.publish(sel, queue, self.core.driver_features);
+                }
+            }
+            QUEUE_NOTIFY => {
+                if !self.hub.try_kick(offset, u64::from(value)) {
+                    self.core.notify(value);
+                }
+            }
             INTERRUPT_ACK => self.core.interrupt.ack(value),
             STATUS => {
                 if value == 0 {
                     self.device_features_sel = 0;
                     self.driver_features_sel = 0;
                     self.queue_sel = 0;
+                    self.hub.clear();
                 }
                 self.core.write_status(value);
             }
@@ -302,15 +306,17 @@ impl VirtioMmio {
     }
 
     fn trace(&self, offset: u64, size: u8, value: u64, direction: &'static str) {
-        tracing::trace!(
-            target: "ternvale::virtio::mmio",
-            name = %self.core.name,
-            offset = format!("{offset:#x}"),
-            size,
-            value = format!("{value:#x}"),
-            direction,
-            "virtio-mmio register"
-        );
+        if tracing::enabled!(target: "ternvale::virtio::mmio", tracing::Level::TRACE) {
+            tracing::trace!(
+                target: "ternvale::virtio::mmio",
+                name = %self.core.name,
+                offset = format!("{offset:#x}"),
+                size,
+                value = format!("{value:#x}"),
+                direction,
+                "virtio-mmio register"
+            );
+        }
     }
 }
 
@@ -325,5 +331,9 @@ impl MmioDevice for VirtioMmio {
 
     fn write(&mut self, offset: u64, size: u8, val: u64) {
         VirtioMmio::write(self, offset, size, val);
+    }
+
+    fn kick_port(&self) -> Option<Arc<dyn ternvale_vmm::KickPort>> {
+        Some(Arc::clone(&self.hub) as Arc<dyn ternvale_vmm::KickPort>)
     }
 }

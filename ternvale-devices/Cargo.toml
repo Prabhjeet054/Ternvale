@@ -6,9 +6,11 @@ edition.workspace = true
 publish.workspace = true
 
 [features]
-default = ["metrics"]
+default = ["metrics", "quiet-trace"]
 # Hot-path virtio notify latency (needs ternvale-vmm/metrics).
 metrics = ["ternvale-vmm/metrics"]
+quiet-trace = ["tracing/release_max_level_debug", "ternvale-vmm/quiet-trace"]
+trace-hot = ["ternvale-vmm/trace-hot"]
 # Builds tests/boot.rs, the hypervisor boot harness. `cargo test --workspace` skips it.
 boot-test = []
 # Stub vmnet.framework (shared mode) virtio-net backend. Off by default; see docs/NET.md.

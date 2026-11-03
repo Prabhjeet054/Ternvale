@@ -263,7 +263,7 @@ impl VirtioDevice for VirtioNet {
         2
     }
 
-    fn read_config(&mut self, offset: u64, size: u8) -> u64 {
+    fn read_config(&self, offset: u64, size: u8) -> u64 {
         let mut bytes = [0u8; 8];
         bytes[..6].copy_from_slice(&self.mac);
         bytes[6..8].copy_from_slice(&VIRTIO_NET_S_LINK_UP.to_le_bytes());
@@ -278,7 +278,7 @@ impl VirtioDevice for VirtioNet {
         value
     }
 
-    fn write_config(&mut self, offset: u64, size: u8, value: u64) {
+    fn write_config(&self, offset: u64, size: u8, value: u64) {
         tracing::warn!(
             target: "ternvale::virtio::net",
             offset,
@@ -288,11 +288,11 @@ impl VirtioDevice for VirtioNet {
         );
     }
 
-    fn notify(&mut self, queue: QueueNotify) {
+    fn notify(&self, queue: QueueNotify) {
         self.send(worker::Kick::Notify(queue, worker::notify_mark()));
     }
 
-    fn status_changed(&mut self, status: u32) {
+    fn status_changed(&self, status: u32) {
         if status == 0 {
             self.send(worker::Kick::Reset);
         }
