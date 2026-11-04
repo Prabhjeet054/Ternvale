@@ -1,43 +1,98 @@
-//! Stub vmnet.framework backend (shared/NAT mode). Built with `--features vmnet`.
+//! virtio-net backend that talks to `ternvale-vmnetd` (shared/NAT vmnet).
 //!
-//! The real backend will call `vmnet_start_interface` with
-//! `vmnet_operation_mode_key = VMNET_SHARED_MODE`, then move frames with
-//! `vmnet_read` / `vmnet_write`. That API takes Objective-C blocks and a dispatch
-//! queue, and the project keeps raw FFI in `ternvale-hv`, so the FFI and a safe
-//! wrapper belong there. Until then [`VmnetBackend::open_shared`] fails.
-//!
-//! Starting a vmnet interface needs root, or the restricted
-//! `com.apple.vm.networking` entitlement that Apple grants on request.
-//! See `docs/NET.md`.
+//! The VMM process never calls vmnet.framework. Built with `--features vmnet`.
+
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use super::backend::NetBackend;
 use super::NetError;
+use ternvale_net::{socket_path, Client};
 
-/// `operating_modes_t` value for NAT shared with the host.
-// TODO(verify): value 1001 is from <vmnet/vmnet.h> (HOST=1000, SHARED=1001, BRIDGED=1002);
-// confirm against the SDK header when the FFI lands in ternvale-hv.
+/// `operating_modes_t` value for NAT shared with the host (`<vmnet/vmnet.h>`).
 pub const VMNET_SHARED_MODE: u32 = 1001;
 
-/// Placeholder for a vmnet.framework shared-mode interface.
-#[derive(Debug)]
+const RECONNECT: Duration = Duration::from_millis(200);
+
+/// Unprivileged client of the privileged vmnet helper.
 pub struct VmnetBackend {
-    _private: (),
+    path: PathBuf,
+    client: Option<Client>,
+    retry_at: Option<Instant>,
 }
 
 impl VmnetBackend {
-    /// Start a shared-mode interface. Always fails in this stub.
-    #[tracing::instrument(level = "debug", target = "ternvale::net")]
+    /// Connect to the helper socket (`TERNVALE_VMNET_SOCK` or the launchd path).
+    #[tracing::instrument(level = "debug", target = "ternvale::net::vmnet")]
     pub fn open_shared() -> Result<Self, NetError> {
-        tracing::warn!(
-            target: "ternvale::net",
+        let path = socket_path();
+        tracing::info!(
+            target: "ternvale::net::vmnet",
+            path = %path.display(),
             mode = VMNET_SHARED_MODE,
-            "vmnet backend is a stub; use the loopback backend"
+            "opening vmnet helper client"
         );
-        Err(NetError::Unsupported {
-            backend: "vmnet",
-            reason: "stub: vmnet.framework FFI is not implemented yet (needs root or the \
-                     com.apple.vm.networking entitlement)",
+        let client = Client::connect(&path).map_err(|error| {
+            tracing::error!(
+                target: "ternvale::net::vmnet",
+                path = %path.display(),
+                error = %error,
+                "vmnet helper unavailable"
+            );
+            NetError::Vmnet {
+                reason: format!("{}: {error}", path.display()),
+            }
+        })?;
+        Ok(Self {
+            path,
+            client: Some(client),
+            retry_at: None,
         })
+    }
+
+    fn drop_client(&mut self, reason: &str) {
+        if self.client.take().is_some() {
+            tracing::info!(
+                target: "ternvale::net::vmnet",
+                path = %self.path.display(),
+                reason,
+                up = false,
+                "vmnet helper link down"
+            );
+        }
+        self.retry_at = Some(Instant::now() + RECONNECT);
+    }
+
+    fn ensure_client(&mut self) -> bool {
+        if self.client.is_some() {
+            return true;
+        }
+        if self.retry_at.is_some_and(|at| Instant::now() < at) {
+            return false;
+        }
+        match Client::connect(&self.path) {
+            Ok(client) => {
+                tracing::info!(
+                    target: "ternvale::net::vmnet",
+                    path = %self.path.display(),
+                    up = true,
+                    "vmnet helper reconnected"
+                );
+                self.client = Some(client);
+                self.retry_at = None;
+                true
+            }
+            Err(error) => {
+                tracing::debug!(
+                    target: "ternvale::net::vmnet",
+                    path = %self.path.display(),
+                    error = %error,
+                    "vmnet helper reconnect deferred"
+                );
+                self.retry_at = Some(Instant::now() + RECONNECT);
+                false
+            }
+        }
     }
 }
 
@@ -47,29 +102,64 @@ impl NetBackend for VmnetBackend {
     }
 
     fn send(&mut self, frame: &[u8]) -> Result<(), NetError> {
-        tracing::warn!(target: "ternvale::net", len = frame.len(), "vmnet stub dropped tx frame");
-        Err(NetError::Unsupported {
-            backend: "vmnet",
-            reason: "stub backend cannot send",
-        })
+        if !self.ensure_client() {
+            tracing::warn!(
+                target: "ternvale::net::vmnet",
+                len = frame.len(),
+                reason = "helper down",
+                "packet drop"
+            );
+            return Err(NetError::Vmnet {
+                reason: "helper down".into(),
+            });
+        }
+        let Some(client) = self.client.as_mut() else {
+            return Err(NetError::Vmnet {
+                reason: "helper down".into(),
+            });
+        };
+        match client.send_frame(frame) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.drop_client(&error.to_string());
+                Err(NetError::Vmnet {
+                    reason: error.to_string(),
+                })
+            }
+        }
     }
 
     fn recv(&mut self) -> Result<Option<Vec<u8>>, NetError> {
-        Ok(None)
+        if !self.ensure_client() {
+            return Ok(None);
+        }
+        let Some(client) = self.client.as_mut() else {
+            return Ok(None);
+        };
+        match client.recv_frame() {
+            Ok(frame) => Ok(frame),
+            Err(error) => {
+                self.drop_client(&error.to_string());
+                Ok(None)
+            }
+        }
+    }
+
+    fn link_up(&self) -> bool {
+        self.client.as_ref().is_some_and(Client::link_up)
+    }
+
+    fn guest_mac(&self) -> Option<[u8; 6]> {
+        self.client.as_ref().map(|client| client.hello().mac)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::open_backend;
-    use super::{VmnetBackend, VMNET_SHARED_MODE};
+    use super::VMNET_SHARED_MODE;
 
     #[test]
-    fn stub_reports_unsupported() {
+    fn shared_mode_matches_sdk() {
         assert_eq!(VMNET_SHARED_MODE, 1001);
-        let err = VmnetBackend::open_shared().unwrap_err();
-        assert!(err.to_string().contains("stub"), "{err}");
-        let err = open_backend("vmnet").err().expect("vmnet stub fails");
-        assert!(err.to_string().contains("vmnet"), "{err}");
     }
 }

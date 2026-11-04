@@ -1,0 +1,16 @@
+[package]
+name = "ternvale-vmnetd"
+description = "Privileged vmnet.framework helper (shared/NAT) for Ternvale."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ternvale-vmnetd"
+path = "src/main.rs"
+
+[dependencies]
+ternvale-hv = { path = "../ternvale-hv", features = ["vmnet"] }
+ternvale-net = { path = "../ternvale-net" }
+ternvale-log = { path = "../ternvale-log" }
+tracing = "0.1"

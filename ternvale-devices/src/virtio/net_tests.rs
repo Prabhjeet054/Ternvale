@@ -7,10 +7,12 @@ use std::time::{Duration, Instant};
 
 use ternvale_vmm::{ExitEvent, GuestMemory, GuestRegs, MmioBus, MmioError, HOST_PAGE_SIZE};
 
+use super::backend::NetBackend;
 use super::testutil::{arp_request, echo_request, GUEST_IP, GUEST_MAC};
 use super::{
     open_backend, LoopbackBackend, NetError, PcapWriter, VirtioNet, GATEWAY_IP, GATEWAY_MAC,
     NET_HDR_LEN, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF, VIRTIO_NET_F_STATUS, VIRTIO_NET_ID,
+    VIRTIO_NET_S_LINK_UP,
 };
 use crate::virtio::irq::VirtioIrq;
 use crate::virtio::{QueueNotify, VirtioDevice, VirtioMmio};
@@ -319,6 +321,74 @@ fn backend_names() {
             ..
         })
     ));
+    #[cfg(feature = "vmnet")]
+    if !ternvale_net::socket_path().exists() {
+        assert!(matches!(
+            open_backend("vmnet").err(),
+            Some(NetError::Vmnet { .. })
+        ));
+    }
+}
+
+struct ToggleBackend {
+    up: Arc<AtomicBool>,
+}
+
+impl NetBackend for ToggleBackend {
+    fn name(&self) -> &'static str {
+        "toggle"
+    }
+    fn send(&mut self, _frame: &[u8]) -> Result<(), NetError> {
+        Ok(())
+    }
+    fn recv(&mut self) -> Result<Option<Vec<u8>>, NetError> {
+        Ok(None)
+    }
+    fn link_up(&self) -> bool {
+        self.up.load(Ordering::Acquire)
+    }
+}
+
+#[test]
+fn config_status_follows_backend_link() {
+    let mut mem = GuestMemory::new().expect("memory");
+    mem.add_region(0x4000_0000, HOST_PAGE_SIZE).expect("region");
+    let memory = Arc::new(Mutex::new(mem));
+    let irq = VirtioIrq::new();
+    let irq_status = Arc::clone(&irq);
+    let up = Arc::new(AtomicBool::new(true));
+    let net = VirtioNet::open(
+        GUEST_MAC,
+        Box::new(ToggleBackend {
+            up: Arc::clone(&up),
+        }),
+        memory,
+        irq,
+        None,
+        Arc::new(ternvale_metrics::Metrics::new()),
+    )
+    .expect("net");
+    assert_eq!(net.read_config(6, 2), u64::from(VIRTIO_NET_S_LINK_UP));
+    up.store(false, Ordering::Release);
+    let down = Instant::now();
+    while net.read_config(6, 2) != 0 {
+        assert!(
+            down.elapsed() < Duration::from_secs(2),
+            "link did not go down"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(net.config_generation() >= 1, "generation bumped");
+    assert_ne!(irq_status.status() & 2, 0, "VIRTIO_MMIO_INT_CONFIG pending");
+    up.store(true, Ordering::Release);
+    let reopen = Instant::now();
+    while net.read_config(6, 2) != u64::from(VIRTIO_NET_S_LINK_UP) {
+        assert!(
+            reopen.elapsed() < Duration::from_secs(2),
+            "link did not recover"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 struct Regs(RefCell<[u64; 31]>);

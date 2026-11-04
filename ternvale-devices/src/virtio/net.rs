@@ -13,7 +13,7 @@ mod vmnet;
 mod worker;
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -88,6 +88,12 @@ pub enum NetError {
         /// Why it cannot run.
         reason: &'static str,
     },
+    /// The vmnet helper socket failed.
+    #[error("vmnet: {reason}")]
+    Vmnet {
+        /// Connect or frame error.
+        reason: String,
+    },
 }
 
 /// Base, size, MMIO device, and live stats from [`VirtioNet::attach`].
@@ -135,6 +141,8 @@ pub struct VirtioNet {
     kick: Option<Sender<worker::Kick>>,
     join: Option<JoinHandle<()>>,
     stats: Arc<NetStats>,
+    link: Arc<AtomicU16>,
+    generation: Arc<AtomicU32>,
 }
 
 impl VirtioNet {
@@ -154,9 +162,26 @@ impl VirtioNet {
         metrics: Arc<Metrics>,
     ) -> Result<Self, NetError> {
         let stats = Arc::new(NetStats::default());
+        let link = Arc::new(AtomicU16::new(if backend.link_up() {
+            VIRTIO_NET_S_LINK_UP
+        } else {
+            0
+        }));
+        let generation = Arc::new(AtomicU32::new(0));
         let (tx, rx) = mpsc::channel();
         let name = backend.name();
-        let state = worker::Worker::new(backend, memory, irq, Arc::clone(&stats), pcap, metrics);
+        let state = worker::Worker::new(
+            backend,
+            memory,
+            irq,
+            Arc::clone(&stats),
+            worker::LinkState {
+                status: Arc::clone(&link),
+                generation: Arc::clone(&generation),
+            },
+            pcap,
+            metrics,
+        );
         let join = std::thread::Builder::new()
             .name("ternvale-virtio-net".into())
             .spawn(move || state.run(rx))
@@ -179,6 +204,8 @@ impl VirtioNet {
             kick: Some(tx),
             join: Some(join),
             stats,
+            link,
+            generation,
         })
     }
 
@@ -266,7 +293,8 @@ impl VirtioDevice for VirtioNet {
     fn read_config(&self, offset: u64, size: u8) -> u64 {
         let mut bytes = [0u8; 8];
         bytes[..6].copy_from_slice(&self.mac);
-        bytes[6..8].copy_from_slice(&VIRTIO_NET_S_LINK_UP.to_le_bytes());
+        let status = self.link.load(Ordering::Acquire);
+        bytes[6..8].copy_from_slice(&status.to_le_bytes());
         let value = read_le(&bytes, offset, size);
         tracing::trace!(
             target: "ternvale::virtio::net",
@@ -296,6 +324,10 @@ impl VirtioDevice for VirtioNet {
         if status == 0 {
             self.send(worker::Kick::Reset);
         }
+    }
+
+    fn config_generation(&self) -> u32 {
+        self.generation.load(Ordering::Acquire)
     }
 }
 

@@ -270,9 +270,12 @@ fn attach_devices(
         let fail = |error: ternvale_devices::NetError| {
             MachineError::Attach(format!("nic {index} (backend {backend_name}): {error}"))
         };
-        let mut mac = DEFAULT_MAC;
-        mac[5] = mac[5].wrapping_add(index as u8);
         let backend = open_backend(backend_name).map_err(fail)?;
+        let mac = backend.guest_mac().unwrap_or_else(|| {
+            let mut mac = DEFAULT_MAC;
+            mac[5] = mac[5].wrapping_add(index as u8);
+            mac
+        });
         let (base, size, device, nic_stats) = VirtioNet::attach(
             slot,
             mac,

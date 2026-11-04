@@ -1370,6 +1370,7 @@ dependencies = [
  "ternvale-hv",
  "ternvale-log",
  "ternvale-metrics",
+ "ternvale-net",
  "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-vmm",
@@ -1393,6 +1394,7 @@ dependencies = [
 name = "ternvale-hv"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "ternvale-log",
  "thiserror 2.0.21",
  "tracing",
@@ -1414,6 +1416,13 @@ name = "ternvale-metrics"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "tracing",
+]
+
+[[package]]
+name = "ternvale-net"
+version = "0.1.0"
+dependencies = [
  "tracing",
 ]
 
@@ -1483,6 +1492,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "vm-fdt",
+]
+
+[[package]]
+name = "ternvale-vmnetd"
+version = "0.1.0"
+dependencies = [
+ "ternvale-hv",
+ "ternvale-log",
+ "ternvale-net",
+ "tracing",
 ]
 
 [[package]]

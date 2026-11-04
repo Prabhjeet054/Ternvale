@@ -26,6 +26,8 @@ trace-hot = ["ternvale-vmm/trace-hot", "ternvale-devices/trace-hot"]
 acpi-fault-injection = []
 # Build the VMM with virtio-gpu Venus capsets and 3D control commands (host renderer still WIP).
 gpu-3d = ["ternvale-gpu/gpu3d"]
+# Unprivileged virtio-net client of ternvale-vmnetd (shared/NAT). See docs/NETWORKING.md.
+vmnet = ["ternvale-devices/vmnet"]
 
 [dependencies]
 # Error context for every CLI failure. The only crate allowed to use anyhow.

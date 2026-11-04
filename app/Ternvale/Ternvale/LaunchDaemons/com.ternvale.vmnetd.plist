@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.ternvale.vmnetd</string>
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/ternvale-vmnetd</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>com.ternvale.app</string>
+	</array>
+	<key>Sockets</key>
+	<dict>
+		<key>Listeners</key>
+		<dict>
+			<key>SockPathName</key>
+			<string>/var/run/ternvale-vmnetd.sock</string>
+			<key>SockPathMode</key>
+			<integer>438</integer>
+		</dict>
+	</dict>
+</dict>
+</plist>

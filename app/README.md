@@ -24,7 +24,7 @@ xcodebuild -scheme Ternvale -configuration Debug -destination 'platform=macOS' b
 open ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Debug/Ternvale.app
 ```
 
-The **Embed ternvale helper** build phase copies and ad-hoc signs `target/debug/ternvale` into `Contents/Helpers/ternvale`.
+The **Embed ternvale helper** build phase copies and ad-hoc signs `target/debug/ternvale` into `Contents/Helpers/ternvale` and `ternvale-vmnetd` into `Contents/MacOS/ternvale-vmnetd`. Launch at app start calls `SMAppService.daemon(plistName:)` for `Contents/Library/LaunchDaemons/com.ternvale.vmnetd.plist` (see [NETWORKING.md](../docs/NETWORKING.md)).
 
 Override the helper path when running from Xcode without embedding:
 

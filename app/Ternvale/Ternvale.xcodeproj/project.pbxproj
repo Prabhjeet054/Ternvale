@@ -41,6 +41,8 @@
 		B10000000000000000000021 /* UpdateFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000021 /* UpdateFeedTests.swift */; };
 		B10000000000000000000022 /* FeedbackMailer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000022 /* FeedbackMailer.swift */; };
 		B10000000000000000000023 /* FeedbackMailerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000023 /* FeedbackMailerTests.swift */; };
+		B10000000000000000000024 /* com.ternvale.vmnetd.plist in Copy LaunchDaemons */ = {isa = PBXBuildFile; fileRef = B20000000000000000000024 /* com.ternvale.vmnetd.plist */; };
+		B10000000000000000000025 /* VmnetHelperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000025 /* VmnetHelperService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,6 +81,8 @@
 		B20000000000000000000021 /* UpdateFeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateFeedTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000022 /* FeedbackMailer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackMailer.swift; sourceTree = "<group>"; };
 		B20000000000000000000023 /* FeedbackMailerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackMailerTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000024 /* com.ternvale.vmnetd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = com.ternvale.vmnetd.plist; sourceTree = "<group>"; };
+		B20000000000000000000025 /* VmnetHelperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VmnetHelperService.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -112,6 +116,7 @@
 				B50000000000000000000005 /* ViewModels */,
 				B50000000000000000000006 /* Models */,
 				B50000000000000000000007 /* Services */,
+				B5000000000000000000000A /* LaunchDaemons */,
 				B2000000000000000000000D /* Assets.xcassets */,
 				B2000000000000000000000E /* Info.plist */,
 			);
@@ -183,8 +188,17 @@
 				B2000000000000000000001E /* UpdateFeed.swift */,
 				B2000000000000000000001F /* UpdateChecker.swift */,
 				B20000000000000000000022 /* FeedbackMailer.swift */,
+				B20000000000000000000025 /* VmnetHelperService.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		B5000000000000000000000A /* LaunchDaemons */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000024 /* com.ternvale.vmnetd.plist */,
+			);
+			path = LaunchDaemons;
 			sourceTree = "<group>";
 		};
 		B50000000000000000000009 /* Display */ = {
@@ -230,6 +244,7 @@
 				B40000000000000000000001 /* Frameworks */,
 				B70000000000000000000002 /* Resources */,
 				B70000000000000000000003 /* Embed ternvale helper */,
+				B70000000000000000000005 /* Copy LaunchDaemons */,
 			);
 			buildRules = (
 			);
@@ -301,6 +316,20 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		B70000000000000000000005 /* Copy LaunchDaemons */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "Library/LaunchDaemons";
+			dstSubfolderSpec = 1;
+			files = (
+				B10000000000000000000024 /* com.ternvale.vmnetd.plist in Copy LaunchDaemons */,
+			);
+			name = "Copy LaunchDaemons";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXShellScriptBuildPhase section */
 		B70000000000000000000003 /* Embed ternvale helper */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -364,6 +393,7 @@
 				B1000000000000000000001F /* UpdateChecker.swift in Sources */,
 				B10000000000000000000020 /* UpdateBannerView.swift in Sources */,
 				B10000000000000000000022 /* FeedbackMailer.swift in Sources */,
+				B10000000000000000000025 /* VmnetHelperService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

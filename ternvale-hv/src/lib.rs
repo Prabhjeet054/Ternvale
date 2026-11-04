@@ -16,6 +16,8 @@ mod osver;
 mod pressure;
 mod vcpu;
 mod vm;
+#[cfg(feature = "vmnet")]
+mod vmnet;
 
 pub use clock::host_ticks;
 pub use entropy::{fill_entropy, GETENTROPY_MAX};
@@ -38,6 +40,8 @@ pub use vcpu::{
     HV_EXIT_REASON_VTIMER_ACTIVATED,
 };
 pub use vm::Vm;
+#[cfg(feature = "vmnet")]
+pub use vmnet::{InterfaceInfo, SharedInterface, VMNET_SHARED_MODE};
 
 #[cfg(test)]
 #[path = "gic_hv_test.rs"]

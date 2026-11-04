@@ -16,6 +16,16 @@ pub trait NetBackend: Send {
 
     /// Next frame for the guest, if any.
     fn recv(&mut self) -> Result<Option<Vec<u8>>, NetError>;
+
+    /// Virtio link status (`VIRTIO_NET_S_LINK_UP`). Defaults to up.
+    fn link_up(&self) -> bool {
+        true
+    }
+
+    /// MAC the guest should use. `None` keeps the VMM default.
+    fn guest_mac(&self) -> Option<[u8; 6]> {
+        None
+    }
 }
 
 /// Build the backend named in a config `nics[].backend` entry.

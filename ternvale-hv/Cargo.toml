@@ -5,6 +5,15 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+# vmnet.framework FFI (shared/NAT). Used only by ternvale-vmnetd.
+vmnet = []
+
+[build-dependencies]
+# Compile vmnet_shim.c when the vmnet feature is on.
+cc = "1"
+
 [dependencies]
 # Typed HvError for hv_return_t.
 thiserror = "2"

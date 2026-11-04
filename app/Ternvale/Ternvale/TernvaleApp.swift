@@ -2,6 +2,10 @@ import SwiftUI
 
 @main
 struct TernvaleApp: App {
+    init() {
+        VmnetHelperService.registerIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

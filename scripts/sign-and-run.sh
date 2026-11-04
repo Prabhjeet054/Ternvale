@@ -43,7 +43,7 @@ binary=$1
 shift
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
-entitlements="${script_dir}/../entitlements/ternvale.entitlements"
+entitlements="${TERNVALE_ENTITLEMENTS:-${script_dir}/../entitlements/ternvale.entitlements}"
 
 log "binary=${binary}"
 if [[ ! -f "$binary" ]]; then

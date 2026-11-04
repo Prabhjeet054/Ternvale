@@ -3,6 +3,7 @@
 //! The worker wakes on every queue notify and every [`POLL`] so frames from an
 //! asynchronous backend (and kicks the driver chose not to send) are picked up.
 
+use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -13,13 +14,14 @@ use ternvale_vmm::GuestMemory;
 
 use super::backend::NetBackend;
 use super::pcap::PcapWriter;
-use super::{packet, NetStats, MAX_FRAME, NET_HDR_LEN, RX_QUEUE, TX_QUEUE};
+use super::{packet, NetStats, MAX_FRAME, NET_HDR_LEN, RX_QUEUE, TX_QUEUE, VIRTIO_NET_S_LINK_UP};
 use crate::virtio::irq::VirtioIrq;
 use crate::virtio::queue::{Chain, SplitQueue};
 use crate::virtio::{QueueNotify, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 
 const POLL: Duration = Duration::from_millis(10);
 const INT_VRING: u32 = 1;
+const INT_CONFIG: u32 = 2;
 const ETH_HLEN: usize = 14;
 const HDR_F_NEEDS_CSUM: u8 = 1;
 const GSO_NONE: u8 = 0;
@@ -46,11 +48,17 @@ struct Bound {
     queue: SplitQueue,
 }
 
+pub(super) struct LinkState {
+    pub status: Arc<AtomicU16>,
+    pub generation: Arc<AtomicU32>,
+}
+
 pub(super) struct Worker {
     backend: Box<dyn NetBackend>,
     memory: Arc<Mutex<GuestMemory>>,
     irq: Arc<VirtioIrq>,
     stats: Arc<NetStats>,
+    link: LinkState,
     #[cfg_attr(not(feature = "metrics"), allow(dead_code))]
     metrics: Arc<Metrics>,
     pcap: Option<PcapWriter>,
@@ -65,6 +73,7 @@ impl Worker {
         memory: Arc<Mutex<GuestMemory>>,
         irq: Arc<VirtioIrq>,
         stats: Arc<NetStats>,
+        link: LinkState,
         pcap: Option<PcapWriter>,
         metrics: Arc<Metrics>,
     ) -> Self {
@@ -73,6 +82,7 @@ impl Worker {
             memory,
             irq,
             stats,
+            link,
             metrics,
             pcap,
             rx: None,
@@ -93,6 +103,7 @@ impl Worker {
                     #[cfg(not(feature = "metrics"))]
                     let _ = started;
                     self.bind(&notify);
+                    self.sync_link();
                     #[cfg(feature = "metrics")]
                     let before = self.stats.snapshot();
                     self.process_tx();
@@ -124,6 +135,7 @@ impl Worker {
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
+            self.sync_link();
             self.process_tx();
             self.deliver_rx();
         }
@@ -165,6 +177,30 @@ impl Worker {
                 notify.features & VIRTIO_F_EVENT_IDX != 0,
             ),
         });
+    }
+
+    fn sync_link(&mut self) {
+        let want = if self.backend.link_up() {
+            VIRTIO_NET_S_LINK_UP
+        } else {
+            0
+        };
+        let prev = self.link.status.swap(want, Ordering::AcqRel);
+        if prev == want {
+            return;
+        }
+        let generation = self
+            .link
+            .generation
+            .fetch_add(1, Ordering::AcqRel)
+            .wrapping_add(1);
+        tracing::info!(
+            target: "ternvale::virtio::net",
+            up = want != 0,
+            generation,
+            "virtio-net link state"
+        );
+        self.irq.raise(INT_CONFIG);
     }
 
     fn lock(&self) -> ternvale_vmm::lockwatch::Guard<'_, GuestMemory> {
