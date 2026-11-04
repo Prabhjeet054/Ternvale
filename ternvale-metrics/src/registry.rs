@@ -7,7 +7,18 @@ use std::time::Duration;
 use crate::counter::Counter;
 use crate::histogram::Histogram;
 use crate::kind::{ExitKind, EXIT_KINDS};
-use crate::snapshot::{DeviceSnapshot, IoSnapshot, Snapshot, VcpuSnapshot};
+use crate::snapshot::{DeviceSnapshot, IoSnapshot, NamedCount, Snapshot, VcpuSnapshot};
+
+/// Policy drop rule names, matching `ternvale-net` (`spoof_mac`, …).
+pub const POLICY_RULES: [&str; 7] = [
+    "spoof_mac",
+    "spoof_ip",
+    "allow_lan",
+    "deny",
+    "allow",
+    "pps",
+    "bandwidth",
+];
 
 /// Guest CPU count the config allows.
 pub const MAX_VCPUS: usize = 16;
@@ -25,6 +36,7 @@ pub struct Metrics {
     disks: [BlkDiskCell; MAX_BLK_DISKS],
     net: IoCell,
     interrupts: Counter,
+    policy: [AtomicU64; POLICY_RULES.len()],
 }
 
 #[derive(Debug)]
@@ -92,6 +104,7 @@ impl Metrics {
             disks: std::array::from_fn(|_| BlkDiskCell::default()),
             net: IoCell::default(),
             interrupts: Counter::default(),
+            policy: std::array::from_fn(|_| AtomicU64::new(0)),
         }
     }
 
@@ -223,6 +236,14 @@ impl Metrics {
         self.interrupts.inc();
     }
 
+    /// One guest-TX frame dropped by network policy (`rule` is a [`POLICY_RULES`] name).
+    #[inline]
+    pub fn record_policy_drop(&self, rule: &str) {
+        if let Some(index) = POLICY_RULES.iter().position(|name| *name == rule) {
+            self.policy[index].fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
     /// Copy every counter for `query-stats`.
     #[tracing::instrument(level = "debug", target = "ternvale::metrics", skip_all)]
     pub fn snapshot(&self) -> Snapshot {
@@ -233,6 +254,7 @@ impl Metrics {
             disks: self.disk_snapshots(),
             net: io_snapshot(&self.net),
             interrupts: self.interrupts.get(),
+            net_policy: self.policy_snapshots(),
         }
     }
 
@@ -258,6 +280,7 @@ impl Metrics {
             net_count = snap.net.count,
             net_bytes = snap.net.bytes,
             net_p50_ns = snap.net.latency.p50_ns,
+            policy_drops = snap.net_policy.iter().map(|row| row.count).sum::<u64>(),
             "vm metrics summary"
         );
     }
@@ -302,6 +325,24 @@ impl Metrics {
                     accesses: cell.accesses.load(Ordering::Relaxed),
                     latency: cell.latency.snapshot(),
                 })
+            })
+            .collect()
+    }
+
+    fn policy_snapshots(&self) -> Vec<NamedCount> {
+        POLICY_RULES
+            .iter()
+            .zip(self.policy.iter())
+            .filter_map(|(name, cell)| {
+                let count = cell.load(Ordering::Relaxed);
+                if count == 0 {
+                    None
+                } else {
+                    Some(NamedCount {
+                        name: (*name).to_string(),
+                        count,
+                    })
+                }
             })
             .collect()
     }
@@ -360,6 +401,8 @@ mod tests {
         metrics.record_blk_disk(disk, 2, 1024, Some(Duration::from_micros(20)));
         metrics.record_net(1, 64, Some(Duration::from_micros(2)));
         metrics.record_interrupt();
+        metrics.record_policy_drop("allow_lan");
+        metrics.record_policy_drop("allow_lan");
         let snap = metrics.snapshot();
         assert_eq!(snap.vcpus[0].exits[ExitKind::Mmio.index()].count, 1);
         assert_eq!(snap.devices[0].name, "uart");
@@ -371,5 +414,7 @@ mod tests {
         assert_eq!(snap.disks[0].io.count, 2);
         assert_eq!(snap.net.count, 1);
         assert_eq!(snap.interrupts, 1);
+        assert_eq!(snap.net_policy[0].name, "allow_lan");
+        assert_eq!(snap.net_policy[0].count, 2);
     }
 }

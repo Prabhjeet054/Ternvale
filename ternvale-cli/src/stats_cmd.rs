@@ -113,6 +113,9 @@ pub fn render_metrics(metrics: &Snapshot) -> String {
         lines.push(io_line(&format!("blk[{}]", disk.name), &disk.io));
     }
     lines.push(io_line("net", &metrics.net));
+    for drop in &metrics.net_policy {
+        lines.push(format!("  net policy {}: {}", drop.name, drop.count));
+    }
     lines.push(String::new());
     lines.join("\n")
 }

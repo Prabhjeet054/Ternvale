@@ -35,6 +35,7 @@ impl VmnetBackend {
             network: None,
             bridge_interface: None,
             forwards: Vec::new(),
+            policy: ternvale_config::NicPolicy::default(),
         })
     }
 
@@ -219,6 +220,7 @@ mod tests {
             network: Some("lab".into()),
             bridge_interface: None,
             forwards: Vec::new(),
+            policy: ternvale_config::NicPolicy::default(),
         };
         let open = open_from_nic(&nic);
         assert_eq!(open.mode, VMNET_HOST_MODE);

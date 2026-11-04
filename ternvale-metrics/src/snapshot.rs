@@ -23,6 +23,9 @@ pub struct Snapshot {
     pub net: IoSnapshot,
     /// `hv_gic_set_spi` / PPI injections that asserted a line.
     pub interrupts: u64,
+    /// Guest-TX policy drops by rule name. Empty when none have fired.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub net_policy: Vec<NamedCount>,
 }
 
 /// One vCPU in [`Snapshot::vcpus`].
@@ -67,6 +70,15 @@ pub struct DeviceSnapshot {
     pub accesses: u64,
     /// Time spent in the device `read`/`write` call.
     pub latency: HistSnapshot,
+}
+
+/// One named counter (policy rule, and similar).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamedCount {
+    /// Rule or series name (`spoof_mac`, `allow_lan`, …).
+    pub name: String,
+    /// How many times it fired.
+    pub count: u64,
 }
 
 /// One named virtio-blk device in [`Snapshot::disks`].

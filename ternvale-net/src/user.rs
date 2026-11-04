@@ -5,7 +5,7 @@ mod dns;
 mod flow;
 mod forward;
 mod icmp;
-mod packet;
+pub(crate) mod packet;
 mod tcp;
 mod tcp_in;
 mod udp;

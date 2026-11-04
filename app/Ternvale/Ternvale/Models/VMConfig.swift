@@ -7,13 +7,18 @@ struct NicConfig: Equatable, Hashable, Identifiable {
     var mode: String
     var network: String
     var bridgeInterface: String
+    /// Lines other than backend/mode/network/bridge so Settings saves keep policy and forwards.
+    var extraLines: [String]
 
     static func loopback(id: Int) -> NicConfig {
-        NicConfig(id: id, backend: "loopback", mode: "shared", network: "", bridgeInterface: "")
+        NicConfig(
+            id: id, backend: "loopback", mode: "shared", network: "", bridgeInterface: "",
+            extraLines: [])
     }
 
     static func user(id: Int) -> NicConfig {
-        NicConfig(id: id, backend: "user", mode: "shared", network: "", bridgeInterface: "")
+        NicConfig(
+            id: id, backend: "user", mode: "shared", network: "", bridgeInterface: "", extraLines: [])
     }
 
     var isVmnet: Bool { backend == "vmnet" }
@@ -61,7 +66,8 @@ enum VMConfigParser {
                     backend: backend,
                     mode: tableString(in: block, key: "mode") ?? "shared",
                     network: tableString(in: block, key: "network") ?? "",
-                    bridgeInterface: tableString(in: block, key: "bridge_interface") ?? ""
+                    bridgeInterface: tableString(in: block, key: "bridge_interface") ?? "",
+                    extraLines: extraNicLines(in: block)
                 )
             )
         }
@@ -85,6 +91,9 @@ enum VMConfigParser {
                 if nic.mode == "bridged", !nic.bridgeInterface.isEmpty {
                     out += "bridge_interface = \"\(nic.bridgeInterface)\"\n"
                 }
+            }
+            for line in nic.extraLines {
+                out += line + "\n"
             }
             out += "\n"
         }
@@ -110,6 +119,28 @@ enum VMConfigParser {
             out.append(String(line))
         }
         return out.joined(separator: "\n")
+    }
+
+    private static let nicCoreKeys: Set<String> = [
+        "backend", "mode", "network", "bridge_interface",
+    ]
+
+    private static func extraNicLines(in block: String) -> [String] {
+        var extras: [String] = []
+        for raw in block.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let line = String(raw)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") || trimmed.hasPrefix("[") {
+                continue
+            }
+            let key = trimmed.split(separator: "=", maxSplits: 1).first?
+                .trimmingCharacters(in: .whitespaces) ?? ""
+            if nicCoreKeys.contains(key) {
+                continue
+            }
+            extras.append(trimmed)
+        }
+        return extras
     }
 
     private static func tableString(in text: String, key: String) -> String? {

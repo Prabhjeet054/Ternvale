@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
+use crate::policy::NicPolicy;
 
 /// vmnet operating mode (`<vmnet/vmnet.h>` `operating_modes_t` names).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -91,6 +92,9 @@ pub struct Nic {
     /// User-mode NAT port forwards (`backend = "user"`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forwards: Vec<PortForward>,
+    /// Outbound policy (LAN, CIDR lists, rate limits, anti-spoof). Flattened.
+    #[serde(flatten, default, skip_serializing_if = "NicPolicy::is_default")]
+    pub policy: NicPolicy,
 }
 
 fn default_backend() -> String {
@@ -107,6 +111,7 @@ impl Nic {
             network: None,
             bridge_interface: None,
             forwards: Vec::new(),
+            policy: NicPolicy::default(),
         }
     }
 
@@ -119,6 +124,7 @@ impl Nic {
             network: None,
             bridge_interface: None,
             forwards: Vec::new(),
+            policy: NicPolicy::default(),
         }
     }
 
@@ -165,16 +171,16 @@ impl Nic {
                 ));
             }
             tracing::debug!(
-                target: "ternvale::config",
-                index,
-                fwd = fwd_i,
-                proto = fwd.proto.as_str(),
-                host_port = fwd.host_port,
-                guest_port = fwd.guest_port,
-                "accepted port forward"
+            target: "ternvale::config",
+            index,
+            fwd = fwd_i,
+            proto = fwd.proto.as_str(),
+            host_port = fwd.host_port,
+            guest_port = fwd.guest_port,
+            "accepted port forward"
             );
         }
-        Ok(())
+        self.policy.validate(index)
     }
 
     fn validate_loopback(&self, index: usize) -> Result<(), ConfigError> {
@@ -186,7 +192,7 @@ impl Nic {
                 "forwards apply only to backend = \"user\"",
             ));
         }
-        Ok(())
+        self.policy.validate(index)
     }
 
     fn reject_vmnet_fields(&self, index: usize, backend: &'static str) -> Result<(), ConfigError> {
@@ -265,7 +271,7 @@ impl Nic {
             bridge = self.bridge_interface.as_deref().unwrap_or(""),
             "accepted NIC"
         );
-        Ok(())
+        self.policy.validate(index)
     }
 }
 
@@ -323,6 +329,7 @@ fn validate_iface(index: usize, value: &str) -> Result<(), ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::{Nic, NicMode};
+    use crate::NicPolicy;
 
     fn vmnet(mode: NicMode) -> Nic {
         Nic {
@@ -331,6 +338,7 @@ mod tests {
             network: None,
             bridge_interface: None,
             forwards: Vec::new(),
+            policy: NicPolicy::default(),
         }
     }
 

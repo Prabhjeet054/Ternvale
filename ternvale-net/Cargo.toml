@@ -11,3 +11,5 @@ thiserror = "2"
 tracing = "0.1"
 # Unprivileged ICMP datagram sockets and non-blocking TCP connect.
 libc = "0.2"
+# NicPolicy / CidrPort compiled into the enforcement engine.
+ternvale-config = { path = "../ternvale-config" }

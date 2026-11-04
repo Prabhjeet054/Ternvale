@@ -26,6 +26,23 @@ final class NicConfigTests: XCTestCase {
         XCTAssertEqual(nics[1].bridgeInterface, "en0")
     }
 
+    func testReplaceNicsKeepsPolicyLines() {
+        let text = """
+        name = "lab"
+        kernel = "/path/Image"
+
+        [[nics]]
+        backend = "user"
+        allow_lan = false
+        deny = [{ cidr = "10.0.0.0/8" }]
+        """
+        let nics = VMConfigParser.parseNics(in: text)
+        XCTAssertEqual(nics[0].extraLines.contains("allow_lan = false"), true)
+        let next = VMConfigParser.replacingNics(in: text, nics: nics)
+        XCTAssertTrue(next.contains("allow_lan = false"), next)
+        XCTAssertTrue(next.contains("deny = [{ cidr = \"10.0.0.0/8\" }]"), next)
+    }
+
     func testReplaceNicsKeepsKernel() {
         let text = """
         name = "lab"
@@ -43,7 +60,8 @@ final class NicConfigTests: XCTestCase {
                     backend: "vmnet",
                     mode: "host-only",
                     network: "lab",
-                    bridgeInterface: ""
+                    bridgeInterface: "",
+                    extraLines: []
                 )
             ]
         )

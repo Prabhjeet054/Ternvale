@@ -175,6 +175,8 @@ impl VirtioNet {
         }));
         let generation = Arc::new(AtomicU32::new(0));
         let (tx, rx) = mpsc::channel();
+        let mut backend = backend;
+        backend.attach_policy(mac, Arc::clone(&metrics));
         let name = backend.name();
         let state = worker::Worker::new(
             backend,

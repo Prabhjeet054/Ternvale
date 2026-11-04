@@ -99,8 +99,9 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
                 .collect();
             format!(" forwards=[{}]", list.join(","))
         };
+        let policy = nic_policy_summary(nic);
         line(format!(
-            "  nic {index}       {} mode={}{}{}{forwards}",
+            "  nic {index}       {} mode={}{}{}{forwards}{policy}",
             nic.backend,
             nic.mode.as_str(),
             nic.network
@@ -377,6 +378,37 @@ pub fn render_agent(agent: &AgentJson) -> String {
         }
     }
     line
+}
+
+fn nic_policy_summary(nic: &ternvale_config::Nic) -> String {
+    let policy = &nic.policy;
+    if policy.is_default() {
+        return String::new();
+    }
+    let mut parts = Vec::new();
+    if !policy.allow_lan {
+        parts.push("allow_lan=false".into());
+    }
+    if !policy.anti_spoof {
+        parts.push("anti_spoof=false".into());
+    }
+    if !policy.allow.is_empty() {
+        parts.push(format!("allow={}", policy.allow.len()));
+    }
+    if !policy.deny.is_empty() {
+        parts.push(format!("deny={}", policy.deny.len()));
+    }
+    if let Some(bps) = policy.bandwidth_bps {
+        parts.push(format!("bandwidth_bps={bps}"));
+    }
+    if let Some(pps) = policy.pps {
+        parts.push(format!("pps={pps}"));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", parts.join(" "))
+    }
 }
 
 fn seconds(ms: u64) -> String {
