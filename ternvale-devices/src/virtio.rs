@@ -7,6 +7,7 @@
 mod attach_disks;
 mod balloon;
 mod blk;
+mod console;
 mod core;
 mod input;
 mod irq;
@@ -33,6 +34,10 @@ pub use blk::{
     AttachedBlk, BlkMedia, BlkOptions, BlkStats, VirtioBlk, VirtioBlkError, OPTICAL_BLOCK_SIZE,
     VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO,
     VIRTIO_BLK_F_SEG_MAX, VIRTIO_BLK_ID,
+};
+pub use console::{
+    AttachedConsole, ConsoleError, ConsoleStats, VirtioConsole, AGENT_PORT_NAME, F_MULTIPORT,
+    VIRTIO_CONSOLE_ID,
 };
 pub use input::{
     input_type_name, mac_to_linux_key, AttachedInput, InputError, InputEvent, InputKind, InputSink,

@@ -22,3 +22,10 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["a
 vsock = "0.5"
 # Safe sync(2) / reboot(2) wrappers for the Shutdown request.
 nix = { version = "0.31", default-features = false, features = ["fs", "reboot"] }
+
+[target.'cfg(windows)'.dependencies]
+# SCM dispatch (`--service`) and typed service status updates.
+windows-service = "0.7"
+# Winsock for virtio-win `viosock` (AF_VSOCK). Raw sockets stay behind
+# `windows_vsock.rs` because rust-vsock does not target Windows.
+windows-sys = { version = "0.59", features = ["Win32_Networking_WinSock"] }

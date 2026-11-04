@@ -44,6 +44,10 @@ pub use virtio::{
     AttachedBalloon, BalloonConfig, BalloonError, BalloonHandle, BalloonSnapshot, VirtioBalloon,
     F_DEFLATE_ON_OOM, F_MUST_TELL_HOST, F_PAGE_REPORTING, F_STATS_VQ, VIRTIO_BALLOON_ID,
 };
+pub use virtio::{
+    AttachedConsole, ConsoleError, ConsoleStats, VirtioConsole, AGENT_PORT_NAME, F_MULTIPORT,
+    VIRTIO_CONSOLE_ID,
+};
 pub use virtio::{AttachedP9, P9Error, P9Stats, VirtioP9, VIRTIO_9P_ID, VIRTIO_9P_TAG_LEN};
 pub use virtio::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
 pub use virtio::{AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};

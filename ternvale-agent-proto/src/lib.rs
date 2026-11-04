@@ -29,6 +29,11 @@ pub const PROTOCOL_VERSION: u32 = 3;
 pub const MIN_PROTOCOL_VERSION: u32 = 1;
 /// vsock port the host agent server listens on.
 pub const AGENT_PORT: u32 = 5000;
+/// virtio-console multiport name (`vioserial` / `virtio_console`).
+///
+/// Linux: `/dev/virtio-ports/org.ternvale.agent`.
+/// Windows: `\\.\Global\org.ternvale.agent`.
+pub const AGENT_SERIAL_NAME: &str = "org.ternvale.agent";
 /// Largest frame payload, in bytes.
 pub const MAX_FRAME: usize = 256 * 1024;
 /// Longest `os` / `agent` string in `Hello`.

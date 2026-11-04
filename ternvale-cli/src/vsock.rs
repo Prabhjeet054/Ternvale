@@ -18,6 +18,10 @@ pub struct VsockSetup {
     pub device: VsockConfig,
     /// The agent server, unless `agent = false`.
     pub agent: Option<Arc<AgentServer>>,
+    /// Attach virtio-vsock. False uses virtio-console only.
+    pub attach_vsock: bool,
+    /// Attach virtio-console named port `org.ternvale.agent`.
+    pub attach_serial: bool,
 }
 
 /// `<dir of socket>/<name>.vsock`: the default socket directory, beside the
@@ -67,7 +71,15 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
         tracing::info!(target: "ternvale::cli", "agent server disabled (vsock.agent = false)");
         None
     };
-    tracing::info!(target: "ternvale::cli", dir = %dir.display(), cid = ?section.cid, agent = section.agent, "vsock prepared");
+    tracing::info!(
+        target: "ternvale::cli",
+        dir = %dir.display(),
+        cid = ?section.cid,
+        agent = section.agent,
+        serial = section.serial,
+        vsock_device = section.device,
+        "vsock prepared"
+    );
     Ok(Some(VsockSetup {
         device: VsockConfig {
             guest_cid: section.cid,
@@ -75,5 +87,7 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
             listen_ports: section.listen_ports.clone(),
         },
         agent,
+        attach_vsock: section.device,
+        attach_serial: section.serial && section.agent,
     }))
 }

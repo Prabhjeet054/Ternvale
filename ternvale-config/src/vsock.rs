@@ -24,6 +24,14 @@ pub struct VsockSection {
     /// Run the guest agent server on port 5000. Default true.
     #[serde(default = "yes")]
     pub agent: bool,
+    /// Attach virtio-console MULTIPORT (`org.ternvale.agent`) as a Windows
+    /// (`vioserial`) fallback. Default true when `[vsock]` is present.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub serial: bool,
+    /// Attach the virtio-vsock function. Default true. Set false to force the
+    /// agent onto virtio-serial only.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub device: bool,
     /// Guest ports host processes may connect to via `guest-<port>.sock`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub listen_ports: Vec<u32>,
@@ -35,6 +43,8 @@ impl Default for VsockSection {
             cid: None,
             uds_dir: None,
             agent: true,
+            serial: true,
+            device: true,
             listen_ports: Vec::new(),
         }
     }
@@ -42,6 +52,10 @@ impl Default for VsockSection {
 
 fn yes() -> bool {
     true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 impl VsockSection {
@@ -122,5 +136,14 @@ mod tests {
     fn rejects_unknown_keys() {
         let error = toml::from_str::<VsockSection>("port = 1").expect_err("unknown");
         assert!(error.to_string().contains("port"), "{error}");
+    }
+
+    #[test]
+    fn serial_and_device_flags_default_true() {
+        let section: VsockSection = toml::from_str("agent = true").expect("parse");
+        assert!(section.serial && section.device);
+        let serial_only: VsockSection =
+            toml::from_str("device = false\nserial = true").expect("parse");
+        assert!(!serial_only.device && serial_only.serial && serial_only.agent);
     }
 }

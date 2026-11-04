@@ -42,7 +42,7 @@ pub fn serve(
             error,
         },
         Ok(Some(version)) => {
-            tracing::info!(target: "ternvale::agent", version, addr = %config.target, "agent connected to host");
+            tracing::info!(target: "ternvale::agent", version, addr = %config.target, transport = stream.name(), "agent connected to host");
             match serve_requests(&mut stream, &mut reader, config, actions, stop) {
                 Ok(end) => end,
                 Err(error) => SessionEnd::Ended {

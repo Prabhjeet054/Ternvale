@@ -3,16 +3,21 @@
 //! host requests. Reconnects with exponential backoff whenever the
 //! connection fails or drops.
 //!
-//! The crate also builds on macOS with the Unix-socket transport so host
-//! tests can run the real agent loop against the host server without a VM.
+//! Transports: AF_VSOCK, virtio-serial (`org.ternvale.agent`), and a Unix
+//! socket for host tests. Windows ARM64 uses `--auto` (vsock then serial) and
+//! can run as service `TernvaleGuestAgent`.
 
 mod actions;
 mod backoff;
 mod error;
 mod os;
+#[cfg(windows)]
+pub mod service;
 mod session;
 mod transport;
 mod windows;
+#[cfg(windows)]
+mod windows_vsock;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -22,7 +27,7 @@ pub use backoff::Backoff;
 pub use error::AgentError;
 pub use os::os_description;
 pub use session::SessionEnd;
-pub use transport::{Stream, Target};
+pub use transport::{Stream, Target, Transport};
 
 /// How the agent connects and when it gives up on a connection.
 #[derive(Debug, Clone)]

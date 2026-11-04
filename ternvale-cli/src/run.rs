@@ -5,7 +5,9 @@
 //! driver discs, are virtio-blk on virtio-mmio slots `0..d` (on PCI 00:01.0
 //! onward with `profile = "windows"`), NICs are
 //! virtio-net on the virtio-mmio slots after them, and `[vsock]` adds
-//! virtio-vsock on the next slot plus the guest agent server. `--display
+//! virtio-vsock on the next slot plus the guest agent server. When
+//! `vsock.serial` is true the agent port is also a virtio-console MULTIPORT
+//! function (`org.ternvale.agent`, PCI on Windows profiles). `--display
 //! window` adds a virtio-gpu after them and shows it in the dev viewer
 //! ([`crate::display`]).
 
@@ -15,10 +17,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use ternvale_agent_proto::AGENT_PORT;
 use ternvale_config::{BlockDevice, Nic, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
-    attach_blocks, open_nic, BalloonConfig, Pl011, VirtioBalloon, VirtioNet, VirtioP9, VirtioVsock,
-    VsockConfig, DEFAULT_MAC,
+    attach_blocks, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon, VirtioConsole,
+    VirtioNet, VirtioP9, VirtioVsock, VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -140,6 +143,12 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
         config.nics.clone()
     };
     let device = vsock.as_ref().map(|setup| setup.device.clone());
+    let attach_vsock = vsock.as_ref().is_some_and(|setup| setup.attach_vsock);
+    let console = vsock.as_ref().and_then(|setup| {
+        setup
+            .attach_serial
+            .then(|| host_socket_path(&setup.device.uds_dir, AGENT_PORT))
+    });
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();
     let ram_mib = config.ram_mib;
@@ -152,7 +161,8 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
             blocks: &blocks,
             transport,
             nics: &nics,
-            vsock: device.as_ref(),
+            vsock: if attach_vsock { device.as_ref() } else { None },
+            console: console.as_deref(),
             share,
             display: plan.as_ref(),
             audio,
@@ -237,6 +247,8 @@ struct Wanted<'a> {
     transport: VirtioTransport,
     nics: &'a [Nic],
     vsock: Option<&'a VsockConfig>,
+    /// Host Unix socket for the virtio-console agent port.
+    console: Option<&'a std::path::Path>,
     /// First `[[shares]]` entry (virtio-9p on the next virtio-mmio slot).
     share: Option<&'a Share>,
     /// `--display window`: a virtio-gpu after vsock, then a virtio-input
@@ -325,6 +337,39 @@ fn attach_devices(
         stats.vsock = Some(vsock_stats);
         devices.push((base, size, device));
         mmio_after_net += 1;
+    }
+    if let Some(path) = wanted.console {
+        match wanted.transport {
+            VirtioTransport::Pci => {
+                VirtioConsole::attach_pci(attach, path.to_path_buf())
+                    .map_err(|error| MachineError::Attach(format!("virtio-console: {error}")))?;
+                tracing::info!(
+                    target: "ternvale::cli",
+                    path = %path.display(),
+                    "attached virtio-console (pci) agent port"
+                );
+            }
+            VirtioTransport::Mmio => {
+                let slot = u32::try_from(mmio_after_net).map_err(|_| {
+                    MachineError::Attach("virtio-console slot does not fit in u32".into())
+                })?;
+                let (base, size, device, _stats) = VirtioConsole::attach(
+                    slot,
+                    path.to_path_buf(),
+                    Arc::clone(&attach.memory),
+                    attach.virtio_irq_hook(slot),
+                )
+                .map_err(|error| MachineError::Attach(format!("virtio-console: {error}")))?;
+                tracing::info!(
+                    target: "ternvale::cli",
+                    slot,
+                    path = %path.display(),
+                    "attached virtio-console agent port"
+                );
+                devices.push((base, size, device));
+                mmio_after_net += 1;
+            }
+        }
     }
     if let Some(share) = wanted.share {
         let slot = u32::try_from(mmio_after_net)
