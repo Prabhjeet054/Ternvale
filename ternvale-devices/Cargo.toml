@@ -14,7 +14,7 @@ trace-hot = ["ternvale-vmm/trace-hot"]
 # Builds tests/boot.rs, the hypervisor boot harness. `cargo test --workspace` skips it.
 boot-test = []
 # Real shared-mode vmnet via ternvale-vmnetd (Unix socket). Off by default; see docs/NETWORKING.md.
-vmnet = ["dep:ternvale-net"]
+vmnet = []
 
 [[test]]
 name = "boot"
@@ -33,8 +33,8 @@ ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
 ternvale-metrics = { path = "../ternvale-metrics" }
 # fill_entropy (safe getentropy wrapper) for virtio-rng; raw FFI stays in ternvale-hv.
 ternvale-hv = { path = "../ternvale-hv" }
-# Unprivileged vmnet helper client (feature `vmnet`).
-ternvale-net = { path = "../ternvale-net", optional = true }
+# User-mode NAT (always) and the vmnet helper client (feature `vmnet`).
+ternvale-net = { path = "../ternvale-net" }
 # Host side of the guest agent protocol (AgentServer).
 ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 # BlockDevice / VirtioTransport: attach_blocks places a config's disks and [iso] slots

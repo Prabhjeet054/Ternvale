@@ -130,7 +130,15 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
         .with_context(|| format!("open serial log {}", config.serial_log.display()))?;
 
     let blocks = config.block_devices();
-    let nics = config.nics.clone();
+    let nics = if config.nics.is_empty() {
+        tracing::info!(
+            target: "ternvale::cli",
+            "no [[nics]]; attaching user-mode NAT (10.0.2.2/24)"
+        );
+        vec![Nic::user()]
+    } else {
+        config.nics.clone()
+    };
     let device = vsock.as_ref().map(|setup| setup.device.clone());
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();

@@ -15,7 +15,7 @@ struct VMSettingsView: View {
         self.configURL = configURL
         self.initial = initial
         self.onSave = onSave
-        _nics = State(initialValue: initial.isEmpty ? [NicConfig.loopback(id: 0)] : initial)
+        _nics = State(initialValue: initial.isEmpty ? [NicConfig.user(id: 0)] : initial)
     }
 
     var body: some View {
@@ -23,6 +23,7 @@ struct VMSettingsView: View {
             ForEach($nics) { $nic in
                 Section("NIC \(nic.id)") {
                     Picker("Backend", selection: $nic.backend) {
+                        Text("User NAT").tag("user")
                         Text("Loopback").tag("loopback")
                         Text("vmnet").tag("vmnet")
                     }
@@ -56,7 +57,7 @@ struct VMSettingsView: View {
                 }
             }
             Button("Add NIC") {
-                nics.append(NicConfig.loopback(id: nics.count))
+                nics.append(NicConfig.user(id: nics.count))
             }
             if let error {
                 Text(error).foregroundStyle(.red).font(.caption)

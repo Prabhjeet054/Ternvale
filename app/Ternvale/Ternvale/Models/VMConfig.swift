@@ -12,6 +12,10 @@ struct NicConfig: Equatable, Hashable, Identifiable {
         NicConfig(id: id, backend: "loopback", mode: "shared", network: "", bridgeInterface: "")
     }
 
+    static func user(id: Int) -> NicConfig {
+        NicConfig(id: id, backend: "user", mode: "shared", network: "", bridgeInterface: "")
+    }
+
     var isVmnet: Bool { backend == "vmnet" }
 }
 
@@ -50,7 +54,7 @@ enum VMConfigParser {
         for (index, part) in parts.enumerated() {
             if index == 0 { continue }
             let block = part.components(separatedBy: "[[").first ?? part
-            let backend = tableString(in: block, key: "backend") ?? "loopback"
+            let backend = tableString(in: block, key: "backend") ?? "user"
             nics.append(
                 NicConfig(
                     id: index - 1,

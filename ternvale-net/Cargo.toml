@@ -1,9 +1,13 @@
 [package]
 name = "ternvale-net"
-description = "Unprivileged virtio-net vmnet helper protocol (Unix socket frames)."
+description = "User-mode NAT and the unprivileged vmnet helper protocol."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Typed UserError / helper IO errors.
+thiserror = "2"
 tracing = "0.1"
+# Unprivileged ICMP datagram sockets and non-blocking TCP connect.
+libc = "0.2"

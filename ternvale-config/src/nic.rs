@@ -33,13 +33,53 @@ impl NicMode {
     }
 }
 
+/// TCP or UDP for a [`PortForward`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ForwardProto {
+    /// Host TCP listener, guest TCP port.
+    #[default]
+    Tcp,
+    /// Host UDP socket, guest UDP port.
+    Udp,
+}
+
+impl ForwardProto {
+    /// Wire / log name.
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all)]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tcp => "tcp",
+            Self::Udp => "udp",
+        }
+    }
+
+    fn is_tcp(proto: &ForwardProto) -> bool {
+        matches!(proto, Self::Tcp)
+    }
+}
+
+/// Host-to-guest port forward for the user-mode NAT backend.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PortForward {
+    /// Port bound on the host (default `127.0.0.1`).
+    pub host_port: u16,
+    /// Port on the guest (`10.0.2.15`).
+    pub guest_port: u16,
+    /// `tcp` (default) or `udp`.
+    #[serde(default, skip_serializing_if = "ForwardProto::is_tcp")]
+    pub proto: ForwardProto,
+}
+
 /// One virtual NIC.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Nic {
-    /// Host backend name (`loopback` or `vmnet`).
+    /// Host backend name (`user`, `loopback`, or `vmnet`). Default `user`.
+    #[serde(default = "default_backend")]
     pub backend: String,
-    /// vmnet operating mode. Ignored for `loopback`. Default `shared`.
+    /// vmnet operating mode. Ignored for `user` / `loopback`. Default `shared`.
     #[serde(default, skip_serializing_if = "NicMode::is_shared")]
     pub mode: NicMode,
     /// Host-only virtual network name. VMs that share this name join one LAN.
@@ -48,10 +88,29 @@ pub struct Nic {
     /// Physical interface for `mode = "bridged"` (for example `en0`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bridge_interface: Option<String>,
+    /// User-mode NAT port forwards (`backend = "user"`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forwards: Vec<PortForward>,
+}
+
+fn default_backend() -> String {
+    "user".into()
 }
 
 impl Nic {
-    /// Default loopback NIC.
+    /// Default user-mode NAT NIC (no root, no entitlement).
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all)]
+    pub fn user() -> Self {
+        Self {
+            backend: "user".into(),
+            mode: NicMode::Shared,
+            network: None,
+            bridge_interface: None,
+            forwards: Vec::new(),
+        }
+    }
+
+    /// ARP/ICMP-only loopback NIC (tests).
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all)]
     pub fn loopback() -> Self {
         Self {
@@ -59,6 +118,7 @@ impl Nic {
             mode: NicMode::Shared,
             network: None,
             bridge_interface: None,
+            forwards: Vec::new(),
         }
     }
 
@@ -79,6 +139,7 @@ impl Nic {
             return Err(ConfigError::EmptyNicBackend { index });
         }
         match self.backend.as_str() {
+            "user" => self.validate_user(index),
             "loopback" => self.validate_loopback(index),
             "vmnet" => self.validate_vmnet(index),
             other => {
@@ -93,12 +154,47 @@ impl Nic {
         }
     }
 
+    fn validate_user(&self, index: usize) -> Result<(), ConfigError> {
+        self.reject_vmnet_fields(index, "user")?;
+        for (fwd_i, fwd) in self.forwards.iter().enumerate() {
+            if fwd.host_port == 0 || fwd.guest_port == 0 {
+                return Err(nic_err(
+                    index,
+                    "forwards",
+                    "host_port and guest_port must be 1..=65535",
+                ));
+            }
+            tracing::debug!(
+                target: "ternvale::config",
+                index,
+                fwd = fwd_i,
+                proto = fwd.proto.as_str(),
+                host_port = fwd.host_port,
+                guest_port = fwd.guest_port,
+                "accepted port forward"
+            );
+        }
+        Ok(())
+    }
+
     fn validate_loopback(&self, index: usize) -> Result<(), ConfigError> {
+        self.reject_vmnet_fields(index, "loopback")?;
+        if !self.forwards.is_empty() {
+            return Err(nic_err(
+                index,
+                "forwards",
+                "forwards apply only to backend = \"user\"",
+            ));
+        }
+        Ok(())
+    }
+
+    fn reject_vmnet_fields(&self, index: usize, backend: &'static str) -> Result<(), ConfigError> {
         if !self.mode.is_shared() {
             return Err(nic_err(
                 index,
                 "mode",
-                "loopback has no vmnet mode; omit mode or use backend = \"vmnet\"",
+                "this backend has no vmnet mode; omit mode or use backend = \"vmnet\"",
             ));
         }
         if self.network.is_some() || self.bridge_interface.is_some() {
@@ -108,10 +204,18 @@ impl Nic {
                 "network and bridge_interface apply only to backend = \"vmnet\"",
             ));
         }
+        let _ = backend;
         Ok(())
     }
 
     fn validate_vmnet(&self, index: usize) -> Result<(), ConfigError> {
+        if !self.forwards.is_empty() {
+            return Err(nic_err(
+                index,
+                "forwards",
+                "forwards apply only to backend = \"user\"",
+            ));
+        }
         match self.mode {
             NicMode::Shared => {
                 if self.bridge_interface.is_some() {
@@ -226,7 +330,24 @@ mod tests {
             mode,
             network: None,
             bridge_interface: None,
+            forwards: Vec::new(),
         }
+    }
+
+    #[test]
+    fn user_is_the_default_backend_and_parses_forwards() {
+        let nic: Nic = toml::from_str(
+            r#"
+backend = "user"
+forwards = [{ host_port = 2222, guest_port = 22, proto = "tcp" }]
+"#,
+        )
+        .expect("parse");
+        nic.validate(0).expect("user");
+        assert_eq!(nic.forwards[0].host_port, 2222);
+        assert_eq!(nic.forwards[0].guest_port, 22);
+        let bare: Nic = toml::from_str("").expect("default backend");
+        assert_eq!(bare.backend, "user");
     }
 
     #[test]
@@ -249,6 +370,17 @@ mod tests {
     fn loopback_rejects_vmnet_fields() {
         let mut nic = Nic::loopback();
         nic.mode = NicMode::HostOnly;
+        assert!(nic.validate(0).is_err());
+    }
+
+    #[test]
+    fn vmnet_rejects_user_forwards() {
+        let mut nic = vmnet(NicMode::Shared);
+        nic.forwards.push(super::PortForward {
+            host_port: 2222,
+            guest_port: 22,
+            proto: super::ForwardProto::Tcp,
+        });
         assert!(nic.validate(0).is_err());
     }
 }

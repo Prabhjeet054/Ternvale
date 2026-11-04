@@ -1,9 +1,10 @@
 //! Host side of a virtio-net device.
 
-use ternvale_config::Nic;
+use ternvale_config::{ForwardProto, Nic};
 
 use super::loopback::LoopbackBackend;
 use super::NetError;
+use ternvale_net::{Forward, Proto, UserNet};
 
 /// Moves Ethernet frames (no virtio header, no FCS) between the device and the host.
 ///
@@ -32,7 +33,7 @@ pub trait NetBackend: Send {
 
 /// Build the backend named in a config `nics[].backend` entry.
 ///
-/// `loopback` always works. `vmnet` needs the `vmnet` cargo feature.
+/// `user` (default) and `loopback` always work. `vmnet` needs the `vmnet` cargo feature.
 #[tracing::instrument(level = "debug", target = "ternvale::net", fields(name))]
 pub fn open_backend(name: &str) -> Result<Box<dyn NetBackend>, NetError> {
     let nic = Nic {
@@ -40,6 +41,7 @@ pub fn open_backend(name: &str) -> Result<Box<dyn NetBackend>, NetError> {
         mode: ternvale_config::NicMode::Shared,
         network: None,
         bridge_interface: None,
+        forwards: Vec::new(),
     };
     open_nic(&nic)
 }
@@ -53,6 +55,7 @@ pub fn open_backend(name: &str) -> Result<Box<dyn NetBackend>, NetError> {
 )]
 pub fn open_nic(nic: &Nic) -> Result<Box<dyn NetBackend>, NetError> {
     match nic.backend.as_str() {
+        "user" => open_user(nic),
         "loopback" => {
             tracing::info!(
                 target: "ternvale::net",
@@ -68,6 +71,54 @@ pub fn open_nic(nic: &Nic) -> Result<Box<dyn NetBackend>, NetError> {
                 name: other.to_string(),
             })
         }
+    }
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::net::user", skip_all)]
+fn open_user(nic: &Nic) -> Result<Box<dyn NetBackend>, NetError> {
+    let forwards: Vec<Forward> = nic
+        .forwards
+        .iter()
+        .map(|fwd| Forward {
+            proto: match fwd.proto {
+                ForwardProto::Tcp => Proto::Tcp,
+                ForwardProto::Udp => Proto::Udp,
+            },
+            host: std::net::Ipv4Addr::LOCALHOST,
+            host_port: fwd.host_port,
+            guest_port: fwd.guest_port,
+        })
+        .collect();
+    tracing::info!(
+        target: "ternvale::net::user",
+        backend = "user",
+        forwards = forwards.len(),
+        "net backend selected"
+    );
+    let inner = UserNet::new(forwards).map_err(|error| NetError::User {
+        reason: error.to_string(),
+    })?;
+    Ok(Box::new(UserBackend { inner }))
+}
+
+/// User-mode NAT wrapped as a [`NetBackend`].
+struct UserBackend {
+    inner: UserNet,
+}
+
+impl NetBackend for UserBackend {
+    fn name(&self) -> &'static str {
+        "user"
+    }
+
+    fn send(&mut self, frame: &[u8]) -> Result<(), NetError> {
+        self.inner.send(frame).map_err(|error| NetError::User {
+            reason: error.to_string(),
+        })
+    }
+
+    fn recv(&mut self) -> Result<Option<Vec<u8>>, NetError> {
+        Ok(self.inner.poll())
     }
 }
 

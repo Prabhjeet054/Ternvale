@@ -21,7 +21,7 @@ pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEP
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
 pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BYTES};
-pub use nic::{Nic, NicMode};
+pub use nic::{ForwardProto, Nic, NicMode, PortForward};
 pub use profile::{
     is_iso9660, Profile, VirtioTransport, WINDOWS_MIN_CPUS, WINDOWS_MIN_DISK_BYTES,
     WINDOWS_MIN_RAM_MIB,

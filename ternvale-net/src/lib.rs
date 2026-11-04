@@ -1,12 +1,17 @@
-//! Frame protocol between the unprivileged VMM and `ternvale-vmnetd`.
+//! Unprivileged networking: user-mode NAT and the vmnet helper protocol.
 
 mod client;
 mod helper;
 mod protocol;
+mod user;
 
 pub use client::Client;
 pub use helper::{read_open, serve, serve_client, Port, PortInfo};
 pub use protocol::{Hello, Msg, Open, MSG_DATA, MSG_DROP, MSG_LINK};
+pub use user::{
+    icmp_available, Forward, Proto, UserError, UserNet, UserStats, DEFAULT_GUEST_MAC, DNS_IP,
+    GATEWAY_IP, GATEWAY_MAC, GUEST_IP, NETMASK,
+};
 
 use std::path::{Path, PathBuf};
 

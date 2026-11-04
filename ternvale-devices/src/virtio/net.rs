@@ -75,7 +75,7 @@ pub enum NetError {
         source: std::io::Error,
     },
     /// No backend has this name.
-    #[error("unknown net backend {name:?} (expected \"loopback\" or \"vmnet\")")]
+    #[error("unknown net backend {name:?} (expected \"user\", \"loopback\", or \"vmnet\")")]
     UnknownBackend {
         /// Name from the config.
         name: String,
@@ -92,6 +92,12 @@ pub enum NetError {
     #[error("vmnet: {reason}")]
     Vmnet {
         /// Connect or frame error.
+        reason: String,
+    },
+    /// User-mode NAT failed to bind a forward.
+    #[error("user nat: {reason}")]
+    User {
+        /// Bind or setup error.
         reason: String,
     },
 }

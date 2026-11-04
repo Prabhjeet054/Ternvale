@@ -305,6 +305,7 @@ fn pcap_records_tx_and_rx_frames() {
 
 #[test]
 fn backend_names() {
+    assert_eq!(open_backend("user").expect("user").name(), "user");
     assert_eq!(
         open_backend("loopback").expect("loopback").name(),
         "loopback"

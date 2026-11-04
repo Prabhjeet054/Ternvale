@@ -34,6 +34,7 @@ impl VmnetBackend {
             mode: NicMode::Shared,
             network: None,
             bridge_interface: None,
+            forwards: Vec::new(),
         })
     }
 
@@ -217,6 +218,7 @@ mod tests {
             mode: NicMode::HostOnly,
             network: Some("lab".into()),
             bridge_interface: None,
+            forwards: Vec::new(),
         };
         let open = open_from_nic(&nic);
         assert_eq!(open.mode, VMNET_HOST_MODE);

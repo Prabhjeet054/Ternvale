@@ -82,8 +82,25 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
         ));
     }
     for (index, nic) in config.nics.iter().enumerate() {
+        let forwards = if nic.forwards.is_empty() {
+            String::new()
+        } else {
+            let list: Vec<String> = nic
+                .forwards
+                .iter()
+                .map(|fwd| {
+                    format!(
+                        "{}:{}->{}",
+                        fwd.proto.as_str(),
+                        fwd.host_port,
+                        fwd.guest_port
+                    )
+                })
+                .collect();
+            format!(" forwards=[{}]", list.join(","))
+        };
         line(format!(
-            "  nic {index}       {} mode={}{}{}",
+            "  nic {index}       {} mode={}{}{}{forwards}",
             nic.backend,
             nic.mode.as_str(),
             nic.network
