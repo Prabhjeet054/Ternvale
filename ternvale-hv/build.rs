@@ -10,4 +10,5 @@ fn main() {
         .compile("tv_vmnet_shim");
     println!("cargo:rustc-link-lib=framework=vmnet");
     println!("cargo:rustc-link-lib=framework=System");
+    println!("cargo:rustc-link-lib=framework=CoreFoundation");
 }

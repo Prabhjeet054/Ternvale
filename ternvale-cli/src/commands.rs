@@ -82,7 +82,19 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
         ));
     }
     for (index, nic) in config.nics.iter().enumerate() {
-        line(format!("  nic {index}       {}", nic.backend));
+        line(format!(
+            "  nic {index}       {} mode={}{}{}",
+            nic.backend,
+            nic.mode.as_str(),
+            nic.network
+                .as_deref()
+                .map(|n| format!(" network={n}"))
+                .unwrap_or_default(),
+            nic.bridge_interface
+                .as_deref()
+                .map(|n| format!(" bridge={n}"))
+                .unwrap_or_default()
+        ));
     }
     if let Some(vsock) = &config.vsock {
         let cid = vsock.cid.map_or("auto".to_string(), |cid| cid.to_string());

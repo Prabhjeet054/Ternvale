@@ -11,6 +11,7 @@ final class LibraryViewModel: ObservableObject {
     @Published var statusMessage: String?
     @Published var isBusy = false
     @Published var showCreateVM = false
+    @Published var showVMSettings = false
 
     private let scanner = VMLibraryScanner()
     private let control = ControlSocketClient()
@@ -292,7 +293,8 @@ final class LibraryViewModel: ObservableObject {
             }
             return
         }
-        markCrashed(vmName: term.vmName, reason: nil)
+        let bridged = VmnetHelperService.messageIfBridgedDenied(term.stderr)
+        markCrashed(vmName: term.vmName, reason: bridged)
     }
 
     private func markCrashed(vmName: String, reason: String?) {

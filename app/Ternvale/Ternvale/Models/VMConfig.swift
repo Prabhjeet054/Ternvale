@@ -1,5 +1,20 @@
 import Foundation
 
+/// One `[[nics]]` table from `config.toml`.
+struct NicConfig: Equatable, Hashable, Identifiable {
+    var id: Int
+    var backend: String
+    var mode: String
+    var network: String
+    var bridgeInterface: String
+
+    static func loopback(id: Int) -> NicConfig {
+        NicConfig(id: id, backend: "loopback", mode: "shared", network: "", bridgeInterface: "")
+    }
+
+    var isVmnet: Bool { backend == "vmnet" }
+}
+
 /// Subset of fields read from a library `config.toml`.
 struct VMConfig: Identifiable, Equatable, Hashable {
     var id: String { name }
@@ -8,6 +23,7 @@ struct VMConfig: Identifiable, Equatable, Hashable {
     let ramMiB: Int
     let serialLogPath: String?
     let configURL: URL
+    let nics: [NicConfig]
 }
 
 enum VMConfigParser {
@@ -23,8 +39,77 @@ enum VMConfigParser {
             cpus: cpus,
             ramMiB: ram,
             serialLogPath: serial,
-            configURL: url
+            configURL: url,
+            nics: parseNics(in: text)
         )
+    }
+
+    static func parseNics(in text: String) -> [NicConfig] {
+        var nics: [NicConfig] = []
+        let parts = text.components(separatedBy: "[[nics]]")
+        for (index, part) in parts.enumerated() {
+            if index == 0 { continue }
+            let block = part.components(separatedBy: "[[").first ?? part
+            let backend = tableString(in: block, key: "backend") ?? "loopback"
+            nics.append(
+                NicConfig(
+                    id: index - 1,
+                    backend: backend,
+                    mode: tableString(in: block, key: "mode") ?? "shared",
+                    network: tableString(in: block, key: "network") ?? "",
+                    bridgeInterface: tableString(in: block, key: "bridge_interface") ?? ""
+                )
+            )
+        }
+        return nics
+    }
+
+    /// Replace every `[[nics]]` table; leave the rest of the document intact.
+    static func replacingNics(in text: String, nics: [NicConfig]) -> String {
+        let stripped = stripNicTables(from: text).trimmingCharacters(in: .newlines)
+        var out = stripped + "\n"
+        if nics.isEmpty { return out }
+        out += "\n"
+        for nic in nics {
+            out += "[[nics]]\n"
+            out += "backend = \"\(nic.backend)\"\n"
+            if nic.backend == "vmnet" {
+                out += "mode = \"\(nic.mode)\"\n"
+                if nic.mode == "host-only", !nic.network.isEmpty {
+                    out += "network = \"\(nic.network)\"\n"
+                }
+                if nic.mode == "bridged", !nic.bridgeInterface.isEmpty {
+                    out += "bridge_interface = \"\(nic.bridgeInterface)\"\n"
+                }
+            }
+            out += "\n"
+        }
+        return out
+    }
+
+    private static func stripNicTables(from text: String) -> String {
+        var out: [String] = []
+        var skipping = false
+        for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed == "[[nics]]" {
+                skipping = true
+                continue
+            }
+            if skipping {
+                if trimmed.hasPrefix("[") {
+                    skipping = false
+                    out.append(String(line))
+                }
+                continue
+            }
+            out.append(String(line))
+        }
+        return out.joined(separator: "\n")
+    }
+
+    private static func tableString(in text: String, key: String) -> String? {
+        optionalString(in: text, key: key)
     }
 
     private static func requiredString(in text: String, key: String) throws -> String {

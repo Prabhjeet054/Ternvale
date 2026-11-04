@@ -18,6 +18,8 @@ mod vcpu;
 mod vm;
 #[cfg(feature = "vmnet")]
 mod vmnet;
+#[cfg(feature = "vmnet")]
+mod vmnet_mode;
 
 pub use clock::host_ticks;
 pub use entropy::{fill_entropy, GETENTROPY_MAX};
@@ -41,7 +43,11 @@ pub use vcpu::{
 };
 pub use vm::Vm;
 #[cfg(feature = "vmnet")]
-pub use vmnet::{InterfaceInfo, SharedInterface, VMNET_SHARED_MODE};
+pub use vmnet::{InterfaceInfo, SharedInterface, StartSpec};
+#[cfg(feature = "vmnet")]
+pub use vmnet_mode::{
+    list_bridgeable, network_uuid, VMNET_BRIDGED_MODE, VMNET_HOST_MODE, VMNET_SHARED_MODE,
+};
 
 #[cfg(test)]
 #[path = "gic_hv_test.rs"]

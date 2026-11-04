@@ -8,6 +8,7 @@ mod disk;
 mod error;
 mod firmware_tables;
 mod iso;
+mod nic;
 mod profile;
 mod share;
 mod tpm;
@@ -20,6 +21,7 @@ pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEP
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
 pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BYTES};
+pub use nic::{Nic, NicMode};
 pub use profile::{
     is_iso9660, Profile, VirtioTransport, WINDOWS_MIN_CPUS, WINDOWS_MIN_DISK_BYTES,
     WINDOWS_MIN_RAM_MIB,
@@ -27,7 +29,7 @@ pub use profile::{
 pub use share::{Share, MAX_MOUNT_PATH, MAX_TAG_LEN};
 pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
 pub use usb::{UsbPassthroughEntry, UsbSection};
-pub use vm::{default_nvram_path, Nic, VmConfig};
+pub use vm::{default_nvram_path, VmConfig};
 pub use vsock::{VsockSection, MAX_UDS_DIR};
 
 #[cfg(test)]
@@ -110,6 +112,39 @@ backend = "user"
     }
 
     #[test]
+    fn vmnet_nic_modes_parse_and_reject_bridged_without_iface() {
+        let fix = Fixture::new();
+        let host = format!(
+            "{}\n[[nics]]\nbackend = \"vmnet\"\nmode = \"host-only\"\nnetwork = \"lab\"\n",
+            sample(&fix).replace("[[nics]]\nbackend = \"user\"\n", "")
+        );
+        let config = VmConfig::from_toml(&host).expect("host-only");
+        assert_eq!(config.nics[0].mode, crate::NicMode::HostOnly);
+        assert_eq!(config.nics[0].host_network(), "lab");
+        let bridged = format!(
+            "{}\n[[nics]]\nbackend = \"vmnet\"\nmode = \"bridged\"\n",
+            sample(&fix).replace("[[nics]]\nbackend = \"user\"\n", "")
+        );
+        let error = VmConfig::from_toml(&bridged).expect_err("bridged");
+        assert!(
+            matches!(
+                error,
+                ConfigError::InvalidNic {
+                    field: "bridge_interface",
+                    ..
+                }
+            ),
+            "{error}"
+        );
+        let ok = format!(
+            "{}\n[[nics]]\nbackend = \"vmnet\"\nmode = \"bridged\"\nbridge_interface = \"en0\"\n",
+            sample(&fix).replace("[[nics]]\nbackend = \"user\"\n", "")
+        );
+        let config = VmConfig::from_toml(&ok).expect("bridged en0");
+        assert_eq!(config.nics[0].bridge_interface.as_deref(), Some("en0"));
+    }
+
+    #[test]
     fn crate_name_is_stable() {
         assert_eq!(env!("CARGO_PKG_NAME"), "ternvale-config");
     }
@@ -127,6 +162,7 @@ backend = "user"
         assert!(!config.disks[0].read_only);
         assert_eq!(config.nics.len(), 1);
         assert_eq!(config.nics[0].backend, "user");
+        assert_eq!(config.nics[0].mode, crate::NicMode::Shared);
         let text = config.to_toml().expect("serialize");
         let again = VmConfig::from_toml(&text).expect("reparse");
         assert_eq!(config, again);

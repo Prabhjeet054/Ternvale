@@ -4,7 +4,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::Duration;
 
-use super::protocol::{self, Hello, Msg};
+use super::protocol::{self, write_error, Hello, Msg, Open};
 
 /// What the helper needs from vmnet (or a test fake).
 pub trait Port {
@@ -23,18 +23,74 @@ pub struct PortInfo {
     pub mac: [u8; 6],
 }
 
-/// Accept one client at a time and move frames.
+/// Read the client's `TVNO` request, or default to shared after a short wait.
+#[tracing::instrument(level = "debug", target = "ternvale::net::vmnet", skip_all)]
+pub fn read_open(stream: &mut UnixStream) -> io::Result<Open> {
+    stream.set_read_timeout(Some(Duration::from_millis(250)))?;
+    let open = match Open::read_from(&mut *stream) {
+        Ok(open) => open,
+        Err(error)
+            if error.kind() == io::ErrorKind::TimedOut
+                || error.kind() == io::ErrorKind::WouldBlock
+                || error.kind() == io::ErrorKind::Interrupted =>
+        {
+            tracing::debug!(
+                target: "ternvale::net::vmnet",
+                "no open request; defaulting to shared NAT"
+            );
+            Open::default()
+        }
+        Err(error) => {
+            let _ = stream.set_read_timeout(None);
+            return Err(error);
+        }
+    };
+    stream.set_read_timeout(None)?;
+    tracing::debug!(
+        target: "ternvale::net::vmnet",
+        mode = open.mode,
+        network = %open.network,
+        bridge = %open.bridge,
+        "vmnet open request"
+    );
+    Ok(open)
+}
+
+/// Accept one client at a time and move frames (tests / single-port helpers).
 #[tracing::instrument(level = "debug", target = "ternvale::net::vmnet", skip_all)]
 pub fn serve(listener: UnixListener, mut port: impl Port) -> io::Result<()> {
     tracing::info!(target: "ternvale::net::vmnet", "vmnet helper listening");
     loop {
-        let (stream, _) = listener.accept()?;
+        let (mut stream, _) = listener.accept()?;
+        let _ = read_open(&mut stream);
         if let Err(error) = session(stream, &mut port) {
             tracing::warn!(
                 target: "ternvale::net::vmnet",
                 error = %error,
                 "vmnet helper session ended"
             );
+        }
+    }
+}
+
+/// One client: start a port from `Open`, or send `TVNE` and return.
+#[tracing::instrument(level = "debug", target = "ternvale::net::vmnet", skip_all)]
+pub fn serve_client<P: Port>(
+    mut stream: UnixStream,
+    start: impl FnOnce(Open) -> io::Result<P>,
+) -> io::Result<()> {
+    let open = read_open(&mut stream)?;
+    match start(open) {
+        Ok(mut port) => session(stream, &mut port),
+        Err(error) => {
+            tracing::error!(
+                target: "ternvale::net::vmnet",
+                error = %error,
+                "vmnet interface start failed"
+            );
+            write_error(&mut stream, &error.to_string())?;
+            let _ = stream.flush();
+            Err(error)
         }
     }
 }
@@ -61,23 +117,23 @@ fn session(mut stream: UnixStream, port: &mut impl Port) -> io::Result<()> {
     let mut pending_tx: Vec<Vec<u8>> = Vec::new();
     let mut tmp = [0u8; 8192];
     loop {
-        if port.packets_ready() {
-            match port.read_frames() {
-                Ok(frames) => {
+        match port.read_frames() {
+            Ok(frames) => {
+                if !frames.is_empty() {
                     for frame in frames {
                         Msg::Data(frame).write_to(&mut stream)?;
                     }
                     stream.flush()?;
                 }
-                Err(error) => {
-                    tracing::warn!(
-                        target: "ternvale::net::vmnet",
-                        error = %error,
-                        reason = "vmnet_read failed",
-                        "packet drop"
-                    );
-                    Msg::Drop(format!("vmnet_read: {error}")).write_to(&mut stream)?;
-                }
+            }
+            Err(error) => {
+                tracing::warn!(
+                    target: "ternvale::net::vmnet",
+                    error = %error,
+                    reason = "vmnet_read failed",
+                    "packet drop"
+                );
+                Msg::Drop(format!("vmnet_read: {error}")).write_to(&mut stream)?;
             }
         }
         match stream.read(&mut tmp) {

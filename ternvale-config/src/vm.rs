@@ -7,19 +7,11 @@ use serde::{Deserialize, Serialize};
 use crate::disk::Disk;
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
-use crate::{AudioSection, IsoSection, Profile, Share, TpmSection, UsbSection, VsockSection};
+use crate::{AudioSection, IsoSection, Nic, Profile, Share, TpmSection, UsbSection, VsockSection};
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
 const MAX_CPUS: u32 = 16;
-
-/// One virtual NIC. Only `backend` is defined until the net device lands.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Nic {
-    /// Host backend name. Interpretation is left to the net device.
-    pub backend: String,
-}
 
 /// VM description loaded from TOML.
 ///
@@ -229,20 +221,7 @@ impl VmConfig {
             );
         }
         for (index, nic) in self.nics.iter().enumerate() {
-            if nic.backend.is_empty() {
-                tracing::error!(
-                    target: "ternvale::config",
-                    index,
-                    "rejected NIC with empty backend"
-                );
-                return Err(ConfigError::EmptyNicBackend { index });
-            }
-            tracing::debug!(
-                target: "ternvale::config",
-                index,
-                backend = %nic.backend,
-                "accepted NIC"
-            );
+            nic.validate(index)?;
         }
         validate_serial_log(&self.serial_log)?;
         if let Some(vsock) = &self.vsock {

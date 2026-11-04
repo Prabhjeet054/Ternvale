@@ -217,6 +217,42 @@ while [ "$(cat /sys/class/net/eth0/carrier 2>/dev/null)" != 1 ] && [ "$c" -lt 50
   c=$((c + 1))
 done
 echo "ternvale vmnet link $(cat /sys/class/net/eth0/operstate) carrier=$(cat /sys/class/net/eth0/carrier 2>/dev/null || echo x) mac=$(cat /sys/class/net/eth0/address)"
+ipcfg=$(sed -n 's/.*ternvale.ip=\([^ ]*\).*/\1/p' /proc/cmdline)
+peer=$(sed -n 's/.*ternvale.peer=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -n "$ipcfg" ]; then
+  ip addr add "$ipcfg" dev eth0 || echo "ternvale vmnet FAIL static addr"
+  ip route add 192.168.100.0/24 dev eth0 2>/dev/null || true
+  echo "ternvale vmnet static addr=$ipcfg peer=$peer"
+  if [ -n "$peer" ]; then
+    p=0
+    while [ "$p" -lt 90 ]; do
+      if ping -c 1 -W 1 "$peer" >/tmp/ping.out 2>&1; then
+        echo "ternvale vmnet ping ok"
+        cat /tmp/ping.out
+        break
+      fi
+      p=$((p + 1))
+      sleep 0.2
+    done
+    if [ "$p" -ge 90 ]; then
+      echo "ternvale vmnet FAIL ping"
+      cat /tmp/ping.out 2>/dev/null || true
+      ip neigh show
+      ip addr show eth0
+    fi
+  fi
+  if command -v curl >/dev/null 2>&1 && curl -fsS -o /tmp/curl.out --max-time 8 https://example.com; then
+    echo "ternvale vmnet FAIL internet reachable"
+  else
+    echo "ternvale vmnet internet blocked"
+  fi
+  echo "ternvale vmnet ready"
+  while true; do
+    car=$(cat /sys/class/net/eth0/carrier 2>/dev/null || echo x)
+    echo "ternvale vmnet carrier=${car} $(ip link show eth0 | tr '\n' ' ')"
+    sleep 1
+  done
+fi
 udhcpc -i eth0 -n -q -t 12 -T 2 || echo "ternvale vmnet FAIL dhcp"
 ip addr show eth0
 gw=$(ip route | awk '/default/{print $3; exit}')

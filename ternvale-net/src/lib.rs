@@ -5,8 +5,8 @@ mod helper;
 mod protocol;
 
 pub use client::Client;
-pub use helper::{serve, Port, PortInfo};
-pub use protocol::{Hello, Msg, MSG_DATA, MSG_DROP, MSG_LINK};
+pub use helper::{read_open, serve, serve_client, Port, PortInfo};
+pub use protocol::{Hello, Msg, Open, MSG_DATA, MSG_DROP, MSG_LINK};
 
 use std::path::{Path, PathBuf};
 

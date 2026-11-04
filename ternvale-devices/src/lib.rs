@@ -28,9 +28,9 @@ pub use virtio::{
     REL_HWHEEL, REL_WHEEL, SYN_REPORT, VIRTIO_INPUT_ID,
 };
 pub use virtio::{
-    open_backend, summarize_frame, AttachedNet, LoopbackBackend, NetBackend, NetError, NetStats,
-    PacketKind, PacketSummary, PcapWriter, VirtioNet, DEFAULT_MAC, GATEWAY_IP, GATEWAY_MAC,
-    MAX_FRAME, NET_HDR_LEN, PCAP_ENV, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF,
+    open_backend, open_nic, summarize_frame, AttachedNet, LoopbackBackend, NetBackend, NetError,
+    NetStats, PacketKind, PacketSummary, PcapWriter, VirtioNet, DEFAULT_MAC, GATEWAY_IP,
+    GATEWAY_MAC, MAX_FRAME, NET_HDR_LEN, PCAP_ENV, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF,
     VIRTIO_NET_F_STATUS, VIRTIO_NET_ID, VIRTIO_NET_S_LINK_UP,
 };
 pub use virtio::{

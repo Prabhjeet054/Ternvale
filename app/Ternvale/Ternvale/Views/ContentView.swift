@@ -34,7 +34,8 @@ struct ContentView: View {
                     onPause: library.pauseSelected,
                     onResume: library.resumeSelected,
                     onSeamlessDisabled: library.disableSeamlessWhileRunning,
-                    onSendFeedback: library.sendFeedback
+                    onSendFeedback: library.sendFeedback,
+                    onSettings: { library.showVMSettings = true }
                 )
                 Divider()
                 VMDisplayPanel(
@@ -44,6 +45,15 @@ struct ContentView: View {
                 )
                 Divider()
                 LogPanelView(text: logTailer.text, path: logTailer.path)
+            }
+        }
+        .sheet(isPresented: $library.showVMSettings) {
+            if let vm = library.selection {
+                NavigationStack {
+                    VMSettingsView(configURL: vm.configURL, initial: vm.nics) { _ in
+                        library.refreshLibrary()
+                    }
+                }
             }
         }
         .sheet(isPresented: $library.showCreateVM) {

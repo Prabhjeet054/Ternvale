@@ -15,6 +15,7 @@ struct VMControlBar: View {
     let onResume: () -> Void
     let onSeamlessDisabled: () -> Void
     let onSendFeedback: () -> Void
+    let onSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -40,6 +41,9 @@ struct VMControlBar: View {
                     .disabled(vm == nil || isBusy || phase != .running)
                 Button("Resume", action: onResume)
                     .disabled(vm == nil || isBusy || phase != .paused)
+                Button("Settings…", action: onSettings)
+                    .disabled(vm == nil || isBusy || isRunning)
+                    .help("Edit virtio-net backend and vmnet mode (shared / host-only / bridged).")
                 Button("Send feedback…", action: onSendFeedback)
                     .disabled(vm == nil || isBusy)
                     .help("Zip this VM's crash bundle (Step 30) and open a mail draft. Nothing is uploaded.")

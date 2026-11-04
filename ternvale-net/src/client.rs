@@ -5,7 +5,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 
-use super::protocol::{self, Hello, Msg};
+use super::protocol::{self, Hello, Msg, Open};
 
 /// Connected helper session.
 pub struct Client {
@@ -19,6 +19,17 @@ pub struct Client {
 impl Client {
     #[tracing::instrument(level = "debug", target = "ternvale::net::vmnet", skip_all, fields(path = %path.display()))]
     pub fn connect(path: &Path) -> io::Result<Self> {
+        Self::connect_open(path, &Open::default())
+    }
+
+    /// Connect and request a vmnet operating mode.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::net::vmnet",
+        skip_all,
+        fields(path = %path.display(), mode = open.mode, network = %open.network, bridge = %open.bridge)
+    )]
+    pub fn connect_open(path: &Path, open: &Open) -> io::Result<Self> {
         let mut stream = UnixStream::connect(path).map_err(|error| {
             tracing::error!(
                 target: "ternvale::net::vmnet",
@@ -28,6 +39,8 @@ impl Client {
             );
             error
         })?;
+        open.write_to(&mut stream)?;
+        stream.flush()?;
         let hello = Hello::read_from(&mut stream)?;
         stream.set_nonblocking(true)?;
         tracing::info!(
@@ -171,7 +184,7 @@ impl Drop for Client {
 #[cfg(test)]
 mod tests {
     use super::Client;
-    use crate::protocol::{Hello, Msg};
+    use crate::protocol::{Hello, Msg, Open};
     use std::os::unix::net::UnixListener;
     use std::thread;
     use std::time::Duration;
@@ -185,6 +198,7 @@ mod tests {
         let listener = UnixListener::bind(&path).expect("bind");
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept");
+            let _ = Open::read_from(&mut stream);
             Hello {
                 mtu: 1500,
                 max_packet: 1514,

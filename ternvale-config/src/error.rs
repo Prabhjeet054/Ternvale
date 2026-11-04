@@ -83,6 +83,17 @@ pub enum ConfigError {
         index: usize,
     },
 
+    /// A NIC mode / network / bridge field is invalid.
+    #[error("nics[{index}].{field}: {reason}")]
+    InvalidNic {
+        /// Index into `nics`.
+        index: usize,
+        /// Field, such as `mode` or `bridge_interface`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
+
     /// `boot_disk` was set but `disks` is empty.
     #[error("boot_disk requires at least one disk")]
     BootDiskWithoutDisks,

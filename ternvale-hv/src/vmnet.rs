@@ -8,12 +8,22 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use super::vmnet_mode::{c_string, VMNET_SHARED_MODE};
+
 const BATCH: usize = 32;
 const STRIDE: usize = 65536;
 
 #[link(name = "tv_vmnet_shim", kind = "static")]
 unsafe extern "C" {
-    fn tv_vmnet_start_shared(err: *mut i8, errlen: u32) -> *mut c_void;
+    fn tv_vmnet_start(
+        mode: u32,
+        network: *const i8,
+        bridge: *const i8,
+        host_ip: *const i8,
+        host_mask: *const i8,
+        err: *mut i8,
+        errlen: u32,
+    ) -> *mut c_void;
     fn tv_vmnet_set_event_cb(
         s: *mut c_void,
         cb: Option<unsafe extern "C" fn(*mut c_void)>,
@@ -47,7 +57,22 @@ unsafe extern "C" {
     fn tv_vmnet_status_str(st: i32) -> *const i8;
 }
 
-/// Shared-mode NAT interface owned by the privileged helper.
+/// How to start a vmnet interface (shared / host-only / bridged).
+#[derive(Debug, Clone, Copy)]
+pub struct StartSpec<'a> {
+    /// `VMNET_*_MODE` from `<vmnet/vmnet.h>`.
+    pub mode: u32,
+    /// Host-only LAN name (UUID v5 in the helper). Ignored unless host mode.
+    pub network: Option<&'a str>,
+    /// Physical NIC for bridged mode.
+    pub bridge: Option<&'a str>,
+    /// Host IPv4 on a named host-only LAN (first attach only).
+    pub host_ip: Option<&'a str>,
+    /// Subnet mask paired with [`Self::host_ip`].
+    pub host_mask: Option<&'a str>,
+}
+
+/// vmnet interface owned by the privileged helper.
 pub struct SharedInterface {
     raw: *mut c_void,
     info: InterfaceInfo,
@@ -70,16 +95,52 @@ pub struct InterfaceInfo {
 
 impl SharedInterface {
     /// `vmnet_start_interface` with `VMNET_SHARED_MODE`. Needs root or
-    /// `com.apple.vm.networking`.
+    /// `com.apple.security.virtualization` (macOS 26+).
     #[tracing::instrument(level = "debug", target = "ternvale::net::vmnet", skip_all)]
     pub fn start_shared() -> io::Result<Self> {
-        let mut err = [0i8; 256];
-        // SAFETY: err is a writable C string buffer.
-        let raw = unsafe { tv_vmnet_start_shared(err.as_mut_ptr(), 256) };
+        Self::start(StartSpec {
+            mode: VMNET_SHARED_MODE,
+            network: None,
+            bridge: None,
+            host_ip: None,
+            host_mask: None,
+        })
+    }
+
+    /// Start shared, host-only, or bridged. Bridged needs `com.apple.vm.networking`.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::net::vmnet",
+        skip_all,
+        fields(mode = spec.mode, network = spec.network.unwrap_or(""), bridge = spec.bridge.unwrap_or(""), host_ip = spec.host_ip.unwrap_or(""))
+    )]
+    pub fn start(spec: StartSpec<'_>) -> io::Result<Self> {
+        let mut err = [0i8; 512];
+        let net = spec.network.map(c_string);
+        let br = spec.bridge.map(c_string);
+        let hip = spec.host_ip.map(c_string);
+        let hmask = spec.host_mask.map(c_string);
+        let net_ptr = net.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
+        let br_ptr = br.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
+        let hip_ptr = hip.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
+        let hmask_ptr = hmask.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
+        // SAFETY: err is a writable C string buffer; net/br/host strings are NUL-terminated.
+        let raw = unsafe {
+            tv_vmnet_start(
+                spec.mode,
+                net_ptr,
+                br_ptr,
+                hip_ptr,
+                hmask_ptr,
+                err.as_mut_ptr(),
+                512,
+            )
+        };
         if raw.is_null() {
             let msg = c_err(&err);
             tracing::error!(
                 target: "ternvale::net::vmnet",
+                mode = spec.mode,
                 error = %msg,
                 "vmnet_start_interface failed"
             );
@@ -115,7 +176,11 @@ impl SharedInterface {
             max_read = info.max_read,
             max_write = info.max_write,
             mac = %mac_str(&info.mac),
-            "vmnet shared interface up"
+            mode = spec.mode,
+            network = spec.network.unwrap_or(""),
+            bridge = spec.bridge.unwrap_or(""),
+            host_ip = spec.host_ip.unwrap_or(""),
+            "vmnet interface up"
         );
         let ready = Arc::new(AtomicBool::new(true));
         let iface = Self { raw, info, ready };
@@ -247,7 +312,7 @@ impl SharedInterface {
 
 impl Drop for SharedInterface {
     fn drop(&mut self) {
-        tracing::info!(target: "ternvale::net::vmnet", "vmnet shared interface down");
+        tracing::info!(target: "ternvale::net::vmnet", "vmnet interface down");
         if self.raw.is_null() {
             return;
         }
@@ -306,6 +371,3 @@ pub(crate) fn mac_str(mac: &[u8; 6]) -> String {
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
     )
 }
-
-/// `VMNET_SHARED_MODE` from `<vmnet/vmnet.h>`.
-pub const VMNET_SHARED_MODE: u32 = 1001;

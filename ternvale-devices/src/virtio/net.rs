@@ -24,7 +24,7 @@ use super::irq::{IrqHook, VirtioIrq};
 use super::{QueueNotify, VirtioDevice};
 use ternvale_metrics::Metrics;
 
-pub use backend::{open_backend, NetBackend};
+pub use backend::{open_backend, open_nic, NetBackend};
 pub use loopback::{LoopbackBackend, GATEWAY_IP, GATEWAY_MAC};
 pub use packet::{summarize, Kind as PacketKind, Summary as PacketSummary};
 pub use pcap::{PcapWriter, PCAP_ENV};

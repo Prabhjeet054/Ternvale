@@ -2,11 +2,16 @@ import Foundation
 import os
 
 /// Launches the bundled `ternvale` helper (`run <config>`) once per VM.
+private final class StderrBox: @unchecked Sendable {
+    var data = Data()
+}
+
 final class VMProcessManager {
     struct Termination {
         let vmName: String
         let status: Int32
         let userRequested: Bool
+        let stderr: String
     }
 
     var onTerminate: ((Termination) -> Void)?
@@ -71,7 +76,14 @@ final class VMProcessManager {
         process.standardOutput = pipe
         process.standardError = pipe
         let vmName = vm.name
+        let box = StderrBox()
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            box.data.append(handle.availableData)
+        }
         process.terminationHandler = { [weak self] proc in
+            pipe.fileHandleForReading.readabilityHandler = nil
+            box.data.append(pipe.fileHandleForReading.readDataToEndOfFile())
+            let text = String(data: box.data, encoding: .utf8) ?? ""
             guard let self else { return }
             let requested = self.userRequestedStop.contains(vmName)
             self.userRequestedStop.remove(vmName)
@@ -79,7 +91,12 @@ final class VMProcessManager {
             self.log.info(
                 "helper for \(vmName, privacy: .public) exited status=\(proc.terminationStatus) userStop=\(requested)"
             )
-            let event = Termination(vmName: vmName, status: proc.terminationStatus, userRequested: requested)
+            let event = Termination(
+                vmName: vmName,
+                status: proc.terminationStatus,
+                userRequested: requested,
+                stderr: text
+            )
             self.onTerminate?(event)
         }
         log.info("starting \(binary.path, privacy: .public) run \(vm.configURL.path, privacy: .public)")

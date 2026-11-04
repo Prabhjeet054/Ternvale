@@ -44,8 +44,8 @@ pub use input::{
 pub use irq::{IrqHook, VirtioIrq};
 pub use mmio::{slot_base, VirtioMmio, VirtioMmioError};
 pub use net::{
-    open_backend, summarize as summarize_frame, AttachedNet, LoopbackBackend, NetBackend, NetError,
-    NetStats, PacketKind, PacketSummary, PcapWriter, VirtioNet, DEFAULT_MAC, GATEWAY_IP,
+    open_backend, open_nic, summarize as summarize_frame, AttachedNet, LoopbackBackend, NetBackend,
+    NetError, NetStats, PacketKind, PacketSummary, PcapWriter, VirtioNet, DEFAULT_MAC, GATEWAY_IP,
     GATEWAY_MAC, MAX_FRAME, NET_HDR_LEN, PCAP_ENV, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF,
     VIRTIO_NET_F_STATUS, VIRTIO_NET_ID, VIRTIO_NET_S_LINK_UP,
 };

@@ -43,6 +43,8 @@
 		B10000000000000000000023 /* FeedbackMailerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000023 /* FeedbackMailerTests.swift */; };
 		B10000000000000000000024 /* com.ternvale.vmnetd.plist in Copy LaunchDaemons */ = {isa = PBXBuildFile; fileRef = B20000000000000000000024 /* com.ternvale.vmnetd.plist */; };
 		B10000000000000000000025 /* VmnetHelperService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000025 /* VmnetHelperService.swift */; };
+		B10000000000000000000026 /* VMSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000026 /* VMSettingsView.swift */; };
+		B10000000000000000000027 /* NicConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000027 /* NicConfigTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -83,6 +85,8 @@
 		B20000000000000000000023 /* FeedbackMailerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackMailerTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000024 /* com.ternvale.vmnetd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = com.ternvale.vmnetd.plist; sourceTree = "<group>"; };
 		B20000000000000000000025 /* VmnetHelperService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VmnetHelperService.swift; sourceTree = "<group>"; };
+		B20000000000000000000026 /* VMSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMSettingsView.swift; sourceTree = "<group>"; };
+		B20000000000000000000027 /* NicConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NicConfigTests.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -139,6 +143,7 @@
 				B2000000000000000000001D /* SeamlessWindowSyncTests.swift */,
 				B20000000000000000000021 /* UpdateFeedTests.swift */,
 				B20000000000000000000023 /* FeedbackMailerTests.swift */,
+				B20000000000000000000027 /* NicConfigTests.swift */,
 			);
 			path = TernvaleTests;
 			sourceTree = "<group>";
@@ -153,6 +158,7 @@
 				B20000000000000000000012 /* CreateVMView.swift */,
 				B20000000000000000000019 /* VMDisplayPanel.swift */,
 				B20000000000000000000020 /* UpdateBannerView.swift */,
+				B20000000000000000000026 /* VMSettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -357,6 +363,7 @@
 				B1000000000000000000001D /* SeamlessWindowSyncTests.swift in Sources */,
 				B10000000000000000000021 /* UpdateFeedTests.swift in Sources */,
 				B10000000000000000000023 /* FeedbackMailerTests.swift in Sources */,
+				B10000000000000000000027 /* NicConfigTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -394,6 +401,7 @@
 				B10000000000000000000020 /* UpdateBannerView.swift in Sources */,
 				B10000000000000000000022 /* FeedbackMailer.swift in Sources */,
 				B10000000000000000000025 /* VmnetHelperService.swift in Sources */,
+				B10000000000000000000026 /* VMSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

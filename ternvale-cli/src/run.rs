@@ -15,10 +15,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use ternvale_config::{BlockDevice, Share, VirtioTransport, VmConfig};
+use ternvale_config::{BlockDevice, Nic, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
-    attach_blocks, open_backend, BalloonConfig, Pl011, VirtioBalloon, VirtioNet, VirtioP9,
-    VirtioVsock, VsockConfig, DEFAULT_MAC,
+    attach_blocks, open_nic, BalloonConfig, Pl011, VirtioBalloon, VirtioNet, VirtioP9, VirtioVsock,
+    VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -130,7 +130,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
         .with_context(|| format!("open serial log {}", config.serial_log.display()))?;
 
     let blocks = config.block_devices();
-    let nics: Vec<String> = config.nics.iter().map(|nic| nic.backend.clone()).collect();
+    let nics = config.nics.clone();
     let device = vsock.as_ref().map(|setup| setup.device.clone());
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();
@@ -227,7 +227,7 @@ struct Wanted<'a> {
     blocks: &'a [BlockDevice],
     /// Where the block devices go. NICs and vsock have no PCI transport yet.
     transport: VirtioTransport,
-    nics: &'a [String],
+    nics: &'a [Nic],
     vsock: Option<&'a VsockConfig>,
     /// First `[[shares]]` entry (virtio-9p on the next virtio-mmio slot).
     share: Option<&'a Share>,
@@ -264,13 +264,17 @@ fn attach_devices(
     if wanted.transport == VirtioTransport::Pci && (!nics.is_empty() || vsock.is_some()) {
         tracing::warn!(target: "ternvale::cli", nics = nics.len(), vsock = vsock.is_some(), "virtio-net and virtio-vsock have no PCI transport yet; they stay on virtio-mmio, which a guest that enumerates only PCI (Windows) never sees");
     }
-    for (index, backend_name) in nics.iter().enumerate() {
+    for (index, nic) in nics.iter().enumerate() {
+        let backend_name = nic.backend.as_str();
         let slot = u32::try_from(mmio_slots + index)
             .map_err(|_| MachineError::Attach(format!("nic {index} slot does not fit in u32")))?;
         let fail = |error: ternvale_devices::NetError| {
-            MachineError::Attach(format!("nic {index} (backend {backend_name}): {error}"))
+            MachineError::Attach(format!(
+                "nic {index} (backend {backend_name} mode {}): {error}",
+                nic.mode.as_str()
+            ))
         };
-        let backend = open_backend(backend_name).map_err(fail)?;
+        let backend = open_nic(nic).map_err(fail)?;
         let mac = backend.guest_mac().unwrap_or_else(|| {
             let mut mac = DEFAULT_MAC;
             mac[5] = mac[5].wrapping_add(index as u8);
@@ -285,8 +289,17 @@ fn attach_devices(
             Arc::clone(&attach.metrics),
         )
         .map_err(fail)?;
-        tracing::info!(target: "ternvale::cli", slot, backend = %backend_name, mac = ?mac, "attached virtio-net");
-        stats.nics.push((backend_name.clone(), nic_stats));
+        tracing::info!(
+            target: "ternvale::cli",
+            slot,
+            backend = %backend_name,
+            mode = nic.mode.as_str(),
+            network = nic.network.as_deref().unwrap_or(""),
+            bridge = nic.bridge_interface.as_deref().unwrap_or(""),
+            mac = ?mac,
+            "attached virtio-net"
+        );
+        stats.nics.push((backend_name.to_string(), nic_stats));
         devices.push((base, size, device));
     }
     let mut mmio_after_net = mmio_slots + nics.len();

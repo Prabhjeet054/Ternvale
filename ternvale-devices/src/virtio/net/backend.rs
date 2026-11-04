@@ -1,5 +1,7 @@
 //! Host side of a virtio-net device.
 
+use ternvale_config::Nic;
+
 use super::loopback::LoopbackBackend;
 use super::NetError;
 
@@ -33,12 +35,33 @@ pub trait NetBackend: Send {
 /// `loopback` always works. `vmnet` needs the `vmnet` cargo feature.
 #[tracing::instrument(level = "debug", target = "ternvale::net", fields(name))]
 pub fn open_backend(name: &str) -> Result<Box<dyn NetBackend>, NetError> {
-    match name {
+    let nic = Nic {
+        backend: name.to_string(),
+        mode: ternvale_config::NicMode::Shared,
+        network: None,
+        bridge_interface: None,
+    };
+    open_nic(&nic)
+}
+
+/// Open the backend described by a full `[[nics]]` entry (mode / network / bridge).
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::net",
+    skip_all,
+    fields(backend = %nic.backend, mode = nic.mode.as_str())
+)]
+pub fn open_nic(nic: &Nic) -> Result<Box<dyn NetBackend>, NetError> {
+    match nic.backend.as_str() {
         "loopback" => {
-            tracing::info!(target: "ternvale::net", backend = name, "net backend selected");
+            tracing::info!(
+                target: "ternvale::net",
+                backend = "loopback",
+                "net backend selected"
+            );
             Ok(Box::new(LoopbackBackend::new()))
         }
-        "vmnet" => open_vmnet(),
+        "vmnet" => open_vmnet(nic),
         other => {
             tracing::error!(target: "ternvale::net", backend = other, "unknown net backend");
             Err(NetError::UnknownBackend {
@@ -49,13 +72,13 @@ pub fn open_backend(name: &str) -> Result<Box<dyn NetBackend>, NetError> {
 }
 
 #[cfg(feature = "vmnet")]
-fn open_vmnet() -> Result<Box<dyn NetBackend>, NetError> {
-    let backend = super::vmnet::VmnetBackend::open_shared()?;
+fn open_vmnet(nic: &Nic) -> Result<Box<dyn NetBackend>, NetError> {
+    let backend = super::vmnet::VmnetBackend::open(nic)?;
     Ok(Box::new(backend))
 }
 
 #[cfg(not(feature = "vmnet"))]
-fn open_vmnet() -> Result<Box<dyn NetBackend>, NetError> {
+fn open_vmnet(_nic: &Nic) -> Result<Box<dyn NetBackend>, NetError> {
     tracing::error!(
         target: "ternvale::net",
         "vmnet backend requested but ternvale-devices was built without the vmnet feature"
