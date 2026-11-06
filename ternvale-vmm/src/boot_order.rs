@@ -17,8 +17,8 @@
 //!   Options under `PciRoot(0x0)` or a virtio-mmio `VenHw` that no line selects
 //!   are dropped from `BootOrder` (`BootOrderComplete`), so every bootable
 //!   device is listed: `iso.installer`, then ISO disks, then the other disks
-//!   in config order. `iso.drivers` is deliberately unlisted, which drops its
-//!   option. The UEFI shell and other firmware-volume options keep their place
+//!   in config order. `iso.drivers` and `iso.tools` are deliberately unlisted,
+//!   which drops their options. The UEFI shell and other firmware-volume options keep their place
 //!   after them.
 //!
 //! TODO(verify): EDK2 builds may differ. The `windows-profile` boot scenario
@@ -74,7 +74,7 @@ pub fn disk_ofw_path(transport: VirtioTransport, index: usize) -> Result<String,
 ///
 /// Indices are positions in [`VmConfig::block_devices`]: `iso.installer`
 /// first, then `[[disks]]` that are ISO images, then the other disks.
-/// `iso.drivers` is left out, so EDK2 drops its boot option.
+/// `iso.drivers` / `iso.tools` are left out, so EDK2 drops their boot options.
 #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(name = %config.name, profile = %config.profile))]
 pub(crate) fn file(config: &VmConfig) -> Result<Option<(String, Vec<u8>)>, MachineError> {
     if !config.iso_boots_first() {
@@ -87,8 +87,8 @@ pub(crate) fn file(config: &VmConfig) -> Result<Option<(String, Vec<u8>)>, Machi
     for (index, device) in devices.iter().enumerate() {
         match device.role {
             BlockRole::Installer => isos.insert(0, index),
-            BlockRole::Drivers => {
-                tracing::info!(target: "ternvale::boot", index, path = %device.path.display(), "driver disc left out of the uefi boot order");
+            BlockRole::Drivers | BlockRole::Tools => {
+                tracing::info!(target: "ternvale::boot", index, role = %device.role, path = %device.path.display(), "optical disc left out of the uefi boot order");
             }
             BlockRole::Disk if is_iso(&device.path)? => isos.push(index),
             BlockRole::Disk => others.push(index),

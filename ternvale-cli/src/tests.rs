@@ -201,6 +201,18 @@ fn parses_every_subcommand() {
             expect_gatekeeper: true
         }
     );
+    assert_eq!(
+        parse(&["ternvale", "tools", "build-iso"]),
+        Command::Tools {
+            action: crate::tools::ToolsCommand::BuildIso {
+                virtio_win: None,
+                fetch: false,
+                agent: None,
+                out: None,
+                agent_version: None,
+            }
+        }
+    );
 }
 
 #[test]

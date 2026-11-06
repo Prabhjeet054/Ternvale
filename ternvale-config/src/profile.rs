@@ -217,11 +217,13 @@ fn warn_small_disks(profile: Profile, config: &VmConfig) {
 /// `viostor` from a driver disc.
 fn warn_missing_drivers(profile: Profile, config: &VmConfig) {
     let iso = config.iso.as_ref();
-    if iso.is_some_and(|iso| iso.installer.is_some() && iso.drivers.is_none()) {
+    if iso
+        .is_some_and(|iso| iso.installer.is_some() && iso.drivers.is_none() && iso.tools.is_none())
+    {
         tracing::warn!(
             target: "ternvale::config",
             %profile,
-            "iso.installer without iso.drivers: Windows Setup has no virtio driver and will list no disk; attach virtio-win (scripts/fetch-virtio-win.sh)"
+            "iso.installer without iso.drivers or iso.tools: Windows Setup has no virtio driver and will list no disk; attach ternvale-tools.iso (`ternvale tools build-iso`) or virtio-win (scripts/fetch-virtio-win.sh)"
         );
     }
 }

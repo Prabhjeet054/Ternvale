@@ -38,6 +38,11 @@ pub mod server;
 pub mod snapshot_cmd;
 pub mod stats_cmd;
 pub mod summary;
+pub mod tools;
+pub mod tools_build;
+pub mod tools_hybrid;
+pub mod tools_manifest;
+pub mod tools_verify;
 pub mod update_check;
 pub mod vsock;
 
@@ -201,6 +206,7 @@ fn non_run(command: Command) -> Result<ExitCode> {
             offline,
         } => acpi::acpi_dump(&out, qemu_ram.as_deref(), ram_base, cpus, offline),
         Command::UpdateCheck { feed } => update_check::update_check(&feed),
+        Command::Tools { action } => tools::tools(action),
         Command::ReleaseVerify {
             app,
             expect_gatekeeper,
@@ -214,3 +220,7 @@ mod tests;
 #[cfg(test)]
 #[path = "agent_tests.rs"]
 mod agent_tests;
+
+#[cfg(test)]
+#[path = "tools_tests.rs"]
+mod tools_tests;

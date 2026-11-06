@@ -8,6 +8,8 @@ guest-tests/*.bin
 .cursor/
 docs/
 test-assets/
+ternvale-tools.iso
+**/*.iso.manifest.json
 bench-results/
 ternvale-cursor-prompts.md
 ternvale-cursor-prompts-part2.md

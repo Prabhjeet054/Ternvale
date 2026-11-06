@@ -1,15 +1,16 @@
-//! `[iso]`: two read-only optical slots next to `[[disks]]`.
+//! `[iso]`: read-only optical slots next to `[[disks]]`.
 //!
 //! - `installer`: the OS installer image (a Windows 11 Arm64 ISO, say). The
 //!   `windows` profile puts it first in the UEFI boot order.
-//! - `drivers`: a driver disc for the installer, meant for Red Hat's
-//!   virtio-win ISO (`scripts/fetch-virtio-win.sh`; it is fetched, never
-//!   bundled). It is never booted: the boot order leaves it out, so EDK2
-//!   drops its boot option.
+//! - `tools`: `ternvale-tools.iso` (virtio-win + guest agent). The Windows
+//!   profile auto-attaches the default ISO when this is unset. Never booted.
+//! - `drivers`: a driver disc for the installer, meant for a raw virtio-win
+//!   ISO (`scripts/fetch-virtio-win.sh`; it is fetched, never bundled). Never
+//!   booted: the boot order leaves it out, so EDK2 drops its boot option.
 //!
-//! Both are attached after the disks, in that order ([`VmConfig::block_devices`]),
-//! always read-only, as virtio-blk devices with optical-media features (see
-//! `ternvale-devices`, `BlkMedia::Optical`).
+//! Slots attach after the disks, installer then tools then drivers
+//! ([`VmConfig::block_devices`]), always read-only, as virtio-blk devices with
+//! optical-media features (see `ternvale-devices`, `BlkMedia::Optical`).
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -30,6 +31,9 @@ pub struct IsoSection {
     /// Installer image; first in the boot order with `profile = "windows"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub installer: Option<PathBuf>,
+    /// Ternvale tools ISO (virtio-win + agent); never booted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<PathBuf>,
     /// Driver disc (virtio-win) for the installer; never booted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drivers: Option<PathBuf>,
@@ -42,6 +46,8 @@ pub enum BlockRole {
     Disk,
     /// `iso.installer`.
     Installer,
+    /// `iso.tools`.
+    Tools,
     /// `iso.drivers`.
     Drivers,
 }
@@ -51,6 +57,7 @@ impl fmt::Display for BlockRole {
         formatter.write_str(match self {
             Self::Disk => "disk",
             Self::Installer => "installer",
+            Self::Tools => "tools",
             Self::Drivers => "drivers",
         })
     }
@@ -94,6 +101,7 @@ impl IsoSection {
                 BlockRole::Installer,
                 self.installer.as_deref(),
             ),
+            ("iso.tools", BlockRole::Tools, self.tools.as_deref()),
             ("iso.drivers", BlockRole::Drivers, self.drivers.as_deref()),
         ]
         .into_iter()
@@ -103,7 +111,8 @@ impl IsoSection {
     /// Each slot must be an existing disc image not attached twice.
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %config.name))]
     pub(crate) fn validate(&self, config: &VmConfig) -> Result<(), ConfigError> {
-        for (field, role, path) in self.slots() {
+        let mut earlier: Vec<(&'static str, &Path)> = Vec::new();
+        for (field, _role, path) in self.slots() {
             crate::vm::require_file(field, path)?;
             let format = disc_format(path).map_err(|source| {
                 invalid(
@@ -127,13 +136,14 @@ impl IsoSection {
                     format!("already attached as disks[{index}]"),
                 ));
             }
-            if role == BlockRole::Drivers && self.installer.as_deref().is_some_and(same) {
+            if let Some((other_field, _)) = earlier.iter().copied().find(|(_, other)| same(other)) {
                 return Err(invalid(
                     field,
                     path,
-                    "already attached as iso.installer".into(),
+                    format!("already attached as {other_field}"),
                 ));
             }
+            earlier.push((field, path));
             warn_partial_sector(field, path);
             tracing::debug!(target: "ternvale::config", field, path = %path.display(), format, "accepted iso slot");
         }
@@ -143,7 +153,7 @@ impl IsoSection {
 
 impl VmConfig {
     /// Every virtio-blk device in attach order: `[[disks]]` in config order,
-    /// then `iso.installer`, then `iso.drivers`.
+    /// then `iso.installer`, `iso.tools`, `iso.drivers`.
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
     pub fn block_devices(&self) -> Vec<BlockDevice> {
         let disks = self.disks.iter().map(|disk| BlockDevice {

@@ -9,6 +9,7 @@ struct VMControlBar: View {
     let isRunning: Bool
     let isBusy: Bool
     let statusMessage: String?
+    let toolsOutdatedMessage: String?
     let onStart: () -> Void
     let onStop: () -> Void
     let onPause: () -> Void
@@ -64,6 +65,14 @@ struct VMControlBar: View {
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            }
+            if let toolsOutdatedMessage, !toolsOutdatedMessage.isEmpty {
+                Text(toolsOutdatedMessage)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.yellow.opacity(0.35))
             }
             if let statusMessage, !statusMessage.isEmpty {
                 Text(statusMessage)

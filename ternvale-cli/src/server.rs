@@ -51,6 +51,7 @@ impl ControlServer {
                 control,
                 agent,
                 diag: None,
+                tools_iso: None,
             },
         )
     }
@@ -62,6 +63,7 @@ impl ControlServer {
         control: Arc<VmControl>,
         agent: Option<Arc<AgentServer>>,
         diag: Arc<DiagSink>,
+        tools_iso: Option<PathBuf>,
     ) -> Result<Self> {
         Self::serve_vm(
             path,
@@ -69,6 +71,7 @@ impl ControlServer {
                 control,
                 agent,
                 diag: Some(diag),
+                tools_iso,
             },
         )
     }
@@ -151,6 +154,7 @@ struct Served {
     control: Arc<VmControl>,
     agent: Option<Arc<AgentServer>>,
     diag: Option<Arc<DiagSink>>,
+    tools_iso: Option<PathBuf>,
 }
 
 fn accept_loop(listener: &UnixListener, served: &Served, stop: &AtomicBool) {
@@ -217,6 +221,7 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
                 &served.control,
                 served.agent.as_deref(),
                 served.diag.as_deref(),
+                served.tools_iso.as_deref(),
             )
         };
         let mut out = serde_json::to_string(&response).context("encode control response")?;
@@ -234,7 +239,7 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
 /// response includes `agent`'s connection.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name()))]
 pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>) -> Response {
-    handle_line_with(line, control, agent, None)
+    handle_line_with(line, control, agent, None, None)
 }
 
 /// [`handle_line`], with `diag` answering `dump-diagnostics` (an error without it).
@@ -244,6 +249,7 @@ pub fn handle_line_with(
     control: &VmControl,
     agent: Option<&AgentServer>,
     diag: Option<&DiagSink>,
+    tools_iso: Option<&Path>,
 ) -> Response {
     let request: Request = match serde_json::from_str(line) {
         Ok(request) => request,
@@ -347,9 +353,7 @@ pub fn handle_line_with(
             return match crate::clipboard::pull_from_guest(agent, wait) {
                 Ok(text) => {
                     let mut response = Response::clipboard(&control.status(), text);
-                    if let Some(status) = response.status.as_mut() {
-                        status.agent = Some(AgentJson::from(&agent.status()));
-                    }
+                    decorate_status(&mut response, Some(agent), tools_iso);
                     response
                 }
                 Err(error) => Response::error(format!("clipboard-get: {error:#}")),
@@ -366,9 +370,7 @@ pub fn handle_line_with(
                 return Response::error(format!("clipboard-set: {error}"));
             }
             let mut response = Response::status(&control.status());
-            if let Some(status) = response.status.as_mut() {
-                status.agent = Some(AgentJson::from(&agent.status()));
-            }
+            decorate_status(&mut response, Some(agent), tools_iso);
             return response;
         }
         Request::DumpDiagnostics => {
@@ -377,10 +379,14 @@ pub fn handle_line_with(
                 return Response::error("this vm does not record diagnostics");
             };
             return match diag.dump(None) {
-                Ok(files) => Response::files(
-                    &control.status(),
-                    files.iter().map(|f| f.display().to_string()).collect(),
-                ),
+                Ok(files) => {
+                    let mut response = Response::files(
+                        &control.status(),
+                        files.iter().map(|f| f.display().to_string()).collect(),
+                    );
+                    decorate_status(&mut response, agent, tools_iso);
+                    response
+                }
                 Err(error) => {
                     tracing::warn!(target: "ternvale::cli", error = %format!("{error:#}"), "dump-diagnostics failed");
                     Response::error(format!("dump diagnostics: {error:#}"))
@@ -390,15 +396,22 @@ pub fn handle_line_with(
     };
     match result {
         Ok(mut response) => {
-            if let (Some(status), Some(agent)) = (response.status.as_mut(), agent) {
-                status.agent = Some(AgentJson::from(&agent.status()));
-            }
-            tracing::debug!(target: "ternvale::cli", state = ?response.status.as_ref().map(|s| s.state.as_str()), agent = ?response.status.as_ref().and_then(|s| s.agent.as_ref()).map(|a| a.state.as_str()), "control request done");
+            decorate_status(&mut response, agent, tools_iso);
+            tracing::debug!(target: "ternvale::cli", state = ?response.status.as_ref().map(|s| s.state.as_str()), agent = ?response.status.as_ref().and_then(|s| s.agent.as_ref()).map(|a| a.state.as_str()), tools_outdated = ?response.status.as_ref().and_then(|s| s.tools_outdated), "control request done");
             response
         }
         Err(error) => {
             tracing::warn!(target: "ternvale::cli", error = %error, "control request failed");
             Response::error(error.to_string())
         }
+    }
+}
+
+fn decorate_status(response: &mut Response, agent: Option<&AgentServer>, tools_iso: Option<&Path>) {
+    if let Some(status) = response.status.as_mut() {
+        if let Some(agent) = agent {
+            status.agent = Some(AgentJson::from(&agent.status()));
+        }
+        crate::tools::fill_tools_outdated(status, tools_iso);
     }
 }

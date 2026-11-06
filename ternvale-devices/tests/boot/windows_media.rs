@@ -251,6 +251,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         profile: Default::default(),
         iso: Some(ternvale_config::IsoSection {
             installer: Some(installer.to_path_buf()),
+            tools: None,
             drivers: Some(drivers.to_path_buf()),
         }),
         cpus: 1,

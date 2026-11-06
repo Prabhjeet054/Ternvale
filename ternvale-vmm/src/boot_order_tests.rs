@@ -22,6 +22,7 @@ impl Dir {
         let mut config = self.config(profile, disks);
         config.iso = Some(ternvale_config::IsoSection {
             installer: installer.then(|| self.0.join("install.iso")),
+            tools: None,
             drivers: drivers.then(|| self.0.join("drivers.iso")),
         });
         config

@@ -120,10 +120,14 @@ struct VMStatusPayload: Decodable {
     let uptimeMs: UInt64
     let failure: String?
     let stopCause: String?
+    let toolsOutdated: Bool?
+    let toolsIsoAgent: String?
 
     enum CodingKeys: String, CodingKey {
         case name, state, cpus, failure
         case uptimeMs = "uptime_ms"
         case stopCause = "stop_cause"
+        case toolsOutdated = "tools_outdated"
+        case toolsIsoAgent = "tools_iso_agent"
     }
 }

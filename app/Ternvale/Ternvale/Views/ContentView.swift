@@ -29,6 +29,7 @@ struct ContentView: View {
                     isRunning: library.selectedIsRunning,
                     isBusy: library.isBusy,
                     statusMessage: library.statusMessage,
+                    toolsOutdatedMessage: library.toolsOutdatedMessage,
                     onStart: library.startSelected,
                     onStop: library.stopSelected,
                     onPause: library.pauseSelected,

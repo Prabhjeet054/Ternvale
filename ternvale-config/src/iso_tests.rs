@@ -13,6 +13,7 @@ impl Dir {
         fs::write(dir.join("fw.fd"), b"x").expect("firmware");
         fs::write(dir.join("system.img"), vec![0u8; 4096]).expect("disk");
         disc(&dir.join("win.iso"), b"CD001", 17);
+        disc(&dir.join("tools.iso"), b"CD001", 17);
         disc(&dir.join("virtio-win.iso"), b"CD001", 18);
         disc(&dir.join("udf.iso"), b"BEA01", 17);
         disc(&dir.join("raw.img"), b"NOTCD", 17);
@@ -98,6 +99,17 @@ fn either_slot_is_optional_and_udf_only_images_are_accepted() {
     assert_eq!(config.block_devices()[1].role, BlockRole::Installer);
     let none = VmConfig::from_toml(&dir.config("linux", "")).expect("empty section");
     assert_eq!(none.block_devices().len(), 1);
+    let tools = format!(
+        "installer = \"{}\"\ntools = \"{}\"\n",
+        dir.path("win.iso"),
+        dir.path("tools.iso")
+    );
+    let config = VmConfig::from_toml(&dir.config("windows", &tools)).expect("tools");
+    let roles: Vec<_> = config.block_devices().iter().map(|d| d.role).collect();
+    assert_eq!(
+        roles,
+        [BlockRole::Disk, BlockRole::Installer, BlockRole::Tools]
+    );
 }
 
 #[test]

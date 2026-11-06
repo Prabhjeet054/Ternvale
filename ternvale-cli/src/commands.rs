@@ -24,7 +24,13 @@ const STOP_POLL: Duration = Duration::from_millis(100);
 /// `ternvale validate <config>`.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %path.display()))]
 pub fn validate(path: &Path) -> Result<ExitCode> {
-    let config = VmConfig::from_path(path)
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("validate vm config {}", path.display()))?;
+    let mut config =
+        VmConfig::parse(&text).with_context(|| format!("validate vm config {}", path.display()))?;
+    crate::tools::auto_attach_windows_tools(&mut config);
+    config
+        .validate()
         .with_context(|| format!("validate vm config {}", path.display()))?;
     let socket = paths::socket_path(&config.name)
         .with_context(|| format!("vm name {:?} cannot name a control socket", config.name))?;
@@ -287,6 +293,12 @@ pub fn render(status: &StatusJson, stats: Option<&StatsJson>) -> String {
     }
     if let Some(agent) = &status.agent {
         lines.push(render_agent(agent));
+    }
+    if status.tools_outdated == Some(true) {
+        let iso = status.tools_iso_agent.as_deref().unwrap_or("unknown");
+        lines.push(format!(
+            "  tools: outdated (ISO agent {iso}; reinstall from ternvale-tools.iso)"
+        ));
     }
     if let Some(stats) = stats {
         if let Some(ms) = stats.process_cpu_ms {

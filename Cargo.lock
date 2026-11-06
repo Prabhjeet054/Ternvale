@@ -1330,6 +1330,7 @@ dependencies = [
  "nix",
  "serde",
  "serde_json",
+ "sha2",
  "ternvale-acpi",
  "ternvale-agent",
  "ternvale-agent-proto",

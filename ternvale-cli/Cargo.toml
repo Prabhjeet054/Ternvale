@@ -72,6 +72,8 @@ nix = { version = "0.31", default-features = false, features = ["fs"] }
 zip = { version = "7.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # `clipboard-get` / `clipboard-set`: read and write the macOS pasteboard on aarch64-apple-darwin.
 arboard = { version = "3.4", default-features = false }
+# SHA-256 of tools-ISO files for MANIFEST.json (already in the workspace).
+sha2 = "0.10"
 
 [dev-dependencies]
 # Status tests connect the real agent loop to the agent server.

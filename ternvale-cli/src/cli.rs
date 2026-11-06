@@ -206,6 +206,11 @@ pub enum Command {
         #[arg(long)]
         feed: PathBuf,
     },
+    /// Guest tools ISO (`ternvale-tools.iso`).
+    Tools {
+        #[command(subcommand)]
+        action: crate::tools::ToolsCommand,
+    },
     /// Check a signed `.app`: `codesign --verify --deep --strict`, hypervisor entitlements, `spctl`.
     ReleaseVerify {
         /// Path to `Ternvale.app`.

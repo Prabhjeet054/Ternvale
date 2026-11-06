@@ -46,7 +46,8 @@ const REAPER_POLL: Duration = Duration::from_millis(100);
 pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     let load = || format!("load vm config {}", config_path.display());
     let text = std::fs::read_to_string(config_path).with_context(load)?;
-    let config = VmConfig::parse(&text).with_context(load)?;
+    let mut config = VmConfig::parse(&text).with_context(load)?;
+    crate::tools::auto_attach_windows_tools(&mut config);
     let log_dir = LogConfig::default_log_dir().context("find the log directory")?;
     // Logging starts before validation so a rejected config (a missing kernel,
     // say) lands in the VM's host log for `ternvale logs` and `ternvale report`.
@@ -126,11 +127,13 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
         agent.clone(),
         Arc::clone(&stats),
     ));
+    let tools_iso = config.iso.as_ref().and_then(|iso| iso.tools.clone());
     let server = ControlServer::with_diag(
         &socket,
         Arc::clone(&control),
         agent.clone(),
         Arc::clone(&diag),
+        tools_iso,
     )
     .with_context(|| format!("start the control socket for vm {}", config.name))?;
     let reaper = spawn_reaper(Arc::clone(&control), socket.clone())?;

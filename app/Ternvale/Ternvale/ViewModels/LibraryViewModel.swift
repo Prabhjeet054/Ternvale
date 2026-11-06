@@ -9,6 +9,7 @@ final class LibraryViewModel: ObservableObject {
     @Published var phase: VMRuntimePhase = .stopped
     @Published var crashSummary: String?
     @Published var statusMessage: String?
+    @Published var toolsOutdatedMessage: String?
     @Published var isBusy = false
     @Published var showCreateVM = false
     @Published var showVMSettings = false
@@ -123,10 +124,12 @@ final class LibraryViewModel: ObservableObject {
             } else if phase == .stopping {
                 phase = .stopped
                 crashSummary = nil
+                toolsOutdatedMessage = nil
             } else if phase == .running || phase == .paused {
                 markCrashed(vmName: vm.name, reason: "VM is no longer reachable")
             } else if phase != .crashed {
                 phase = .stopped
+                toolsOutdatedMessage = nil
             }
             return
         } catch {
@@ -156,6 +159,14 @@ final class LibraryViewModel: ObservableObject {
             if phase != .crashed { phase = .stopped }
         default:
             if phase == .starting { phase = .running }
+        }
+        if status.toolsOutdated == true {
+            let iso = status.toolsIsoAgent ?? "newer"
+            toolsOutdatedMessage =
+                "Guest tools are out of date (ISO agent \(iso)). Reinstall from ternvale-tools.iso."
+            log.info("guest tools outdated iso_agent=\(iso, privacy: .public)")
+        } else {
+            toolsOutdatedMessage = nil
         }
     }
 

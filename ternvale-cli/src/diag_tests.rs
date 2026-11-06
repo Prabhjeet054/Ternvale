@@ -152,8 +152,13 @@ fn control_socket_dump_returns_the_files() {
     let dir = scratch("socket");
     let control = Arc::new(VmControl::new("demo", 1));
     let (log, sink) = sink(&dir, &control);
-    let response: Response =
-        handle_line_with(r#"{"cmd":"dump-diagnostics"}"#, &control, None, Some(&sink));
+    let response: Response = handle_line_with(
+        r#"{"cmd":"dump-diagnostics"}"#,
+        &control,
+        None,
+        Some(&sink),
+        None,
+    );
     assert!(response.ok, "{response:?}");
     let files = response.files.expect("files");
     assert_eq!(files.len(), 2);
@@ -177,7 +182,13 @@ fn dump_failure_is_a_response_error() {
         .join("missing-subdir")
         .join("ternvale-demo-20261002-120000.log");
     let sink = DiagSink::new(&log, Arc::clone(&control), None, SharedDevices::default());
-    let response = handle_line_with(r#"{"cmd":"dump-diagnostics"}"#, &control, None, Some(&sink));
+    let response = handle_line_with(
+        r#"{"cmd":"dump-diagnostics"}"#,
+        &control,
+        None,
+        Some(&sink),
+        None,
+    );
     assert!(!response.ok);
     let error = response.error.expect("error");
     assert!(

@@ -38,7 +38,7 @@ pub fn checks_for_path(path: &Path) -> Vec<Check> {
             .fix("Pass the path of a VM config TOML.")]
         }
     };
-    let config = match VmConfig::parse(&text) {
+    let mut config = match VmConfig::parse(&text) {
         Ok(config) => config,
         Err(error) => {
             return vec![
@@ -47,6 +47,7 @@ pub fn checks_for_path(path: &Path) -> Vec<Check> {
             ]
         }
     };
+    crate::tools::auto_attach_windows_tools(&mut config);
     let verdict = match config.validate() {
         Ok(()) => Check::new(
             NAME,

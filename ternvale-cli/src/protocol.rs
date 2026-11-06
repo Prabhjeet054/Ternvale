@@ -140,6 +140,12 @@ pub struct StatusJson {
     /// Guest agent connection; absent when the VM runs no agent server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<AgentJson>,
+    /// Guest tools older than the attached `ternvale-tools.iso` (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools_outdated: Option<bool>,
+    /// `agent_version` from the tools ISO manifest (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools_iso_agent: Option<String>,
 }
 
 /// Guest agent connection in `status`.
@@ -356,6 +362,8 @@ impl From<&VmStatus> for StatusJson {
             stop_cause: status.stop_cause.map(|cause| cause.to_string()),
             failure: status.failure.clone(),
             agent: None,
+            tools_outdated: None,
+            tools_iso_agent: None,
         }
     }
 }
