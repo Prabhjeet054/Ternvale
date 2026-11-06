@@ -40,7 +40,7 @@ type HostResizeHook = Box<dyn Fn(usize, u32, u32) + Send + Sync>;
 struct Inner {
     modes: Mutex<Vec<(u32, u32)>>,
     frames: Vec<Mutex<Frame>>,
-    on_host_resize: Mutex<Option<HostResizeHook>>,
+    on_host_resize: Mutex<Vec<HostResizeHook>>,
 }
 
 /// What one scanout shows.
@@ -92,16 +92,15 @@ impl GpuDisplay {
             inner: Arc::new(Inner {
                 modes: Mutex::new(modes.to_vec()),
                 frames: modes.iter().map(|_| Mutex::new(Frame::default())).collect(),
-                on_host_resize: Mutex::new(None),
+                on_host_resize: Mutex::new(Vec::new()),
             }),
         }
     }
 
-    /// Called when the viewer asks for a new mode (virtio `GET_DISPLAY_INFO`).
-    pub(crate) fn install_host_resize_hook(&self, hook: HostResizeHook) {
-        let mut slot =
-            ternvale_vmm::lockwatch::lock(&self.inner.on_host_resize, "gpu-host-resize-hook");
-        *slot = Some(hook);
+    /// Called when the viewer asks for a new mode (`GET_DISPLAY_INFO` / EDID).
+    pub fn add_host_resize_hook(&self, hook: HostResizeHook) {
+        ternvale_vmm::lockwatch::lock(&self.inner.on_host_resize, "gpu-host-resize-hook")
+            .push(hook);
     }
 
     /// Update the advertised mode for `scanout` and notify the virtio-gpu device.
@@ -136,10 +135,11 @@ impl GpuDisplay {
             return Ok(());
         }
         modes[scanout] = (width, height);
+        drop(modes);
         tracing::info!(target: "ternvale::gpu", scanout, width, height, "host display mode updated");
-        let hook =
+        let hooks =
             ternvale_vmm::lockwatch::lock(&self.inner.on_host_resize, "gpu-host-resize-hook");
-        if let Some(notify) = hook.as_ref() {
+        for notify in hooks.iter() {
             notify(scanout, width, height);
         }
         Ok(())

@@ -129,6 +129,9 @@ impl Gpu2d {
                 let modes = self.display.modes();
                 return protocol::display_info(&hdr, &modes);
             }
+            Command::GetEdid { scanout_id } => {
+                return self.get_edid(&hdr, scanout_id);
+            }
             Command::ResourceCreate2d {
                 resource_id,
                 format,
@@ -199,6 +202,27 @@ impl Gpu2d {
             _ => protocol::RESP_ERR_UNSPEC,
         };
         protocol::response_hdr(&hdr, kind).to_vec()
+    }
+
+    fn get_edid(&mut self, hdr: &protocol::CtrlHdr, scanout_id: u32) -> Vec<u8> {
+        let Some(mode) = self.display.mode(scanout_id as usize) else {
+            self.stats.errors.fetch_add(1, Ordering::Relaxed);
+            tracing::warn!(
+                target: "ternvale::gpu",
+                scanout_id,
+                "GET_EDID for unknown scanout"
+            );
+            return protocol::response_hdr(hdr, protocol::RESP_ERR_INVALID_SCANOUT_ID).to_vec();
+        };
+        let block = crate::edid::block_for_mode(mode.0, mode.1);
+        tracing::debug!(
+            target: "ternvale::gpu",
+            scanout_id,
+            width = mode.0,
+            height = mode.1,
+            "GET_EDID"
+        );
+        protocol::edid_response(hdr, &block)
     }
 
     fn resource(&mut self, id: u32) -> Result<&mut Resource, Fail> {

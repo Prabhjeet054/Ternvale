@@ -47,6 +47,10 @@ pub fn get_display_info() -> Vec<u8> {
     hdr(protocol::CMD_GET_DISPLAY_INFO, 0, 0)
 }
 
+pub fn get_edid(scanout: u32) -> Vec<u8> {
+    with(protocol::CMD_GET_EDID, &[scanout, 0])
+}
+
 pub fn create_2d(id: u32, format: u32, width: u32, height: u32) -> Vec<u8> {
     with(
         protocol::CMD_RESOURCE_CREATE_2D,

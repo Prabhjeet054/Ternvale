@@ -90,7 +90,7 @@ impl AcpiTables {
         )
     )]
     pub fn build(base: u64, size: u64, config: &AcpiConfig) -> Result<Self, AcpiError> {
-        if base % BASE_ALIGN != 0 {
+        if !base.is_multiple_of(BASE_ALIGN) {
             tracing::warn!(target: "ternvale::acpi", base = %format!("{base:#x}"), "acpi region misaligned");
             return Err(AcpiError::Misaligned { base });
         }

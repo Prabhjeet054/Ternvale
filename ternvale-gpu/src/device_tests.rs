@@ -168,13 +168,14 @@ fn virtio_mmio_identity_config_and_a_frame_end_to_end() {
     assert_eq!(reg(0x008), u64::from(VIRTIO_GPU_ID));
     set(0x014, 0);
     #[cfg(not(feature = "gpu3d"))]
-    assert_eq!(reg(0x010), 0, "no 2D-profile feature bits");
+    assert_eq!(reg(0x010), crate::device::F_EDID, "VIRTIO_GPU_F_EDID");
     #[cfg(feature = "gpu3d")]
     {
-        use crate::device::{F_CONTEXT_INIT, F_RESOURCE_BLOB, F_VIRGL};
+        use crate::device::{F_CONTEXT_INIT, F_EDID, F_RESOURCE_BLOB, F_VIRGL};
         let low = reg(0x010);
         set(0x014, 1);
         let offered = low | (reg(0x010) << 32);
+        assert_ne!(offered & F_EDID, 0);
         assert_ne!(offered & F_VIRGL, 0);
         assert_ne!(offered & F_RESOURCE_BLOB, 0);
         assert_ne!(offered & F_CONTEXT_INIT, 0);
@@ -344,7 +345,7 @@ fn virtio_pci_identity_class_and_a_frame_end_to_end() {
 #[cfg(feature = "gpu3d")]
 #[test]
 fn virtio_mmio_gpu3d_features_and_venus_capset() {
-    use crate::device::{BLOB_ALIGNMENT, F_CONTEXT_INIT, F_RESOURCE_BLOB, F_VIRGL};
+    use crate::device::{BLOB_ALIGNMENT, F_CONTEXT_INIT, F_EDID, F_RESOURCE_BLOB, F_VIRGL};
     use crate::gpu3d::CAPSET_VENUS;
     use crate::protocol::{CMD_GET_CAPSET, CMD_GET_CAPSET_INFO, RESP_OK_CAPSET};
 
@@ -365,6 +366,7 @@ fn virtio_mmio_gpu3d_features_and_venus_capset() {
     set(0x014, 1);
     let high = reg(0x010);
     let offered = low | (high << 32);
+    assert_ne!(offered & F_EDID, 0);
     assert_ne!(offered & F_VIRGL, 0);
     assert_ne!(offered & F_RESOURCE_BLOB, 0);
     assert_ne!(offered & F_CONTEXT_INIT, 0);

@@ -9,12 +9,15 @@
 
 mod actions;
 mod backoff;
+mod clip;
 mod error;
 mod os;
 #[cfg(windows)]
 pub mod service;
 mod session;
 mod transport;
+mod win_clip;
+mod win_display;
 mod windows;
 #[cfg(windows)]
 mod windows_vsock;

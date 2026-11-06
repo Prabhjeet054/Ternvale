@@ -7,12 +7,14 @@
 //! [`VirtioGpu`] is a [`ternvale_devices::VirtioDevice`]: the same
 //! virtio-mmio and virtio-pci transports that carry virtio-blk carry it
 //! ([`VirtioGpu::attach`], [`VirtioGpu::attach_pci`]). A worker thread answers
-//! the control queue: `GET_DISPLAY_INFO`, `RESOURCE_CREATE_2D`,
+//! the control queue: `GET_DISPLAY_INFO`, `GET_EDID`, `RESOURCE_CREATE_2D`,
 //! `RESOURCE_UNREF`, `RESOURCE_ATTACH_BACKING`, `RESOURCE_DETACH_BACKING`,
 //! `SET_SCANOUT`, `TRANSFER_TO_HOST_2D` and `RESOURCE_FLUSH`. Each scanout
 //! keeps a host-side pixel buffer ([`Frame`]) that [`GpuDisplay`] reads. The
-//! cursor queue exists but its commands are not acted on yet; 3D, capsets,
-//! EDID and blob resources answer `RESP_ERR_UNSPEC`.
+//! cursor queue exists but its commands are not acted on yet; 3D, capsets
+//! and blob resources answer `RESP_ERR_UNSPEC` unless `gpu3d` is enabled.
+//! Host window resize raises `VIRTIO_GPU_EVENT_DISPLAY` and updates the EDID
+//! timing the next `GET_EDID` returns.
 //!
 //! Logs go to `ternvale::gpu`: every command at DEBUG, every flush's timing
 //! and every transfer at TRACE, scanout enable/disable at INFO, bad guest
@@ -25,6 +27,7 @@
 //! version 2) goes to an [`InputTarget`] as it arrives.
 
 mod device;
+mod edid;
 mod engine;
 mod gpu2d;
 #[cfg(feature = "gpu3d")]
@@ -43,7 +46,8 @@ mod testutil;
 mod worker;
 
 pub use device::{
-    AttachedGpu, GpuConfig, GpuError, PciGpu, VirtioGpu, CONFIG_LEN, DEFAULT_MODE, VIRTIO_GPU_ID,
+    AttachedGpu, GpuConfig, GpuError, PciGpu, VirtioGpu, CONFIG_LEN, DEFAULT_MODE, F_EDID,
+    VIRTIO_GPU_ID,
 };
 pub use gpu2d::{GpuStats, MAX_DIMENSION, MAX_HOSTMEM};
 #[cfg(feature = "gpu3d")]

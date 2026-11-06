@@ -79,7 +79,7 @@ impl TpmCrb {
         fields(base = %format!("{base:#x}"), backend = backend.name())
     )]
     pub fn new(base: u64, mut backend: Box<dyn TpmBackend>) -> Result<Self, TpmError> {
-        if base % LOCALITY_STRIDE != 0 {
+        if !base.is_multiple_of(LOCALITY_STRIDE) {
             tracing::warn!(target: "ternvale::tpm", base = %format!("{base:#x}"), "tpm crb base is not 4 KiB aligned");
             return Err(TpmError::Misaligned { base });
         }
@@ -288,7 +288,7 @@ fn check_access(offset: u64, size: u8, direction: &str) -> Option<(u8, u64)> {
     let in_window = offset
         .checked_add(u64::from(size))
         .is_some_and(|end| end <= CRB_WINDOW_SIZE);
-    if !matches!(size, 1 | 2 | 4 | 8) || offset % u64::from(size) != 0 || !in_window {
+    if !matches!(size, 1 | 2 | 4 | 8) || !offset.is_multiple_of(u64::from(size)) || !in_window {
         tracing::warn!(
             target: "ternvale::tpm",
             offset = %format!("{offset:#x}"),

@@ -323,7 +323,7 @@ fn finish_ep0_control(
     if is_in && bytes > 0 {
         let data_trb = read_trb(mem, ptr)?;
         if data_trb.trb_type() == TRB_TYPE_DATA_STAGE {
-            let len = bytes.min(data_trb.status as u32) as usize;
+            let len = bytes.min(data_trb.status) as usize;
             write_bytes(mem, data_trb.param, &in_buf[..len.min(in_buf.len())])?;
             xhci.post_passthrough_completion(slot_id, 0, CC_SUCCESS, ptr, len as u32, mem)?;
             ptr += 16;

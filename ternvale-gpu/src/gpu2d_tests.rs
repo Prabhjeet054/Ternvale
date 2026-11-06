@@ -145,6 +145,61 @@ fn a_scanout_can_show_part_of_a_resource() {
 }
 
 #[test]
+fn get_edid_follows_a_host_window_resize() {
+    let mut fx = Fx::new(&[(640, 480)]);
+    fx.display
+        .request_host_mode(0, 1024, 768)
+        .expect("host resize");
+    let out = fx.answer(&testutil::get_edid(0));
+    assert_eq!(testutil::kind(&out), RESP_OK_EDID);
+    let mut block = [0u8; crate::edid::BLOCK_LEN];
+    block.copy_from_slice(&out[HDR_LEN + 8..HDR_LEN + 8 + crate::edid::BLOCK_LEN]);
+    assert_eq!(block, crate::edid::block_for_mode(1024, 768));
+}
+
+#[test]
+fn dump_edid_blocks_when_ternvale_dump_edid_dir_is_set() {
+    let Ok(dir) = std::env::var("TERNVALE_DUMP_EDID_DIR") else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).expect("edid dump dir");
+    for (w, h, name) in [(1280, 800, "1280x800.bin"), (1920, 1080, "1920x1080.bin")] {
+        let mut fx = Fx::new(&[(640, 480)]);
+        fx.display.request_host_mode(0, w, h).expect("mode");
+        let out = fx.answer(&testutil::get_edid(0));
+        assert_eq!(testutil::kind(&out), RESP_OK_EDID);
+        let path = std::path::Path::new(&dir).join(name);
+        std::fs::write(
+            &path,
+            &out[HDR_LEN + 8..HDR_LEN + 8 + crate::edid::BLOCK_LEN],
+        )
+        .expect("write edid");
+        tracing::info!(
+            target: "ternvale::gpu",
+            path = %path.display(),
+            width = w,
+            height = h,
+            "dumped GET_EDID block"
+        );
+    }
+}
+
+#[test]
+fn get_edid_returns_a_checksummed_block_for_the_scanout_mode() {
+    let mut fx = Fx::new(&[(1280, 800)]);
+    let out = fx.answer(&testutil::get_edid(0));
+    assert_eq!(testutil::kind(&out), RESP_OK_EDID);
+    assert_eq!(out.len(), EDID_RESP_LEN);
+    let size = u32::from_le_bytes(out[HDR_LEN..HDR_LEN + 4].try_into().expect("size"));
+    assert_eq!(size, crate::edid::BLOCK_LEN as u32);
+    let mut block = [0u8; crate::edid::BLOCK_LEN];
+    block.copy_from_slice(&out[HDR_LEN + 8..HDR_LEN + 8 + crate::edid::BLOCK_LEN]);
+    let sum: u8 = block.iter().fold(0u8, |a, b| a.wrapping_add(*b));
+    assert_eq!(sum, 0);
+    assert_eq!(block, crate::edid::block_for_mode(1280, 800));
+}
+
+#[test]
 fn display_info_reports_the_configured_modes() {
     let mut fx = Fx::new(&[(1280, 800), (1024, 768)]);
     let out = fx.answer(&testutil::get_display_info());
@@ -260,7 +315,16 @@ fn bad_guest_values_get_error_responses() {
             RESP_ERR_INVALID_RESOURCE_ID,
         ),
         ("3D command", testutil::hdr(0x0200, 0, 0), RESP_ERR_UNSPEC),
-        ("GET_EDID", testutil::hdr(0x010a, 0, 0), RESP_ERR_UNSPEC),
+        (
+            "GET_EDID truncated",
+            testutil::hdr(0x010a, 0, 0),
+            RESP_ERR_UNSPEC,
+        ),
+        (
+            "GET_EDID unknown scanout",
+            testutil::get_edid(9),
+            RESP_ERR_INVALID_SCANOUT_ID,
+        ),
         (
             "truncated body",
             testutil::create_2d(9, FORMAT_BGRX, 4, 4)[..30].to_vec(),

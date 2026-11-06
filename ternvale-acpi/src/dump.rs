@@ -130,6 +130,7 @@ pub fn walk<E: Display>(
             format!("signature is {:?}", xsdt.signature),
         ));
     }
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     let entries: Vec<u64> = xsdt.bytes[SDT_HEADER_LEN..]
         .chunks_exact(8)
         .map(|chunk| u64_at(chunk, 0))

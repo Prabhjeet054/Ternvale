@@ -257,6 +257,67 @@ fn vsock_target_is_unsupported_off_linux_and_targets_display() {
     assert!(os.ends_with(std::env::consts::ARCH), "{os}");
 }
 
+#[derive(Default)]
+struct PushClip {
+    sent: bool,
+}
+
+impl Actions for PushClip {
+    fn set_resolution(&mut self, _width: u32, _height: u32) -> Result<(), AgentError> {
+        Ok(())
+    }
+    fn clipboard_set(&mut self, _text: &str) -> Result<(), AgentError> {
+        Ok(())
+    }
+    fn clipboard_get(&mut self) -> Result<String, AgentError> {
+        Ok(String::new())
+    }
+    fn mount_share(&mut self, _tag: &str, _mount_point: &str) -> Result<(), AgentError> {
+        Ok(())
+    }
+    fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError> {
+        Ok(Vec::new())
+    }
+    fn shutdown(&mut self) -> Result<(), AgentError> {
+        Ok(())
+    }
+    fn take_clipboard_push(&mut self) -> Option<String> {
+        if self.sent {
+            None
+        } else {
+            self.sent = true;
+            Some("from-guest".into())
+        }
+    }
+}
+
+#[test]
+fn guest_clipboard_change_is_pushed_to_the_host() {
+    let path = socket("clip-push");
+    let listener = UnixListener::bind(&path).expect("bind");
+    let stop = Arc::new(AtomicBool::new(false));
+    let (flag, mut actions) = (Arc::clone(&stop), PushClip::default());
+    let config = fast(&path);
+    let thread = std::thread::spawn(move || run(&config, &mut actions, &flag));
+    let mut host = accept_and_welcome(&listener);
+    let mut saw = None;
+    for _ in 0..50 {
+        match read_message(&mut host, "agent") {
+            Ok(Message::ClipboardSet { text }) => {
+                saw = Some(text.0);
+                break;
+            }
+            Ok(other) => panic!("unexpected {other:?}"),
+            Err(_) => std::thread::sleep(Duration::from_millis(20)),
+        }
+    }
+    assert_eq!(saw.as_deref(), Some("from-guest"));
+    write_message(&mut host, &Message::Shutdown, "agent").expect("shutdown");
+    stop.store(true, Ordering::Release);
+    let _ = thread.join();
+    std::fs::remove_file(&path).expect("cleanup");
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn harness_reads_guest_clipboard_file() {

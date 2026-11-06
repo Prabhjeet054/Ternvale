@@ -425,7 +425,7 @@ fn install(distributor: u64, redistributor: u64) -> Result<Gic, HvError> {
 }
 
 fn aligned(base: u64, alignment: usize, region: &'static str) -> Result<(), HvError> {
-    if alignment == 0 || base % (alignment as u64) == 0 {
+    if alignment == 0 || base.is_multiple_of(alignment as u64) {
         return Ok(());
     }
     tracing::warn!(

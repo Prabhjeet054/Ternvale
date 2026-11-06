@@ -46,3 +46,17 @@ pub fn pull_from_guest(agent: &AgentServer, timeout: Duration) -> Result<String>
     set_host_text(&text).context("copy guest clipboard to the host pasteboard")?;
     Ok(text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Emoji + Tamil + Hindi: the Step 71 live sample.
+    const UNICODE: &str = "hello 😀 வணக்கம் नमस्ते";
+
+    #[test]
+    fn unicode_survives_the_host_pasteboard() {
+        set_host_text(UNICODE).expect("set pasteboard");
+        assert_eq!(host_text().expect("get pasteboard"), UNICODE);
+    }
+}

@@ -85,6 +85,7 @@ fn handshake(
     loop {
         match next(stream, reader, stop, deadline, "read welcome")? {
             Next::Stopped => return Ok(None),
+            Next::Tick => {}
             Next::TimedOut => {
                 return Err(AgentError::HandshakeTimeout {
                     ms: millis(config.handshake_timeout),
@@ -117,17 +118,24 @@ fn serve_requests(
     actions: &mut dyn Actions,
     stop: &AtomicBool,
 ) -> Result<SessionEnd, AgentError> {
+    let mut idle_deadline = Instant::now() + config.idle_timeout;
     loop {
-        let deadline = Instant::now() + config.idle_timeout;
-        let message = match next(stream, reader, stop, deadline, "read request")? {
+        let message = match next(stream, reader, stop, idle_deadline, "read request")? {
             Next::Stopped => return Ok(SessionEnd::Stopped),
+            Next::Tick => {
+                push_clipboard(stream, actions)?;
+                continue;
+            }
             Next::TimedOut => {
                 tracing::warn!(target: "ternvale::agent", idle_ms = millis(config.idle_timeout), "host silent; reconnecting");
                 return Err(AgentError::Idle {
                     ms: millis(config.idle_timeout),
                 });
             }
-            Next::Message(message) => message,
+            Next::Message(message) => {
+                idle_deadline = Instant::now() + config.idle_timeout;
+                message
+            }
         };
         let result = match message {
             Message::Ping { seq } => {
@@ -188,10 +196,32 @@ fn serve_requests(
     }
 }
 
+fn push_clipboard(stream: &mut Stream, actions: &mut dyn Actions) -> Result<(), AgentError> {
+    let Some(text) = actions.take_clipboard_push() else {
+        return Ok(());
+    };
+    let Some(text) = crate::clip::capped(&text) else {
+        return Ok(());
+    };
+    tracing::debug!(target: "ternvale::agent", len = text.len(), "pushing guest clipboard to host");
+    write_message(
+        stream,
+        &Message::ClipboardSet {
+            text: ternvale_agent_proto::ClipboardText(text.to_string()),
+        },
+        "host",
+    )
+    .map_err(|source| AgentError::Frame {
+        op: "send clipboard_set",
+        source,
+    })
+}
+
 enum Next {
     Message(Message),
     Stopped,
     TimedOut,
+    Tick,
 }
 
 /// The next message, skipping unknown/malformed frames, until `deadline`.
@@ -213,6 +243,7 @@ fn next(
                 if Instant::now() >= deadline {
                     return Ok(Next::TimedOut);
                 }
+                return Ok(Next::Tick);
             }
             Err(FrameError::Closed) => return Err(AgentError::Disconnected),
             Err(source) => return Err(AgentError::Frame { op, source }),

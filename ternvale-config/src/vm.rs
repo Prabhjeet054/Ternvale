@@ -354,7 +354,7 @@ fn validate_cpus(cpus: u32) -> Result<(), ConfigError> {
 }
 
 fn validate_ram(ram_mib: u64) -> Result<(), ConfigError> {
-    if ram_mib > 0 && ram_mib % RAM_QUANTUM_MIB == 0 {
+    if ram_mib > 0 && ram_mib.is_multiple_of(RAM_QUANTUM_MIB) {
         tracing::debug!(target: "ternvale::config", ram_mib, "accepted ram_mib");
         Ok(())
     } else {
@@ -367,7 +367,7 @@ fn validate_ram_min(ram_min_mib: Option<u64>, ram_mib: u64) -> Result<(), Config
     let Some(ram_min_mib) = ram_min_mib else {
         return Ok(());
     };
-    if ram_min_mib % RAM_QUANTUM_MIB == 0 && ram_min_mib <= ram_mib {
+    if ram_min_mib.is_multiple_of(RAM_QUANTUM_MIB) && ram_min_mib <= ram_mib {
         tracing::debug!(
             target: "ternvale::config",
             ram_min_mib,

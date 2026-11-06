@@ -16,7 +16,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
+use ternvale_agent_proto::Message;
 use ternvale_config::VirtioTransport;
+use ternvale_devices::{AgentServer, AgentState};
 use ternvale_gpu::{GpuConfig, GpuDisplay, InputTarget, PresentConfig, Presenter, VirtioGpu};
 use ternvale_vmm::{DeviceAttach, MachineError, MmioDevice};
 
@@ -149,6 +151,46 @@ impl DisplayPlan {
         display: GpuDisplay,
         input: Option<Arc<dyn InputTarget>>,
     ) -> Result<DisplaySession> {
+        self.start_with(display, input, None)
+    }
+
+    /// Start presenting and, when `agent` is connected, send `SetResolution`
+    /// as a fallback for guests whose virtio-gpu driver ignores `EVENT_DISPLAY`.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = %self.name, input = input.is_some(), agent = agent.is_some()))]
+    pub fn start_with(
+        &self,
+        display: GpuDisplay,
+        input: Option<Arc<dyn InputTarget>>,
+        agent: Option<Arc<AgentServer>>,
+    ) -> Result<DisplaySession> {
+        if let Some(agent) = agent {
+            display.add_host_resize_hook(Box::new(move |_scanout, width, height| {
+                if agent.status().state != AgentState::Connected {
+                    tracing::debug!(
+                        target: "ternvale::cli",
+                        width,
+                        height,
+                        "set_resolution skipped; agent not connected"
+                    );
+                    return;
+                }
+                match agent.send(&Message::SetResolution { width, height }) {
+                    Ok(()) => tracing::info!(
+                        target: "ternvale::cli",
+                        width,
+                        height,
+                        "asked agent to apply display mode (ChangeDisplaySettingsEx fallback)"
+                    ),
+                    Err(error) => tracing::warn!(
+                        target: "ternvale::cli",
+                        width,
+                        height,
+                        error = %error,
+                        "could not send set_resolution to agent"
+                    ),
+                }
+            }));
+        }
         let config = PresentConfig {
             fps: self.fps,
             ..PresentConfig::default()

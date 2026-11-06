@@ -126,8 +126,13 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
         agent.clone(),
         Arc::clone(&stats),
     ));
-    let server = ControlServer::with_diag(&socket, Arc::clone(&control), agent, Arc::clone(&diag))
-        .with_context(|| format!("start the control socket for vm {}", config.name))?;
+    let server = ControlServer::with_diag(
+        &socket,
+        Arc::clone(&control),
+        agent.clone(),
+        Arc::clone(&diag),
+    )
+    .with_context(|| format!("start the control socket for vm {}", config.name))?;
     let reaper = spawn_reaper(Arc::clone(&control), socket.clone())?;
     let uart = Pl011::open(&config.serial_log)
         .with_context(|| format!("open serial log {}", config.serial_log.display()))?;
@@ -165,6 +170,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
             console: console.as_deref(),
             share,
             display: plan.as_ref(),
+            agent: agent.clone(),
             audio,
             ram_mib,
             ram_min_mib,
@@ -254,6 +260,8 @@ struct Wanted<'a> {
     /// `--display window`: a virtio-gpu after vsock, then a virtio-input
     /// keyboard and tablet (all PCI with `virtio-pci`).
     display: Option<&'a DisplayPlan>,
+    /// Guest agent, for `SetResolution` when the SwiftUI window is resized.
+    agent: Option<Arc<ternvale_devices::AgentServer>>,
     /// Attach virtio-sound on the next free virtio-mmio slot.
     audio: bool,
     ram_mib: u64,
@@ -403,7 +411,7 @@ fn attach_devices(
             crate::display_input::attach_input(attach, wanted.transport, slot + 1)?;
         devices.extend(mapped);
         let started = plan
-            .start(display, Some(input))
+            .start_with(display, Some(input), wanted.agent.clone())
             .map_err(|error| MachineError::Attach(format!("{error:#}")))?;
         *lockwatch::lock(session, "display-session") = Some(started);
     }

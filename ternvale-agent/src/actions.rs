@@ -80,12 +80,26 @@ pub trait Actions {
     fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError>;
     /// `Shutdown`. On Linux this does not return on success.
     fn shutdown(&mut self) -> Result<(), AgentError>;
+    /// Guest clipboard text to push to the host (Windows listener).
+    fn take_clipboard_push(&mut self) -> Option<String> {
+        None
+    }
 }
 
-/// Real actions for a headless Linux guest.
-#[derive(Debug, Default)]
+/// Real actions for a Linux or Windows guest.
+#[derive(Debug)]
 pub struct SystemActions {
     clipboard: String,
+    clip: std::sync::Arc<crate::win_clip::Hub>,
+}
+
+impl Default for SystemActions {
+    fn default() -> Self {
+        Self {
+            clipboard: String::new(),
+            clip: crate::win_clip::Hub::start(),
+        }
+    }
 }
 
 impl SystemActions {
@@ -104,14 +118,25 @@ impl Actions for SystemActions {
         fields(width, height)
     )]
     fn set_resolution(&mut self, width: u32, height: u32) -> Result<(), AgentError> {
-        // TODO(display): apply via DRM/KMS once the guest has a virtio-gpu display.
-        tracing::warn!(target: "ternvale::agent", width, height, "no display in this guest; resolution not applied");
-        Ok(())
+        #[cfg(windows)]
+        {
+            crate::win_display::apply(width, height)
+        }
+        #[cfg(not(windows))]
+        {
+            // TODO(display): apply via DRM/KMS once the guest has a virtio-gpu display.
+            tracing::warn!(target: "ternvale::agent", width, height, "no display in this guest; resolution not applied");
+            Ok(())
+        }
     }
 
     #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(len = text.len()))]
     fn clipboard_set(&mut self, text: &str) -> Result<(), AgentError> {
+        let Some(text) = crate::clip::capped(text) else {
+            return Ok(());
+        };
         self.clipboard = text.to_string();
+        self.clip.set_text(text)?;
         #[cfg(target_os = "linux")]
         if let Ok(mut child) = std::process::Command::new("xclip")
             .args(["-selection", "clipboard"])
@@ -147,8 +172,20 @@ impl Actions for SystemActions {
                 return Ok(text);
             }
         }
-        tracing::debug!(target: "ternvale::agent", len = self.clipboard.len(), "clipboard read from agent buffer");
-        Ok(self.clipboard.clone())
+        #[cfg(windows)]
+        {
+            self.clip.get_text()
+        }
+        #[cfg(not(windows))]
+        {
+            tracing::debug!(target: "ternvale::agent", len = self.clipboard.len(), "clipboard read from agent buffer");
+            Ok(self.clipboard.clone())
+        }
+    }
+
+    #[tracing::instrument(level = "trace", target = "ternvale::agent", skip_all)]
+    fn take_clipboard_push(&mut self) -> Option<String> {
+        self.clip.take_pending()
     }
 
     #[tracing::instrument(

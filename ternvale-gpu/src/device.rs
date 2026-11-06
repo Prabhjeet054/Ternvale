@@ -1,10 +1,12 @@
 //! `VirtioGpu`: the [`VirtioDevice`] the shared transports drive, plus its
 //! virtio-mmio and virtio-pci attach paths.
 //!
-//! Device id 16, two queues (`controlq`, `cursorq`), no feature bits (the
-//! 2D-only profile: no `VIRGL`, `EDID`, `RESOURCE_UUID`, `RESOURCE_BLOB` or
-//! `CONTEXT_INIT`). Config space is `struct virtio_gpu_config` (virtio 1.2
-//! §5.7.4): `events_read`, `events_clear`, `num_scanouts`, `num_capsets`.
+//! Device id 16, two queues (`controlq`, `cursorq`). The 2D profile offers
+//! `VIRTIO_GPU_F_EDID` (bit 1) so Windows `viogpudo` can read a generated
+//! EDID after `VIRTIO_GPU_EVENT_DISPLAY`. 3D bits (`VIRGL`, `RESOURCE_BLOB`,
+//! `CONTEXT_INIT`) stay behind `gpu3d`. Config space is
+//! `struct virtio_gpu_config` (virtio 1.2 §5.7.4): `events_read`,
+//! `events_clear`, `num_scanouts`, `num_capsets`.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -37,6 +39,8 @@ pub const BLOB_ALIGNMENT: u32 = 4096;
 /// `VIRTIO_GPU_F_VIRGL` (bit 0).
 #[cfg(feature = "gpu3d")]
 pub const F_VIRGL: u64 = 1 << 0;
+/// `VIRTIO_GPU_F_EDID` (bit 1, virtio 1.2 §5.7.3).
+pub const F_EDID: u64 = 1 << 1;
 /// `VIRTIO_GPU_F_RESOURCE_BLOB` (bit 3).
 #[cfg(feature = "gpu3d")]
 pub const F_RESOURCE_BLOB: u64 = 1 << 3;
@@ -151,7 +155,7 @@ impl VirtioGpu {
         let display = GpuDisplay::new(&config.modes);
         let events_read = Arc::new(AtomicU32::new(0));
         let irq_line = Arc::clone(&irq);
-        display.install_host_resize_hook(Box::new({
+        display.add_host_resize_hook(Box::new({
             let events_read = Arc::clone(&events_read);
             let irq = Arc::clone(&irq_line);
             move |scanout, width, height| {
@@ -304,11 +308,11 @@ impl VirtioDevice for VirtioGpu {
     fn device_features(&self) -> u64 {
         #[cfg(feature = "gpu3d")]
         {
-            F_VIRGL | F_RESOURCE_BLOB | F_CONTEXT_INIT | F_BLOB_ALIGNMENT
+            F_EDID | F_VIRGL | F_RESOURCE_BLOB | F_CONTEXT_INIT | F_BLOB_ALIGNMENT
         }
         #[cfg(not(feature = "gpu3d"))]
         {
-            0
+            F_EDID
         }
     }
 

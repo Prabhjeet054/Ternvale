@@ -26,6 +26,9 @@ use ternvale_agent_proto::{write_message, FrameError, GuestWindow, Message};
 use status::Book;
 pub use status::{AgentState, AgentStatus};
 
+/// Host pasteboard callback for a guest `ClipboardSet` push.
+type ClipboardSink = Arc<dyn Fn(String) + Send + Sync>;
+
 /// Timing for [`AgentServer`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AgentServerConfig {
@@ -115,6 +118,8 @@ pub(crate) struct Shared {
     book: Mutex<Book>,
     /// virtio-9p shares to mount after handshake (tag, guest mount point).
     shares: Vec<(String, String)>,
+    /// Host pasteboard update when the guest pushes `ClipboardSet`.
+    clipboard_sink: Mutex<Option<ClipboardSink>>,
 }
 
 impl Shared {
@@ -177,6 +182,7 @@ impl AgentServer {
             stop: AtomicBool::new(false),
             book: Mutex::new(Book::default()),
             shares,
+            clipboard_sink: Mutex::new(None),
         });
         let service = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
@@ -192,6 +198,13 @@ impl AgentServer {
             path: path.to_path_buf(),
             thread: Some(thread),
         })
+    }
+
+    /// Called when the guest pushes clipboard text (Windows listener).
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]
+    pub fn set_clipboard_sink(&self, sink: ClipboardSink) {
+        *ternvale_vmm::lockwatch::lock(&self.shared.clipboard_sink, "agent-clipboard-sink") =
+            Some(sink);
     }
 
     /// Socket path.

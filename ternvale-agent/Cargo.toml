@@ -28,4 +28,11 @@ nix = { version = "0.31", default-features = false, features = ["fs", "reboot"] 
 windows-service = "0.7"
 # Winsock for virtio-win `viosock` (AF_VSOCK). Raw sockets stay behind
 # `windows_vsock.rs` because rust-vsock does not target Windows.
-windows-sys = { version = "0.59", features = ["Win32_Networking_WinSock"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Networking_WinSock",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_UI_WindowsAndMessaging",
+] }

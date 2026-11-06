@@ -27,6 +27,8 @@ pub const CMD_RESOURCE_DETACH_BACKING: u32 = 0x0107;
 pub const CMD_GET_CAPSET_INFO: u32 = 0x0108;
 /// `VIRTIO_GPU_CMD_GET_CAPSET`.
 pub const CMD_GET_CAPSET: u32 = 0x0109;
+/// `VIRTIO_GPU_CMD_GET_EDID` (virtio 1.2 §5.7.6.8).
+pub const CMD_GET_EDID: u32 = 0x010a;
 /// `VIRTIO_GPU_CMD_RESOURCE_CREATE_BLOB`.
 pub const CMD_RESOURCE_CREATE_BLOB: u32 = 0x010c;
 /// `VIRTIO_GPU_CMD_CTX_CREATE`.
@@ -56,6 +58,8 @@ pub const RESP_OK_DISPLAY_INFO: u32 = 0x1101;
 pub const RESP_OK_CAPSET_INFO: u32 = 0x1102;
 /// `VIRTIO_GPU_RESP_OK_CAPSET`.
 pub const RESP_OK_CAPSET: u32 = 0x1103;
+/// `VIRTIO_GPU_RESP_OK_EDID`.
+pub const RESP_OK_EDID: u32 = 0x1104;
 /// `VIRTIO_GPU_RESP_ERR_UNSPEC`.
 pub const RESP_ERR_UNSPEC: u32 = 0x1200;
 /// `VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY`.
@@ -77,6 +81,8 @@ pub const HDR_LEN: usize = 24;
 pub const MEM_ENTRY_LEN: usize = 16;
 /// `sizeof(struct virtio_gpu_resp_display_info)`: header plus 16 × 24-byte modes.
 pub const DISPLAY_INFO_LEN: usize = HDR_LEN + MAX_SCANOUTS * 24;
+/// `sizeof(struct virtio_gpu_resp_edid)`: header, size, padding, 1024-byte EDID.
+pub const EDID_RESP_LEN: usize = HDR_LEN + 8 + crate::edid::WIRE_EDID_LEN;
 
 /// `struct virtio_gpu_ctrl_hdr`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -208,7 +214,12 @@ pub enum Command {
         /// Target resource.
         resource_id: u32,
     },
-    /// A type this 2D device does not implement (3D, capsets, EDID, blobs, cursor).
+    /// `GET_EDID` (`VIRTIO_GPU_F_EDID`).
+    GetEdid {
+        /// Scanout whose preferred timing the EDID describes.
+        scanout_id: u32,
+    },
+    /// A type this 2D device does not implement (3D, capsets, blobs, cursor).
     Unsupported,
     /// `GET_CAPSET_INFO` (`gpu3d` only).
     #[cfg(feature = "gpu3d")]
@@ -335,7 +346,7 @@ pub fn type_name(kind: u32) -> &'static str {
         CMD_RESOURCE_DETACH_BACKING => "RESOURCE_DETACH_BACKING",
         0x0108 => "GET_CAPSET_INFO",
         0x0109 => "GET_CAPSET",
-        0x010a => "GET_EDID",
+        CMD_GET_EDID => "GET_EDID",
         0x010b => "RESOURCE_ASSIGN_UUID",
         0x010c => "RESOURCE_CREATE_BLOB",
         0x010d => "SET_SCANOUT_BLOB",
@@ -346,6 +357,7 @@ pub fn type_name(kind: u32) -> &'static str {
         RESP_OK_DISPLAY_INFO => "OK_DISPLAY_INFO",
         RESP_OK_CAPSET_INFO => "OK_CAPSET_INFO",
         RESP_OK_CAPSET => "OK_CAPSET",
+        RESP_OK_EDID => "OK_EDID",
         RESP_ERR_UNSPEC => "ERR_UNSPEC",
         RESP_ERR_OUT_OF_MEMORY => "ERR_OUT_OF_MEMORY",
         RESP_ERR_INVALID_SCANOUT_ID => "ERR_INVALID_SCANOUT_ID",
@@ -476,6 +488,12 @@ pub fn parse(bytes: &[u8]) -> Result<(CtrlHdr, Command), ParseError> {
                 resource_id: le32(body, 0),
             }
         }
+        CMD_GET_EDID => {
+            need(8)?;
+            Command::GetEdid {
+                scanout_id: le32(body, 0),
+            }
+        }
         #[cfg(feature = "gpu3d")]
         CMD_GET_CAPSET_INFO => {
             need(4)?;
@@ -600,6 +618,17 @@ pub fn display_info(request: &CtrlHdr, modes: &[(u32, u32)]) -> Vec<u8> {
         out[at + 12..at + 16].copy_from_slice(&height.to_le_bytes());
         out[at + 16..at + 20].copy_from_slice(&1u32.to_le_bytes());
     }
+    out
+}
+
+/// `struct virtio_gpu_resp_edid` for a 128-byte EDID 1.3 block padded to 1024.
+pub fn edid_response(request: &CtrlHdr, block: &[u8; crate::edid::BLOCK_LEN]) -> Vec<u8> {
+    let mut out = vec![0u8; EDID_RESP_LEN];
+    out[..HDR_LEN].copy_from_slice(&response_hdr(request, RESP_OK_EDID));
+    let size = crate::edid::BLOCK_LEN as u32;
+    out[HDR_LEN..HDR_LEN + 4].copy_from_slice(&size.to_le_bytes());
+    let wire = crate::edid::wire_edid(block);
+    out[HDR_LEN + 8..].copy_from_slice(&wire);
     out
 }
 

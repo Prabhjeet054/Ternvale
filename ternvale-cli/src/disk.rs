@@ -67,7 +67,7 @@ pub fn create_disk(path: &Path, bytes: u64) -> Result<()> {
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(bytes))]
 pub fn human_size(bytes: u64) -> String {
     for (shift, unit) in [(40, "TiB"), (30, "GiB"), (20, "MiB"), (10, "KiB")] {
-        if bytes >= 1 << shift && bytes % (1 << shift) == 0 {
+        if bytes >= 1 << shift && bytes.is_multiple_of(1 << shift) {
             return format!("{} {unit}", bytes >> shift);
         }
     }

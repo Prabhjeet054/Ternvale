@@ -106,6 +106,25 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
             Some(Message::Ping { seq }) => shared
                 .write(id, &Message::Pong { seq })
                 .map_err(|error| error.to_string())?,
+            Some(Message::ClipboardSet { text }) => {
+                let sink =
+                    ternvale_vmm::lockwatch::lock(&shared.clipboard_sink, "agent-clipboard-sink")
+                        .clone();
+                if let Some(sink) = sink {
+                    tracing::debug!(
+                        target: "ternvale::agent",
+                        len = text.0.len(),
+                        "guest clipboard pushed to host"
+                    );
+                    sink(text.0);
+                } else {
+                    tracing::debug!(
+                        target: "ternvale::agent",
+                        len = text.0.len(),
+                        "guest clipboard_set ignored (no host sink)"
+                    );
+                }
+            }
             Some(Message::ClipboardGetOk { text }) => {
                 let mut book = shared.book();
                 if let Some(wait) = book.clipboard_wait.take() {

@@ -60,7 +60,7 @@ impl Xhci {
         memory: Arc<Mutex<dyn GuestMemoryAccess + Send>>,
         irq: Option<Arc<dyn Fn(bool) + Send + Sync>>,
     ) -> Result<Self, XhciError> {
-        if base % 0x1000 != 0 {
+        if !base.is_multiple_of(0x1000) {
             tracing::warn!(target: "ternvale::usb", base = format!("{base:#x}"), "xhci base misaligned");
             return Err(XhciError::Misaligned { base });
         }

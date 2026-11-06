@@ -5,6 +5,7 @@ use crate::testutil::{self, rect};
 fn every_2d_opcode_parses_from_wire_bytes() {
     let cases = [
         (testutil::get_display_info(), Command::GetDisplayInfo),
+        (testutil::get_edid(1), Command::GetEdid { scanout_id: 1 }),
         (
             testutil::create_2d(7, 2, 640, 480),
             Command::ResourceCreate2d {

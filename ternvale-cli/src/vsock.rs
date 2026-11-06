@@ -66,6 +66,15 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
         let server =
             AgentServer::start_with(&path, &config.name, AgentServerConfig::default(), shares)
                 .with_context(|| format!("start the agent server on {}", path.display()))?;
+        server.set_clipboard_sink(Arc::new(|text| {
+            if let Err(error) = crate::clipboard::set_host_text(&text) {
+                tracing::warn!(
+                    target: "ternvale::cli",
+                    error = %format!("{error:#}"),
+                    "guest clipboard could not update the host pasteboard"
+                );
+            }
+        }));
         Some(Arc::new(server))
     } else {
         tracing::info!(target: "ternvale::cli", "agent server disabled (vsock.agent = false)");
