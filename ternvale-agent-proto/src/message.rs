@@ -61,9 +61,9 @@ pub enum Message {
         /// Guest clipboard text (may be empty).
         text: ClipboardText,
     },
-    /// Host → agent: mount the virtio-9p share (Linux only).
+    /// Host → agent: mount the virtio-fs share (Linux only).
     ShareMount {
-        /// virtio-9p mount tag (matches device config).
+        /// virtio-fs mount tag (matches device config).
         tag: String,
         /// Guest path to mount at.
         mount_point: String,

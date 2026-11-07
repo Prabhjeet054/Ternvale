@@ -1,4 +1,4 @@
-//! Clipboard (both directions) and virtio-9p share with a 100 MiB host→guest file.
+//! Clipboard (both directions) and virtio-fs share with a 100 MiB host→guest file.
 
 use std::io::Write;
 use std::path::Path;
@@ -10,7 +10,7 @@ use ternvale_agent_proto::{ClipboardText, Message, AGENT_PORT};
 use ternvale_config::VmConfig;
 use ternvale_devices::{
     host_socket_path, last_lines, AgentServer, AgentServerConfig, AgentState, Pl011, Step,
-    VirtioP9, VirtioVsock, VsockConfig,
+    VirtioVsock, VsockConfig,
 };
 use ternvale_vmm::{ExitReason, Machine, MachineError};
 
@@ -25,7 +25,7 @@ const GUEST_CLIP: &str = "guest-copy-paste-test";
 const LARGE_BYTES: u64 = 100 * 1024 * 1024;
 const CHUNK: usize = 64 * 1024;
 const LOG_FILTER: &str =
-    "info,ternvale::agent=debug,ternvale::virtio::p9=debug,ternvale::virtio::vsock=debug,ternvale::boot=debug";
+    "info,ternvale::agent=debug,ternvale::virtiofs=debug,ternvale::virtio::vsock=debug,ternvale::boot=debug";
 
 pub fn run() -> Result<(), String> {
     let root = assets_root().join("virtio-devices");
@@ -133,10 +133,11 @@ pub fn run() -> Result<(), String> {
             attach.virtio_irq_hook(0),
         )
         .map_err(|e| MachineError::Attach(e.to_string()))?;
-        let (p9_base, p9_size, p9, _p9_stats) = VirtioP9::attach(
+        let (fs_base, fs_size, fs, _fs_stats) = ternvale_virtiofs::VirtioFs::attach(
             1,
             export,
             "ternvale",
+            ternvale_virtiofs::Options::default(),
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(1),
         )
@@ -145,9 +146,9 @@ pub fn run() -> Result<(), String> {
             target: "ternvale::boot",
             guest_cid = cid,
             tag = "ternvale",
-            "attached virtio-vsock and virtio-9p"
+            "attached virtio-vsock and virtio-fs"
         );
-        Ok(vec![(vs_base, vs_size, vsock), (p9_base, p9_size, p9)])
+        Ok(vec![(vs_base, vs_size, vsock), (fs_base, fs_size, fs)])
     });
     cancel.store(true, Ordering::Release);
     let script_result = feeder

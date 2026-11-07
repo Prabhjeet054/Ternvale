@@ -1342,6 +1342,7 @@ dependencies = [
  "ternvale-metrics",
  "ternvale-snapshot",
  "ternvale-tpm",
+ "ternvale-virtiofs",
  "ternvale-vmm",
  "tracing",
  "zip",
@@ -1376,6 +1377,7 @@ dependencies = [
  "ternvale-net",
  "ternvale-snapshot",
  "ternvale-tpm",
+ "ternvale-virtiofs",
  "ternvale-vmm",
  "thiserror 2.0.21",
  "tracing",
@@ -1475,6 +1477,18 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "ternvale-virtiofs"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "ternvale-devices",
+ "ternvale-log",
+ "ternvale-vmm",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

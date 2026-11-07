@@ -1,0 +1,22 @@
+[package]
+name = "ternvale-virtiofs"
+description = "In-process virtio-fs (FUSE) server and device for Ternvale shared folders."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed FsError.
+thiserror = "2"
+# Log target ternvale::virtiofs.
+tracing = "0.1"
+# openat / fstat / renameat and friends. Raw Hypervisor FFI stays in ternvale-hv;
+# this crate only uses libc file APIs (same pattern as virtio-blk).
+libc = "0.2"
+# GuestMemory, MmioDevice.
+ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
+# VirtioDevice, SplitQueue, VirtioMmio / VirtioIrq.
+ternvale-devices = { path = "../ternvale-devices", default-features = false }
+
+[dev-dependencies]
+ternvale-log = { path = "../ternvale-log" }

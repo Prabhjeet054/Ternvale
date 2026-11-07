@@ -1,10 +1,10 @@
-//! `[shares]`: host directories exported to the guest over virtio-9p.
+//! `[shares]`: host directories exported to the guest over virtio-fs.
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// Maximum mount tag length (virtio-9p config).
+/// Maximum mount tag length (`virtio_fs_config.tag`).
 pub const MAX_TAG_LEN: usize = 36;
 /// Maximum guest mount path length in agent messages.
 pub const MAX_MOUNT_PATH: usize = 256;
@@ -15,11 +15,14 @@ pub const MAX_MOUNT_PATH: usize = 256;
 pub struct Share {
     /// Host directory to export (must exist at boot).
     pub host_path: PathBuf,
-    /// virtio-9p mount tag (guest `mount -t 9p` tag=…).
+    /// virtio-fs mount tag (guest `mount -t virtiofs` source).
     pub tag: String,
     /// Where the guest agent should mount the share (Linux).
     #[serde(default = "default_mount_point")]
     pub mount_point: String,
+    /// Guest writes fail with `EROFS`.
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 fn default_mount_point() -> String {
@@ -64,6 +67,7 @@ impl Share {
             target: "ternvale::config",
             host = %self.host_path.display(),
             mount = %self.mount_point,
+            read_only = self.read_only,
             "accepted share"
         );
         Ok(())

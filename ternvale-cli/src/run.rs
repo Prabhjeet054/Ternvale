@@ -21,7 +21,7 @@ use ternvale_agent_proto::AGENT_PORT;
 use ternvale_config::{BlockDevice, Nic, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
     attach_blocks, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon, VirtioConsole,
-    VirtioNet, VirtioP9, VirtioVsock, VsockConfig, DEFAULT_MAC,
+    VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -258,7 +258,7 @@ struct Wanted<'a> {
     vsock: Option<&'a VsockConfig>,
     /// Host Unix socket for the virtio-console agent port.
     console: Option<&'a std::path::Path>,
-    /// First `[[shares]]` entry (virtio-9p on the next virtio-mmio slot).
+    /// First `[[shares]]` entry (virtio-fs on the next virtio-mmio slot).
     share: Option<&'a Share>,
     /// `--display window`: a virtio-gpu after vsock, then a virtio-input
     /// keyboard and tablet (all PCI with `virtio-pci`).
@@ -384,22 +384,27 @@ fn attach_devices(
     }
     if let Some(share) = wanted.share {
         let slot = u32::try_from(mmio_after_net)
-            .map_err(|_| MachineError::Attach("virtio-9p slot does not fit in u32".into()))?;
-        let (base, size, device, _p9_stats) = VirtioP9::attach(
+            .map_err(|_| MachineError::Attach("virtio-fs slot does not fit in u32".into()))?;
+        let (base, size, device, _fs_stats) = ternvale_virtiofs::VirtioFs::attach(
             slot,
             share.host_path.clone(),
             &share.tag,
+            ternvale_virtiofs::Options {
+                read_only: share.read_only,
+                ..ternvale_virtiofs::Options::default()
+            },
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(slot),
         )
-        .map_err(|error| MachineError::Attach(format!("virtio-9p: {error}")))?;
+        .map_err(|error| MachineError::Attach(format!("virtio-fs: {error}")))?;
         tracing::info!(
-            target: "ternvale::virtio::p9",
+            target: "ternvale::virtiofs",
             slot,
             tag = %share.tag,
             host = %share.host_path.display(),
             mount = %share.mount_point,
-            "attached virtio-9p share"
+            read_only = share.read_only,
+            "attached virtio-fs share"
         );
         devices.push((base, size, device));
         mmio_after_net += 1;

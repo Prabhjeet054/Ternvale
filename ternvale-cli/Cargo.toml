@@ -62,6 +62,8 @@ ternvale-tpm = { path = "../ternvale-tpm" }
 # `run --display window`: the virtio-gpu device and the Presenter that streams its
 # frames to the dev viewer (workspace crate).
 ternvale-gpu = { path = "../ternvale-gpu", default-features = false }
+# `[[shares]]`: virtio-fs (FUSE) device; replaces the Step 57 virtio-9p attach.
+ternvale-virtiofs = { path = "../ternvale-virtiofs" }
 # Run manifest start time and report file stamps (same features as ternvale-log; already in the tree).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # `doctor` disk-space check: safe statfs wrapper (already in the tree via ternvale-agent),

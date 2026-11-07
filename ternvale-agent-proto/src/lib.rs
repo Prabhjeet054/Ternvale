@@ -40,7 +40,7 @@ pub const MAX_FRAME: usize = 256 * 1024;
 pub const MAX_NAME: usize = 256;
 /// Largest `SetResolution` dimension.
 pub const MAX_DIMENSION: u32 = 16_384;
-/// Longest virtio-9p mount tag in `ShareMount`.
+/// Longest virtio-fs mount tag in `ShareMount`.
 pub const MAX_TAG_LEN: usize = 36;
 /// Longest guest mount path in `ShareMount`.
 pub const MAX_MOUNT_PATH: usize = 256;

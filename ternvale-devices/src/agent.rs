@@ -116,7 +116,7 @@ pub(crate) struct Shared {
     config: AgentServerConfig,
     stop: AtomicBool,
     book: Mutex<Book>,
-    /// virtio-9p shares to mount after handshake (tag, guest mount point).
+    /// virtio-fs shares to mount after handshake (tag, guest mount point).
     shares: Vec<(String, String)>,
     /// Host pasteboard update when the guest pushes `ClipboardSet`.
     clipboard_sink: Mutex<Option<ClipboardSink>>,

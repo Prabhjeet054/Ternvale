@@ -1,7 +1,7 @@
-//! virtio-9p (device id 9): export a host directory to the guest over 9P2000.L.
+//! virtio-9p (device id 9): leftover 9P2000.L server from Step 57.
 //!
-//! virtio-fs would need a FUSE daemon on the host; this device implements a
-//! minimal in-process 9p2000.L server instead (see `docs/SHARE.md`).
+//! New VMs attach virtio-fs (`ternvale-virtiofs`) for `[[shares]]`. This module
+//! stays for tests that still construct [`VirtioP9`] directly.
 
 mod server;
 

@@ -82,7 +82,7 @@ pub struct VmConfig {
     /// virtio-sound playback to CoreAudio; unset means enabled. See [`AudioSection`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioSection>,
-    /// Host folders shared with the guest over virtio-9p (at most one today).
+    /// Host folders shared with the guest over virtio-fs (at most one today).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shares: Vec<Share>,
 }

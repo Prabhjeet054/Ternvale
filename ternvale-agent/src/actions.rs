@@ -74,7 +74,7 @@ pub trait Actions {
     fn clipboard_set(&mut self, text: &str) -> Result<(), AgentError>;
     /// `ClipboardGet`.
     fn clipboard_get(&mut self) -> Result<String, AgentError>;
-    /// `ShareMount` (virtio-9p on Linux).
+    /// `ShareMount` (virtio-fs on Linux).
     fn mount_share(&mut self, tag: &str, mount_point: &str) -> Result<(), AgentError>;
     /// `WindowListGet` (seamless mode, protocol v3+).
     fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError>;
@@ -201,18 +201,17 @@ impl Actions for SystemActions {
                 action: "mkdir mount_point",
                 source,
             })?;
-            let options = format!("trans=virtio,version=9p2000.L,msize=8192");
             let status = std::process::Command::new("mount")
-                .args(["-t", "9p", "-o", &options, tag, mount_point])
+                .args(["-t", "virtiofs", tag, mount_point])
                 .status()
                 .map_err(|source| AgentError::Action {
-                    action: "mount 9p",
+                    action: "mount virtiofs",
                     source,
                 })?;
             if !status.success() {
-                tracing::warn!(target: "ternvale::agent", tag, mount_point, "mount 9p failed");
+                tracing::warn!(target: "ternvale::agent", tag, mount_point, "mount virtiofs failed");
                 return Err(AgentError::Action {
-                    action: "mount 9p",
+                    action: "mount virtiofs",
                     source: std::io::Error::from_raw_os_error(status.code().unwrap_or(-1)),
                 });
             }
