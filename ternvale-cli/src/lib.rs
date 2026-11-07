@@ -21,11 +21,14 @@ pub mod client;
 pub mod clipboard;
 pub mod clone_cmd;
 pub mod commands;
+pub mod create_cmd;
+pub mod create_progress;
 pub mod diag;
 pub mod disk;
 pub mod display;
 pub mod display_input;
 pub mod doctor;
+pub mod keychain;
 pub mod logfmt;
 pub mod logs;
 pub mod paths;
@@ -34,6 +37,7 @@ pub mod release_verify;
 pub mod report;
 pub mod run;
 pub mod seamless;
+pub mod secret;
 pub mod server;
 pub mod snapshot_cmd;
 pub mod stats_cmd;
@@ -43,6 +47,8 @@ pub mod tools_build;
 pub mod tools_hybrid;
 pub mod tools_manifest;
 pub mod tools_verify;
+pub mod unattend_iso;
+pub mod unattend_xml;
 pub mod update_check;
 pub mod vsock;
 
@@ -135,6 +141,46 @@ fn non_run(command: Command) -> Result<ExitCode> {
             fps,
         } => run::run(&config, display, fps),
         Command::Validate { config } => commands::validate(&config),
+        Command::Create {
+            name,
+            windows,
+            iso,
+            unattended,
+            edition,
+            disk_size,
+            firmware,
+            tools_iso,
+            user,
+            password_env,
+            password_file,
+            product_key_env,
+            product_key_file,
+            wait,
+            timeout_secs,
+        } => {
+            if !windows {
+                anyhow::bail!("`ternvale create` currently supports --windows only");
+            }
+            let iso = iso.ok_or_else(|| {
+                anyhow::anyhow!("--iso PATH is required (your Windows 11 ARM64 installer)")
+            })?;
+            create_cmd::create_windows(create_cmd::CreateWindows {
+                name,
+                iso,
+                unattended,
+                edition,
+                disk_size,
+                firmware,
+                tools_iso,
+                user,
+                password_env,
+                password_file,
+                product_key_env,
+                product_key_file,
+                wait,
+                timeout_secs,
+            })
+        }
         Command::CreateDisk { path, size } => commands::create_disk(&path, &size),
         Command::Status { name, stats, json } => commands::status(&name, stats, json),
         Command::Stats {
@@ -224,3 +270,7 @@ mod agent_tests;
 #[cfg(test)]
 #[path = "tools_tests.rs"]
 mod tools_tests;
+
+#[cfg(test)]
+#[path = "create_tests.rs"]
+mod create_tests;

@@ -253,6 +253,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
             installer: Some(installer.to_path_buf()),
             tools: None,
             drivers: Some(drivers.to_path_buf()),
+            unattend: None,
         }),
         cpus: 1,
         ram_mib: 512,

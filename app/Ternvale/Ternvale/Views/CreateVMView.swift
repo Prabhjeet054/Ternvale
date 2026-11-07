@@ -1,35 +1,77 @@
 import SwiftUI
 
+struct NewVMRequest {
+    var name: String
+    var kernelPath: String?
+    var windowsUnattended: Bool
+    var windowsIso: String
+    var password: String
+    var productKey: String
+}
+
 struct CreateVMView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var kernelPath = ""
+    @State private var windowsUnattended = false
+    @State private var windowsIso = ""
+    @State private var password = ""
+    @State private var productKey = ""
 
-    let onCreate: (String, String?) -> Void
+    let onCreate: (NewVMRequest) -> Void
 
     var body: some View {
         Form {
             TextField("Name", text: $name)
-            TextField("Kernel path (optional)", text: $kernelPath)
-            Text("Creates ~/Library/Application Support/Ternvale/vms/<name>/config.toml")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Toggle("Windows 11 (unattended)", isOn: $windowsUnattended)
+            if windowsUnattended {
+                TextField("Windows ISO path", text: $windowsIso)
+                SecureField("Account password (Keychain)", text: $password)
+                TextField("Product key (optional)", text: $productKey)
+                Text("You supply the Windows ISO and licence. Ternvale never generates keys.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                TextField("Kernel path (optional)", text: $kernelPath)
+                Text("Creates ~/Library/Application Support/Ternvale/vms/<name>/config.toml")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 200)
+        .frame(width: 460, height: windowsUnattended ? 320 : 200)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Create") {
-                    onCreate(name, kernelPath.nilIfEmpty)
+                    onCreate(
+                        NewVMRequest(
+                            name: name,
+                            kernelPath: kernelPath.nilIfEmpty,
+                            windowsUnattended: windowsUnattended,
+                            windowsIso: windowsIso,
+                            password: password,
+                            productKey: productKey
+                        )
+                    )
                     dismiss()
                 }
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!canCreate)
             }
         }
         .navigationTitle("New VM")
+    }
+
+    private var canCreate: Bool {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        if n.isEmpty { return false }
+        if windowsUnattended {
+            return !windowsIso.trimmingCharacters(in: .whitespaces).isEmpty
+                && !password.isEmpty
+        }
+        return true
     }
 }
 

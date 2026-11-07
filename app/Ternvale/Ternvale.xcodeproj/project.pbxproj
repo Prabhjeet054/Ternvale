@@ -46,6 +46,7 @@
 		B10000000000000000000026 /* VMSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000026 /* VMSettingsView.swift */; };
 		B10000000000000000000027 /* NicConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000027 /* NicConfigTests.swift */; };
 		B10000000000000000000028 /* ToolsOutdatedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000028 /* ToolsOutdatedTests.swift */; };
+		B10000000000000000000029 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000029 /* KeychainStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -89,6 +90,7 @@
 		B20000000000000000000026 /* VMSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMSettingsView.swift; sourceTree = "<group>"; };
 		B20000000000000000000027 /* NicConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NicConfigTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000028 /* ToolsOutdatedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsOutdatedTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000029 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -198,6 +200,7 @@
 				B2000000000000000000001F /* UpdateChecker.swift */,
 				B20000000000000000000022 /* FeedbackMailer.swift */,
 				B20000000000000000000025 /* VmnetHelperService.swift */,
+				B20000000000000000000029 /* KeychainStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -406,6 +409,7 @@
 				B10000000000000000000022 /* FeedbackMailer.swift in Sources */,
 				B10000000000000000000025 /* VmnetHelperService.swift in Sources */,
 				B10000000000000000000026 /* VMSettingsView.swift in Sources */,
+				B10000000000000000000029 /* KeychainStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

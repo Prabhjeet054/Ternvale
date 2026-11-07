@@ -24,6 +24,7 @@ impl Dir {
             installer: installer.then(|| self.0.join("install.iso")),
             tools: None,
             drivers: drivers.then(|| self.0.join("drivers.iso")),
+            unattend: None,
         });
         config
     }

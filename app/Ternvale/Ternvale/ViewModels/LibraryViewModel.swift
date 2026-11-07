@@ -81,12 +81,24 @@ final class LibraryViewModel: ObservableObject {
         pollTask = nil
     }
 
-    func createVM(name: String, kernelPath: String?) {
+    func createVM(_ request: NewVMRequest) {
         isBusy = true
         statusMessage = nil
         Task {
             do {
-                let config = try VMCreator.create(name: name, kernelPath: kernelPath)
+                let config: VMConfig
+                if request.windowsUnattended {
+                    let helper = try processes.helperURL()
+                    config = try VMCreator.createWindows(
+                        name: request.name,
+                        iso: request.windowsIso,
+                        password: request.password,
+                        productKey: request.productKey.isEmpty ? nil : request.productKey,
+                        helper: helper
+                    )
+                } else {
+                    config = try VMCreator.create(name: request.name, kernelPath: request.kernelPath)
+                }
                 refreshLibrary()
                 selection = config
                 phase = .stopped
@@ -109,6 +121,18 @@ final class LibraryViewModel: ObservableObject {
             let response = try control.status(vmName: vm.name)
             if response.ok, let status = response.status {
                 applySocketState(status)
+                if phase == .starting || phase == .running {
+                    if let stats = try? control.queryStats(vmName: vm.name),
+                       let bytes = stats.stats?.metrics?.blk.bytes
+                    {
+                        let agent = status.agent?.state ?? "waiting"
+                        if status.agent?.state == "connected" {
+                            statusMessage = "Guest agent connected (disk I/O \(bytes) bytes)"
+                        } else {
+                            statusMessage = "Installing… disk I/O \(bytes) bytes, agent \(agent)"
+                        }
+                    }
+                }
                 return
             }
         } catch ControlSocketClient.ReachError.staleSocket {

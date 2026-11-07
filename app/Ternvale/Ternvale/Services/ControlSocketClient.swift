@@ -15,6 +15,10 @@ final class ControlSocketClient {
         try request(vmName: vmName, body: ["cmd": "status"])
     }
 
+    func queryStats(vmName: String) throws -> ControlResponse {
+        try request(vmName: vmName, body: ["cmd": "query-stats"])
+    }
+
     func pause(vmName: String, timeoutMs: UInt64 = 5_000) throws -> ControlResponse {
         try request(vmName: vmName, body: ["cmd": "pause", "timeout_ms": timeoutMs])
     }
@@ -111,6 +115,25 @@ struct ControlResponse: Decodable {
     let ok: Bool
     let error: String?
     let status: VMStatusPayload?
+    let stats: StatsPayload?
+}
+
+struct StatsPayload: Decodable {
+    let metrics: MetricsPayload?
+}
+
+struct MetricsPayload: Decodable {
+    let blk: BlkIoPayload
+}
+
+struct BlkIoPayload: Decodable {
+    let bytes: UInt64
+    let count: UInt64
+}
+
+struct AgentPayload: Decodable {
+    let state: String
+    let agent: String?
 }
 
 struct VMStatusPayload: Decodable {
@@ -122,9 +145,10 @@ struct VMStatusPayload: Decodable {
     let stopCause: String?
     let toolsOutdated: Bool?
     let toolsIsoAgent: String?
+    let agent: AgentPayload?
 
     enum CodingKeys: String, CodingKey {
-        case name, state, cpus, failure
+        case name, state, cpus, failure, agent
         case uptimeMs = "uptime_ms"
         case stopCause = "stop_cause"
         case toolsOutdated = "tools_outdated"

@@ -108,6 +108,37 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(
+        parse(&[
+            "ternvale",
+            "create",
+            "--windows",
+            "--unattended",
+            "--iso",
+            "Win.iso",
+            "--name",
+            "win11",
+            "--password-env",
+            "TERNVALE_WIN_PASSWORD"
+        ]),
+        Command::Create {
+            name: "win11".into(),
+            windows: true,
+            iso: Some("Win.iso".into()),
+            unattended: true,
+            edition: "Windows 11 Pro".into(),
+            disk_size: "64G".into(),
+            firmware: None,
+            tools_iso: None,
+            user: "Ternvale".into(),
+            password_env: Some("TERNVALE_WIN_PASSWORD".into()),
+            password_file: None,
+            product_key_env: None,
+            product_key_file: None,
+            wait: false,
+            timeout_secs: 7200,
+        }
+    );
+    assert_eq!(
         parse(&["ternvale", "status", "a", "--stats"]),
         Command::Status {
             name: "a".into(),

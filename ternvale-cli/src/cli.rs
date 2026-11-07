@@ -38,6 +38,54 @@ pub enum Command {
         /// VM config (TOML).
         config: PathBuf,
     },
+    /// Create a library VM (`--windows --iso --unattended`).
+    Create {
+        /// Guest name under `~/Library/Application Support/Ternvale/vms/`.
+        #[arg(long)]
+        name: String,
+        /// Windows 11 ARM64 profile.
+        #[arg(long)]
+        windows: bool,
+        /// User-supplied Windows installer ISO (never bundled).
+        #[arg(long)]
+        iso: Option<PathBuf>,
+        /// Generate Autounattend.xml and a small answer-file ISO.
+        #[arg(long)]
+        unattended: bool,
+        /// Windows image name (`/IMAGE/NAME`).
+        #[arg(long, default_value = crate::create_cmd::DEFAULT_EDITION)]
+        edition: String,
+        /// System disk size (default 64G).
+        #[arg(long, default_value = crate::create_cmd::DEFAULT_DISK)]
+        disk_size: String,
+        /// UEFI firmware (`QEMU_EFI.fd`).
+        #[arg(long)]
+        firmware: Option<PathBuf>,
+        /// `ternvale-tools.iso` (virtio-win + agent).
+        #[arg(long)]
+        tools_iso: Option<PathBuf>,
+        /// Local administrator account.
+        #[arg(long, default_value = crate::create_cmd::DEFAULT_USER)]
+        user: String,
+        /// Env var that holds the account password (never logged).
+        #[arg(long)]
+        password_env: Option<String>,
+        /// File that holds the account password (never logged).
+        #[arg(long)]
+        password_file: Option<PathBuf>,
+        /// Env var that holds the Windows product key (optional; never generated).
+        #[arg(long)]
+        product_key_env: Option<String>,
+        /// File that holds the Windows product key (optional).
+        #[arg(long)]
+        product_key_file: Option<PathBuf>,
+        /// Spawn `ternvale run` and wait until the guest agent connects.
+        #[arg(long)]
+        wait: bool,
+        /// `--wait` timeout in seconds.
+        #[arg(long, default_value_t = 7200)]
+        timeout_secs: u64,
+    },
     /// Create a sparse raw disk image.
     CreateDisk {
         /// Image path; must not exist yet.

@@ -99,6 +99,21 @@ fn either_slot_is_optional_and_udf_only_images_are_accepted() {
     assert_eq!(config.block_devices()[1].role, BlockRole::Installer);
     let none = VmConfig::from_toml(&dir.config("linux", "")).expect("empty section");
     assert_eq!(none.block_devices().len(), 1);
+    disc(
+        &std::path::Path::new(&dir.path("unattend.iso")),
+        b"CD001",
+        17,
+    );
+    let with_unattend = format!(
+        "installer = \"{}\"\nunattend = \"{}\"\n",
+        dir.path("win.iso"),
+        dir.path("unattend.iso")
+    );
+    let config = VmConfig::from_toml(&dir.config("windows", &with_unattend)).expect("unattend");
+    assert_eq!(
+        config.block_devices().last().map(|d| d.role),
+        Some(BlockRole::Unattend)
+    );
     let tools = format!(
         "installer = \"{}\"\ntools = \"{}\"\n",
         dir.path("win.iso"),

@@ -59,8 +59,8 @@ struct ContentView: View {
         }
         .sheet(isPresented: $library.showCreateVM) {
             NavigationStack {
-                CreateVMView { name, kernel in
-                    library.createVM(name: name, kernelPath: kernel)
+                CreateVMView { request in
+                    library.createVM(request)
                 }
             }
         }

@@ -165,7 +165,7 @@ pub enum ConfigError {
     /// An `[iso]` slot is not a usable disc image.
     #[error("{field} {}: {reason}", path.display())]
     InvalidIso {
-        /// `iso.installer`, `iso.tools`, or `iso.drivers`.
+        /// `iso.installer`, `iso.tools`, `iso.drivers`, or `iso.unattend`.
         field: &'static str,
         /// Configured image.
         path: PathBuf,

@@ -7,10 +7,12 @@
 //! - `drivers`: a driver disc for the installer, meant for a raw virtio-win
 //!   ISO (`scripts/fetch-virtio-win.sh`; it is fetched, never bundled). Never
 //!   booted: the boot order leaves it out, so EDK2 drops its boot option.
+//! - `unattend`: a small ISO with `Autounattend.xml` for Windows Setup. Never
+//!   booted.
 //!
-//! Slots attach after the disks, installer then tools then drivers
-//! ([`VmConfig::block_devices`]), always read-only, as virtio-blk devices with
-//! optical-media features (see `ternvale-devices`, `BlkMedia::Optical`).
+//! Slots attach after the disks, installer then tools then drivers then
+//! unattend ([`VmConfig::block_devices`]), always read-only, as virtio-blk
+//! devices with optical-media features (see `ternvale-devices`, `BlkMedia::Optical`).
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -37,6 +39,9 @@ pub struct IsoSection {
     /// Driver disc (virtio-win) for the installer; never booted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drivers: Option<PathBuf>,
+    /// Answer-file ISO (`Autounattend.xml`); never booted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unattend: Option<PathBuf>,
 }
 
 /// Why a block device is attached.
@@ -50,6 +55,8 @@ pub enum BlockRole {
     Tools,
     /// `iso.drivers`.
     Drivers,
+    /// `iso.unattend`.
+    Unattend,
 }
 
 impl fmt::Display for BlockRole {
@@ -59,6 +66,7 @@ impl fmt::Display for BlockRole {
             Self::Installer => "installer",
             Self::Tools => "tools",
             Self::Drivers => "drivers",
+            Self::Unattend => "unattend",
         })
     }
 }
@@ -103,6 +111,11 @@ impl IsoSection {
             ),
             ("iso.tools", BlockRole::Tools, self.tools.as_deref()),
             ("iso.drivers", BlockRole::Drivers, self.drivers.as_deref()),
+            (
+                "iso.unattend",
+                BlockRole::Unattend,
+                self.unattend.as_deref(),
+            ),
         ]
         .into_iter()
         .filter_map(|(field, role, path)| path.map(|path| (field, role, path)))
@@ -153,7 +166,7 @@ impl IsoSection {
 
 impl VmConfig {
     /// Every virtio-blk device in attach order: `[[disks]]` in config order,
-    /// then `iso.installer`, `iso.tools`, `iso.drivers`.
+    /// then `iso.installer`, `iso.tools`, `iso.drivers`, `iso.unattend`.
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
     pub fn block_devices(&self) -> Vec<BlockDevice> {
         let disks = self.disks.iter().map(|disk| BlockDevice {

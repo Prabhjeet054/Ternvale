@@ -74,7 +74,7 @@ pub fn disk_ofw_path(transport: VirtioTransport, index: usize) -> Result<String,
 ///
 /// Indices are positions in [`VmConfig::block_devices`]: `iso.installer`
 /// first, then `[[disks]]` that are ISO images, then the other disks.
-/// `iso.drivers` / `iso.tools` are left out, so EDK2 drops their boot options.
+/// `iso.drivers` / `iso.tools` / `iso.unattend` are left out, so EDK2 drops their boot options.
 #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(name = %config.name, profile = %config.profile))]
 pub(crate) fn file(config: &VmConfig) -> Result<Option<(String, Vec<u8>)>, MachineError> {
     if !config.iso_boots_first() {
@@ -87,7 +87,7 @@ pub(crate) fn file(config: &VmConfig) -> Result<Option<(String, Vec<u8>)>, Machi
     for (index, device) in devices.iter().enumerate() {
         match device.role {
             BlockRole::Installer => isos.insert(0, index),
-            BlockRole::Drivers | BlockRole::Tools => {
+            BlockRole::Drivers | BlockRole::Tools | BlockRole::Unattend => {
                 tracing::info!(target: "ternvale::boot", index, role = %device.role, path = %device.path.display(), "optical disc left out of the uefi boot order");
             }
             BlockRole::Disk if is_iso(&device.path)? => isos.push(index),

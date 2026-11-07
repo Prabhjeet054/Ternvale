@@ -61,6 +61,61 @@ enum VMCreator {
         return try VMConfigParser.parse(url: configURL)
     }
 
+    /// `ternvale create --windows --unattended`. Password travels only in the helper env.
+    static func createWindows(
+        name: String,
+        iso: String,
+        password: String,
+        productKey: String?,
+        helper: URL
+    ) throws -> VMConfig {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isValidName(trimmed) else { throw CreateError.invalidName }
+        try KeychainStore.store(account: KeychainStore.passwordAccount(vm: trimmed), secret: password)
+        if let key = productKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+            try KeychainStore.store(account: KeychainStore.productKeyAccount(vm: trimmed), secret: key)
+        }
+        let process = Process()
+        process.executableURL = helper
+        var args = [
+            "create", "--windows", "--unattended",
+            "--name", trimmed,
+            "--iso", iso,
+            "--password-env", "TERNVALE_WIN_PASSWORD",
+        ]
+        if let key = productKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+            args += ["--product-key-env", "TERNVALE_WIN_PRODUCT_KEY"]
+        }
+        process.arguments = args
+        var env = ProcessInfo.processInfo.environment
+        env["TERNVALE_WIN_PASSWORD"] = password
+        if let key = productKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+            env["TERNVALE_WIN_PRODUCT_KEY"] = key
+        }
+        process.environment = env
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        if process.terminationStatus != 0 {
+            log.error("ternvale create failed status=\(process.terminationStatus) \(text, privacy: .public)")
+            throw CreateError.io(text.isEmpty ? "ternvale create failed" : lastLines(text))
+        }
+        log.info("created windows vm \(trimmed, privacy: .public)")
+        let configURL = TernvalePaths.vmLibraryRoot
+            .appendingPathComponent(trimmed, isDirectory: true)
+            .appendingPathComponent("config.toml")
+        return try VMConfigParser.parse(url: configURL)
+    }
+
+    private static func lastLines(_ text: String) -> String {
+        let lines = text.split(separator: "\n")
+        return lines.suffix(12).joined(separator: "\n")
+    }
+
     private static func isValidName(_ name: String) -> Bool {
         !name.isEmpty && name.allSatisfy { ch in
             ch.isASCII && (ch.isLetter || ch.isNumber || ch == "-" || ch == "_")
