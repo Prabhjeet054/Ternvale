@@ -19,12 +19,12 @@ pub const TOOLS_ISO_ENV: &str = "TERNVALE_TOOLS_ISO";
 /// `ternvale tools …`
 #[derive(Debug, Subcommand, PartialEq, Eq)]
 pub enum ToolsCommand {
-    /// Assemble `ternvale-tools.iso` (virtio-win + agent + install.ps1).
+    /// Assemble `ternvale-tools.iso` (virtio-win + WinFsp MSI + agent + install.ps1).
     BuildIso {
         /// virtio-win ISO or an extracted directory.
         #[arg(long)]
         virtio_win: Option<PathBuf>,
-        /// Run `scripts/fetch-virtio-win.sh` when `--virtio-win` is omitted.
+        /// Run `scripts/fetch-virtio-win.sh` and `scripts/fetch-winfsp.sh` when omitted.
         #[arg(long)]
         fetch: bool,
         /// Windows agent PE (`ternvale-agent.exe`).

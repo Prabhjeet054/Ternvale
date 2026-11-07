@@ -68,6 +68,12 @@ impl Table {
         self.by_id.get(&nodeid)
     }
 
+    /// Real host path of the share root.
+    #[tracing::instrument(level = "trace", target = "ternvale::virtiofs", skip_all)]
+    pub fn root(&self) -> &PathBuf {
+        &self.root_real
+    }
+
     /// Insert a newly opened child. Returns `(nodeid, generation)`.
     #[tracing::instrument(level = "debug", target = "ternvale::virtiofs", skip_all)]
     pub fn insert(&mut self, fd: OwnedFd, mode: u32) -> Result<(u64, u64), i32> {

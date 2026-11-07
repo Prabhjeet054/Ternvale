@@ -4,6 +4,17 @@ use crate::tools_build::{build_test_iso, iso_list};
 use clap::Parser;
 
 #[test]
+fn install_script_sets_up_winfsp_and_virtiofs() {
+    let ps1 = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../scripts/windows/Install-TernvaleTools.ps1"
+    ));
+    assert!(ps1.contains("winfsp.msi"), "{ps1}");
+    assert!(ps1.contains("VirtioFsSvc"), "{ps1}");
+    assert!(ps1.contains("virtiofs.exe"), "{ps1}");
+}
+
+#[test]
 fn clap_parses_tools_build_iso() {
     let command = Cli::try_parse_from([
         "ternvale",

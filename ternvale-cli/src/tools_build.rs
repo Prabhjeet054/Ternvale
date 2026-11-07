@@ -22,9 +22,9 @@ const FETCH_SCRIPT: &str = concat!(
 
 const README: &str = "Ternvale guest tools\n\n\
 Run Install-TernvaleTools.ps1 (or install.ps1) as Administrator.\n\
-That installs ARM64 virtio-win drivers with pnputil and the\n\
-TernvaleGuestAgent service (ternvale-agent.exe --install).\n\
-virtio-win is not part of the Ternvale source tree; see docs/LICENSES.md.\n";
+That installs ARM64 virtio-win drivers with pnputil, WinFsp (unmodified\n\
+MSI), VirtioFsSvc, and the TernvaleGuestAgent service.\n\
+virtio-win and WinFsp are not in the Ternvale source tree; see docs/LICENSES.md.\n";
 
 /// Inputs for [`build_iso`].
 pub struct BuildIsoArgs {
@@ -74,6 +74,9 @@ pub fn build_iso(args: BuildIsoArgs) -> Result<BuiltIso> {
         fs::copy(&agent, staging.join("agent/ternvale-agent.exe"))
             .with_context(|| format!("copy agent {}", agent.display()))?;
         stage_virtio_win(&virtio, &staging.join("virtio-win"))?;
+        if let Some(msi) = crate::tools_winfsp::resolve(None, args.fetch)? {
+            crate::tools_winfsp::stage(&msi, &staging.join("winfsp"))?;
+        }
 
         let files = hash_tree(&staging)?;
         let version = env!("CARGO_PKG_VERSION").to_string();

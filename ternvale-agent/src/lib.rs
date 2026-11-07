@@ -18,6 +18,7 @@ mod session;
 mod transport;
 mod win_clip;
 mod win_display;
+mod win_share;
 mod windows;
 #[cfg(windows)]
 mod windows_vsock;

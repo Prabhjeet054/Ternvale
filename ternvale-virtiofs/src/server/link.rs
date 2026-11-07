@@ -1,7 +1,6 @@
 //! SYMLINK, READLINK, and extended attributes.
 
 use crate::fuse::{self, c_string, InHeader};
-use crate::name;
 use crate::server::Server;
 use crate::sys;
 use crate::wire::u32_at;
@@ -28,9 +27,13 @@ pub(super) fn symlink(server: &mut Server, hdr: InHeader, body: &[u8]) -> Vec<u8
     let Some(target) = c_string(rest) else {
         return fuse::reply(hdr.unique, libc::EINVAL, &[]);
     };
-    if let Err(errno) = name::check(link_name) {
-        return fuse::reply(hdr.unique, errno, &[]);
-    }
+    let link_name = match server.child_name(hdr.nodeid, link_name, true) {
+        Ok(name) => name,
+        Err(errno) => return fuse::reply(hdr.unique, errno, &[]),
+    };
+    let Some(parent) = server.inodes.get(hdr.nodeid) else {
+        return fuse::reply(hdr.unique, libc::ENOENT, &[]);
+    };
     if target.is_empty() || target.len() > 1024 {
         tracing::warn!(
             target: "ternvale::virtiofs",
@@ -39,13 +42,10 @@ pub(super) fn symlink(server: &mut Server, hdr: InHeader, body: &[u8]) -> Vec<u8
         );
         return fuse::reply(hdr.unique, libc::EINVAL, &[]);
     }
-    let Some(parent) = server.inodes.get(hdr.nodeid) else {
-        return fuse::reply(hdr.unique, libc::ENOENT, &[]);
-    };
-    if let Err(error) = sys::symlinkat(parent.raw(), link_name, target) {
+    if let Err(error) = sys::symlinkat(parent.raw(), &link_name, target) {
         tracing::warn!(
             target: "ternvale::virtiofs",
-            name = link_name,
+            name = %link_name,
             error = %error,
             reason = "symlinkat failed",
             "rejected share symlink"

@@ -91,6 +91,20 @@ impl std::fmt::Debug for ClipboardText {
     }
 }
 
+/// Linux `/path` or Windows `X:` / `X:\…` (same rule as `ternvale-config`).
+#[tracing::instrument(level = "trace", target = "ternvale::agent", skip_all)]
+pub fn is_guest_mount_point(path: &str) -> bool {
+    if path.starts_with('/') {
+        return true;
+    }
+    let bytes = path.as_bytes();
+    if bytes.len() < 2 || !bytes[0].is_ascii_alphabetic() || bytes[1] != b':' {
+        return false;
+    }
+    let rest = &path[2..];
+    rest.is_empty() || rest.starts_with('\\') || rest.starts_with('/')
+}
+
 impl Message {
     /// The wire `type` tag.
     #[tracing::instrument(level = "trace", target = "ternvale::agent", skip_all)]
@@ -141,8 +155,8 @@ impl Message {
                         "share_mount mount_point length must be 1..={}",
                         crate::MAX_MOUNT_PATH
                     ))
-                } else if !mount_point.starts_with('/') {
-                    Err("share_mount mount_point must be absolute".into())
+                } else if !is_guest_mount_point(mount_point) {
+                    Err("share_mount mount_point must be an absolute path or a Windows drive letter".into())
                 } else {
                     Ok(())
                 }

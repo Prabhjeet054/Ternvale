@@ -17,7 +17,7 @@ pub struct Share {
     pub host_path: PathBuf,
     /// virtio-fs mount tag (guest `mount -t virtiofs` source).
     pub tag: String,
-    /// Where the guest agent should mount the share (Linux).
+    /// Where the guest agent should mount the share (Linux path or `Z:`).
     #[serde(default = "default_mount_point")]
     pub mount_point: String,
     /// Guest writes fail with `EROFS`.
@@ -27,6 +27,20 @@ pub struct Share {
 
 fn default_mount_point() -> String {
     "/mnt/ternvale".to_string()
+}
+
+/// Linux `/path` or Windows `X:` / `X:\…`.
+#[tracing::instrument(level = "trace", target = "ternvale::config", skip_all)]
+pub fn is_guest_mount_point(path: &str) -> bool {
+    if path.starts_with('/') {
+        return true;
+    }
+    let bytes = path.as_bytes();
+    if bytes.len() < 2 || !bytes[0].is_ascii_alphabetic() || bytes[1] != b':' {
+        return false;
+    }
+    let rest = &path[2..];
+    rest.is_empty() || rest.starts_with('\\') || rest.starts_with('/')
 }
 
 impl Share {
@@ -57,10 +71,10 @@ impl Share {
                 reason: format!("length must be 1..={MAX_MOUNT_PATH}"),
             });
         }
-        if !self.mount_point.starts_with('/') {
+        if !is_guest_mount_point(&self.mount_point) {
             return Err(crate::ConfigError::InvalidShare {
                 field: "shares.mount_point",
-                reason: "must be an absolute path".into(),
+                reason: "must be an absolute Unix path or a Windows drive letter (Z:)".into(),
             });
         }
         tracing::debug!(
@@ -71,5 +85,20 @@ impl Share {
             "accepted share"
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_guest_mount_point;
+
+    #[test]
+    fn guest_mount_points_unix_and_windows() {
+        assert!(is_guest_mount_point("/mnt/ternvale"));
+        assert!(is_guest_mount_point("Z:"));
+        assert!(is_guest_mount_point("z:\\"));
+        assert!(is_guest_mount_point("D:/share"));
+        assert!(!is_guest_mount_point("relative"));
+        assert!(!is_guest_mount_point(""));
     }
 }

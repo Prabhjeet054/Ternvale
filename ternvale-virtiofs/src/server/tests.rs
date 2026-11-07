@@ -63,6 +63,7 @@ fn write_on_read_only_is_erofs() {
         Options {
             read_only: true,
             max_handles: 8,
+            windows_names: false,
         },
     )
     .expect("open");
@@ -142,5 +143,33 @@ fn getattr_root_maps_host_ids() {
     );
     let (host_uid, _) = crate::sys::host_ids();
     assert_eq!(uid, host_uid);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn windows_names_reject_reserved_and_fold_lookup() {
+    let dir = std::env::temp_dir().join(format!("tv-fs-win-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("dir");
+    std::fs::write(dir.join("ReadMe.txt"), b"ok").expect("file");
+    let mut server = Server::open(
+        &dir,
+        Options {
+            windows_names: true,
+            ..Options::default()
+        },
+    )
+    .expect("open");
+    init(&mut server);
+    let mut reserved = header(opcode::MKDIR, 9, fuse::ROOT_ID);
+    reserved.extend_from_slice(&0o755u32.to_le_bytes());
+    reserved.extend_from_slice(&0u32.to_le_bytes());
+    reserved.extend_from_slice(b"CON\0");
+    let reply = server.handle(&reserved).expect("mkdir CON");
+    assert_eq!(unique_error(&reply), -libc::EINVAL);
+    let mut lookup = header(opcode::LOOKUP, 10, fuse::ROOT_ID);
+    lookup.extend_from_slice(b"readme.txt\0");
+    let reply = server.handle(&lookup).expect("fold");
+    assert_eq!(unique_error(&reply), 0);
     let _ = std::fs::remove_dir_all(&dir);
 }

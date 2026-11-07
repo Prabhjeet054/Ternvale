@@ -47,6 +47,7 @@ pub mod tools_build;
 pub mod tools_hybrid;
 pub mod tools_manifest;
 pub mod tools_verify;
+pub mod tools_winfsp;
 pub mod unattend_iso;
 pub mod unattend_xml;
 pub mod update_check;

@@ -2,7 +2,6 @@
 
 use crate::fuse::{self, c_string, InHeader};
 use crate::inode;
-use crate::name;
 use crate::server::Server;
 use crate::sys;
 
@@ -16,9 +15,10 @@ pub(crate) fn lookup(server: &mut Server, hdr: InHeader, body: &[u8]) -> Vec<u8>
         );
         return fuse::reply(hdr.unique, libc::EINVAL, &[]);
     };
-    if let Err(errno) = name::check(raw) {
-        return fuse::reply(hdr.unique, errno, &[]);
-    }
+    let name = match server.child_name(hdr.nodeid, raw, false) {
+        Ok(name) => name,
+        Err(errno) => return fuse::reply(hdr.unique, errno, &[]),
+    };
     let Some(parent) = server.inodes.get(hdr.nodeid) else {
         tracing::warn!(
             target: "ternvale::virtiofs",
@@ -29,12 +29,12 @@ pub(crate) fn lookup(server: &mut Server, hdr: InHeader, body: &[u8]) -> Vec<u8>
         return fuse::reply(hdr.unique, libc::ENOENT, &[]);
     };
     let parent_fd = parent.raw();
-    let child = match sys::openat_nofollow(parent_fd, raw, libc::O_RDONLY) {
+    let child = match sys::openat_nofollow(parent_fd, &name, libc::O_RDONLY) {
         Ok(fd) => fd,
         Err(error) => {
             tracing::warn!(
                 target: "ternvale::virtiofs",
-                name = raw,
+                name = %name,
                 error = %error,
                 reason = "openat failed",
                 "rejected share lookup"

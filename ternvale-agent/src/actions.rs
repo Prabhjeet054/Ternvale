@@ -74,7 +74,7 @@ pub trait Actions {
     fn clipboard_set(&mut self, text: &str) -> Result<(), AgentError>;
     /// `ClipboardGet`.
     fn clipboard_get(&mut self) -> Result<String, AgentError>;
-    /// `ShareMount` (virtio-fs on Linux).
+    /// `ShareMount` (virtio-fs on Linux; drive letter on Windows).
     fn mount_share(&mut self, tag: &str, mount_point: &str) -> Result<(), AgentError>;
     /// `WindowListGet` (seamless mode, protocol v3+).
     fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError>;
@@ -218,9 +218,13 @@ impl Actions for SystemActions {
             tracing::info!(target: "ternvale::agent", tag, mount_point, "shared folder mounted");
             return Ok(());
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(windows)]
         {
-            tracing::warn!(target: "ternvale::agent", tag, mount_point, "share_mount ignored on non-Linux guest");
+            return crate::win_share::mount(tag, mount_point);
+        }
+        #[cfg(not(any(target_os = "linux", windows)))]
+        {
+            tracing::warn!(target: "ternvale::agent", tag, mount_point, "share_mount ignored on this OS");
             Ok(())
         }
     }

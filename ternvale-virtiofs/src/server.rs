@@ -25,6 +25,9 @@ pub struct Options {
     pub read_only: bool,
     /// Cap on concurrent OPEN/CREATE/OPENDIR handles.
     pub max_handles: usize,
+    /// Windows filename policy (reserved names, illegal chars, MAX_PATH,
+    /// case-insensitive lookup/create).
+    pub windows_names: bool,
 }
 
 impl Default for Options {
@@ -32,6 +35,7 @@ impl Default for Options {
         Self {
             read_only: false,
             max_handles: crate::handle::DEFAULT_MAX,
+            windows_names: false,
         }
     }
 }
@@ -41,6 +45,7 @@ pub struct Server {
     pub(crate) inodes: Table,
     pub(crate) handles: Handles,
     pub(crate) read_only: bool,
+    pub(crate) windows_names: bool,
     pub(crate) inited: bool,
 }
 
@@ -50,7 +55,7 @@ impl Server {
         level = "debug",
         target = "ternvale::virtiofs",
         skip_all,
-        fields(root = %root.display(), read_only = opts.read_only)
+        fields(root = %root.display(), read_only = opts.read_only, windows_names = opts.windows_names)
     )]
     pub fn open(root: &Path, opts: Options) -> Result<Self, FsError> {
         let fd = sys::open_dir(root).map_err(|source| FsError::Export {
@@ -66,12 +71,14 @@ impl Server {
             root = %real.display(),
             read_only = opts.read_only,
             max_handles = opts.max_handles,
+            windows_names = opts.windows_names,
             "virtio-fs export ready"
         );
         Ok(Self {
             inodes: Table::new(fd, real),
             handles: Handles::new(opts.max_handles),
             read_only: opts.read_only,
+            windows_names: opts.windows_names,
             inited: false,
         })
     }
@@ -156,6 +163,30 @@ impl Server {
         }
     }
 
+    /// POSIX (+ Windows) name policy; returns the host directory entry to use.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtiofs",
+        skip_all,
+        fields(name, creating)
+    )]
+    pub(crate) fn child_name(
+        &self,
+        parent_id: u64,
+        name: &str,
+        creating: bool,
+    ) -> Result<String, i32> {
+        let Some(parent) = self.inodes.get(parent_id) else {
+            return Err(libc::ENOENT);
+        };
+        if self.windows_names {
+            if let Ok(path) = sys::fd_path(parent.raw()) {
+                crate::name::check_windows_path(self.inodes.root(), &path, name)?;
+            }
+        }
+        crate::name::prepare(parent.raw(), name, self.windows_names, creating)
+    }
+
     pub(crate) fn want_write(&self, unique: u64) -> Result<(), Vec<u8>> {
         if self.read_only {
             tracing::warn!(
@@ -186,3 +217,5 @@ pub(crate) fn dup_fd(fd: i32) -> Result<OwnedFd, i32> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod windows_tests;

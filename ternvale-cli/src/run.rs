@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ternvale_agent_proto::AGENT_PORT;
-use ternvale_config::{BlockDevice, Nic, Share, VirtioTransport, VmConfig};
+use ternvale_config::{BlockDevice, Nic, Profile, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
     attach_blocks, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon, VirtioConsole,
     VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
@@ -163,6 +163,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
     let ram_min_mib = config.balloon_floor_mib();
     let cpus = config.cpus;
     let share = config.shares.first();
+    let windows_names = config.profile == Profile::Windows;
     let session_slot = Arc::clone(&session);
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
         let wanted = Wanted {
@@ -172,6 +173,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
             vsock: if attach_vsock { device.as_ref() } else { None },
             console: console.as_deref(),
             share,
+            windows_names,
             display: plan.as_ref(),
             agent: agent.clone(),
             audio,
@@ -260,6 +262,8 @@ struct Wanted<'a> {
     console: Option<&'a std::path::Path>,
     /// First `[[shares]]` entry (virtio-fs on the next virtio-mmio slot).
     share: Option<&'a Share>,
+    /// Windows guests: reserved names, illegal chars, MAX_PATH, case fold.
+    windows_names: bool,
     /// `--display window`: a virtio-gpu after vsock, then a virtio-input
     /// keyboard and tablet (all PCI with `virtio-pci`).
     display: Option<&'a DisplayPlan>,
@@ -391,6 +395,7 @@ fn attach_devices(
             &share.tag,
             ternvale_virtiofs::Options {
                 read_only: share.read_only,
+                windows_names: wanted.windows_names,
                 ..ternvale_virtiofs::Options::default()
             },
             Arc::clone(&attach.memory),
@@ -404,6 +409,7 @@ fn attach_devices(
             host = %share.host_path.display(),
             mount = %share.mount_point,
             read_only = share.read_only,
+            windows_names = wanted.windows_names,
             "attached virtio-fs share"
         );
         devices.push((base, size, device));

@@ -2,7 +2,6 @@
 
 use crate::fuse::{self, c_string, InHeader};
 use crate::inode;
-use crate::name;
 use crate::server::Server;
 use crate::sys;
 use crate::wire::{u32_at, u64_at};
@@ -19,23 +18,24 @@ pub(super) fn mkdir(server: &mut Server, hdr: InHeader, body: &[u8]) -> Vec<u8> 
     let Some(raw) = c_string(&body[8..]) else {
         return fuse::reply(hdr.unique, libc::EINVAL, &[]);
     };
-    if let Err(errno) = name::check(raw) {
-        return fuse::reply(hdr.unique, errno, &[]);
-    }
+    let name = match server.child_name(hdr.nodeid, raw, true) {
+        Ok(name) => name,
+        Err(errno) => return fuse::reply(hdr.unique, errno, &[]),
+    };
     let Some(parent) = server.inodes.get(hdr.nodeid) else {
         return fuse::reply(hdr.unique, libc::ENOENT, &[]);
     };
-    if let Err(error) = sys::mkdirat(parent.raw(), raw, mode & 0o7777) {
+    if let Err(error) = sys::mkdirat(parent.raw(), &name, mode & 0o7777) {
         tracing::warn!(
             target: "ternvale::virtiofs",
-            name = raw,
+            name = %name,
             error = %error,
             reason = "mkdirat failed",
             "rejected share mkdir"
         );
         return fuse::reply(hdr.unique, sys::errno(&error), &[]);
     }
-    lookup_child(server, hdr, raw)
+    lookup_child(server, hdr, &name)
 }
 
 #[tracing::instrument(level = "debug", target = "ternvale::virtiofs", skip_all)]
@@ -51,19 +51,20 @@ pub(super) fn create(server: &mut Server, hdr: InHeader, body: &[u8]) -> Vec<u8>
     let Some(raw) = c_string(&body[16..]) else {
         return fuse::reply(hdr.unique, libc::EINVAL, &[]);
     };
-    if let Err(errno) = name::check(raw) {
-        return fuse::reply(hdr.unique, errno, &[]);
-    }
+    let name = match server.child_name(hdr.nodeid, raw, true) {
+        Ok(name) => name,
+        Err(errno) => return fuse::reply(hdr.unique, errno, &[]),
+    };
     let Some(parent) = server.inodes.get(hdr.nodeid) else {
         return fuse::reply(hdr.unique, libc::ENOENT, &[]);
     };
     let flags = libc::O_EXCL | libc::O_RDWR;
-    let child = match sys::openat_create(parent.raw(), raw, flags, mode & 0o7777) {
+    let child = match sys::openat_create(parent.raw(), &name, flags, mode & 0o7777) {
         Ok(fd) => fd,
         Err(error) => {
             tracing::warn!(
                 target: "ternvale::virtiofs",
-                name = raw,
+                name = %name,
                 error = %error,
                 reason = "create openat failed",
                 "rejected share create"
@@ -114,18 +115,19 @@ pub(super) fn unlink(server: &mut Server, hdr: InHeader, body: &[u8], rmdir: boo
     let Some(raw) = c_string(body) else {
         return fuse::reply(hdr.unique, libc::EINVAL, &[]);
     };
-    if let Err(errno) = name::check(raw) {
-        return fuse::reply(hdr.unique, errno, &[]);
-    }
+    let name = match server.child_name(hdr.nodeid, raw, false) {
+        Ok(name) => name,
+        Err(errno) => return fuse::reply(hdr.unique, errno, &[]),
+    };
     let Some(parent) = server.inodes.get(hdr.nodeid) else {
         return fuse::reply(hdr.unique, libc::ENOENT, &[]);
     };
-    match sys::unlinkat(parent.raw(), raw, rmdir) {
+    match sys::unlinkat(parent.raw(), &name, rmdir) {
         Ok(()) => fuse::reply(hdr.unique, 0, &[]),
         Err(error) => {
             tracing::warn!(
                 target: "ternvale::virtiofs",
-                name = raw,
+                name = %name,
                 error = %error,
                 reason = "unlinkat failed",
                 "rejected share unlink"
@@ -162,9 +164,14 @@ pub(super) fn rename(server: &mut Server, hdr: InHeader, body: &[u8], rename2: b
     let Some(new) = c_string(rest) else {
         return fuse::reply(hdr.unique, libc::EINVAL, &[]);
     };
-    if let Err(errno) = name::check(old).and(name::check(new)) {
-        return fuse::reply(hdr.unique, errno, &[]);
-    }
+    let old_name = match server.child_name(hdr.nodeid, old, false) {
+        Ok(name) => name,
+        Err(errno) => return fuse::reply(hdr.unique, errno, &[]),
+    };
+    let new_name = match server.child_name(newdir, new, false) {
+        Ok(name) => name,
+        Err(errno) => return fuse::reply(hdr.unique, errno, &[]),
+    };
     let Some(src) = server.inodes.get(hdr.nodeid) else {
         return fuse::reply(hdr.unique, libc::ENOENT, &[]);
     };
@@ -173,13 +180,13 @@ pub(super) fn rename(server: &mut Server, hdr: InHeader, body: &[u8], rename2: b
     };
     let src_fd = src.raw();
     let dst_fd = dst.raw();
-    match sys::renameat(src_fd, old, dst_fd, new) {
+    match sys::renameat(src_fd, &old_name, dst_fd, &new_name) {
         Ok(()) => fuse::reply(hdr.unique, 0, &[]),
         Err(error) => {
             tracing::warn!(
                 target: "ternvale::virtiofs",
-                old,
-                new,
+                old = %old_name,
+                new = %new_name,
                 error = %error,
                 reason = "renameat failed",
                 "rejected share rename"

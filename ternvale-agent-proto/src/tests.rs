@@ -252,6 +252,25 @@ fn frame_reader_rejects_bad_lengths() {
 }
 
 #[test]
+fn share_mount_accepts_windows_drive_letters() {
+    let unix = Message::ShareMount {
+        tag: "ternvale".into(),
+        mount_point: "/mnt/ternvale".into(),
+    };
+    unix.validate().expect("unix");
+    let win = Message::ShareMount {
+        tag: "ternvale".into(),
+        mount_point: "Z:".into(),
+    };
+    win.validate().expect("drive");
+    let bad = Message::ShareMount {
+        tag: "ternvale".into(),
+        mount_point: "relative".into(),
+    };
+    assert!(bad.validate().unwrap_err().contains("drive letter"));
+}
+
+#[test]
 fn kind_matches_the_wire_tag() {
     for message in all_messages() {
         let json = serde_json::to_value(&message).expect("json");
