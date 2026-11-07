@@ -16,8 +16,11 @@
 //! `CTRL_REQ` accept any locality's writes, as in QEMU.
 //! TODO(verify): whether the PTP requires per-locality buffers or dropping
 //! data-buffer writes from a locality that is not active.
-//! No interrupt is wired (the DSDT `_CRS` has none), so `TPM_CRB_INT_ENABLE`
-//! is stored and `TPM_CRB_INT_STS` stays 0: guests poll.
+//! `TPM_CRB_INT_STS` bit 0 is set when a command completes and is
+//! write-1-to-clear (PTP §6.5.3). No GIC SPI is wired (the DSDT `_CRS` has
+//! none), so guests still poll `START` unless they later get an ACPI
+//! interrupt. The status bit must still be accurate so a driver does not
+//! spin on a stuck "busy" interrupt register.
 //!
 //! Every access is checked: size 1, 2, 4 or 8, naturally aligned, inside the
 //! window. Anything else logs WARN, reads 0 and writes nothing. Every command
@@ -46,6 +49,7 @@ pub struct TpmCrb {
     idle: bool,
     cancel: u32,
     int_enable: u32,
+    int_sts: u32,
     buffer: Vec<u8>,
     runner: Runner,
     pending: Option<command::Pending>,
@@ -110,6 +114,7 @@ impl TpmCrb {
             idle: true,
             cancel: 0,
             int_enable: 0,
+            int_sts: 0,
             buffer: vec![0; DATA_BUFFER_SIZE],
             runner,
             pending: None,
@@ -213,11 +218,12 @@ impl TpmCrb {
             CTRL_START if self.pending.is_some() => START_INVOKE,
             CTRL_CANCEL => self.cancel,
             INT_ENABLE => self.int_enable,
+            INT_STS => self.int_sts,
             CMD_SIZE | RSP_SIZE => DATA_BUFFER_SIZE as u32,
             CMD_LADDR | RSP_ADDR_LO => self.buffer_gpa(locality) as u32,
             CMD_HADDR | RSP_ADDR_HI => (self.buffer_gpa(locality) >> 32) as u32,
             // LOC_CTRL, CTRL_EXT, CTRL_REQ, CTRL_START with nothing
-            // running, INT_STS, busy CTRL_STS, and reserved offsets read 0.
+            // running, busy CTRL_STS, and reserved offsets read 0.
             _ => 0,
         }
     }
@@ -237,7 +243,18 @@ impl TpmCrb {
                 self.int_enable = (self.int_enable & !mask) | value;
                 tracing::debug!(target: "ternvale::tpm", int_enable = %format!("{:#x}", self.int_enable), "tpm interrupt enable stored; no interrupt is wired");
             }
-            INT_STS | CTRL_EXT_LO | CTRL_EXT_HI => {
+            INT_STS => {
+                let prev = self.int_sts;
+                self.int_sts &= !value;
+                tracing::debug!(
+                    target: "ternvale::tpm",
+                    prev = %format!("{prev:#x}"),
+                    ack = %format!("{value:#x}"),
+                    int_sts = %format!("{:#x}", self.int_sts),
+                    "tpm interrupt status write-1-to-clear"
+                );
+            }
+            CTRL_EXT_LO | CTRL_EXT_HI => {
                 tracing::debug!(target: "ternvale::tpm", reg = %format!("{reg:#x}"), value = %format!("{value:#x}"), "tpm register write has no effect");
             }
             // EDK2's `PtpCrbTpmCommand` (Tpm2Ptp.c) writes the buffer address

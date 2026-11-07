@@ -63,8 +63,11 @@ pub(super) fn poll_loop(poll: Poll) {
         }
         std::thread::sleep(Duration::from_millis(50));
         // hv_gic_set_spi(true) can be missed while the guest is inside an
-        // emulated WFI. Pulse again only while the line stays high.
-        if poll.irq_level.load(Ordering::Acquire) {
+        // emulated WFI. Pulse again only while the line stays high. Do not
+        // nudge CPU 0 when every line is low: that was a 20 Hz spurious WFI
+        // wakeup on an idle guest.
+        let uart_high = poll.irq_level.load(Ordering::Acquire);
+        if uart_high {
             if let Err(error) = poll.gic.set_spi(uart_spi, true) {
                 tracing::debug!(
                     target: "ternvale::gic",
@@ -74,10 +77,12 @@ pub(super) fn poll_loop(poll: Poll) {
             }
         }
         let levels = crate::lockwatch::lock(&poll.spi_levels, "spi-levels").clone();
+        let mut virtio_high = false;
         for (spi, level) in levels {
             if !level.load(Ordering::Acquire) {
                 continue;
             }
+            virtio_high = true;
             if let Err(error) = poll.gic.set_spi(spi, true) {
                 tracing::debug!(
                     target: "ternvale::gic",
@@ -87,7 +92,10 @@ pub(super) fn poll_loop(poll: Poll) {
                 );
             }
         }
-        poll.power.nudge(IRQ_CPU);
+        if idle_spi_needs_kick(uart_high, [virtio_high]) {
+            tracing::trace!(target: "ternvale::gic", "re-pulsed SPI; waking cpu 0");
+            poll.power.nudge(IRQ_CPU);
+        }
     }
 }
 
@@ -126,5 +134,27 @@ pub(super) fn stdin_loop(serial: SharedSerial, shutdown: Arc<AtomicBool>, power:
     let restored = unsafe { libc::fcntl(fd, libc::F_SETFL, flags) };
     if restored < 0 {
         tracing::warn!(target: "ternvale::uart", "could not restore stdin flags");
+    }
+}
+
+/// Whether the SPI re-pulse thread should `nudge` CPU 0.
+#[tracing::instrument(level = "debug", target = "ternvale::gic", skip_all, fields(uart_high))]
+pub(super) fn idle_spi_needs_kick(
+    uart_high: bool,
+    virtio_high: impl IntoIterator<Item = bool>,
+) -> bool {
+    uart_high || virtio_high.into_iter().any(|high| high)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::idle_spi_needs_kick;
+
+    #[test]
+    fn idle_lines_do_not_wake_vcpu() {
+        assert!(!idle_spi_needs_kick(false, []));
+        assert!(!idle_spi_needs_kick(false, [false, false]));
+        assert!(idle_spi_needs_kick(true, [false]));
+        assert!(idle_spi_needs_kick(false, [true]));
     }
 }

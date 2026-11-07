@@ -89,6 +89,7 @@ pub struct Vcpu {
 mod exit;
 mod stats;
 mod stop;
+mod wfi;
 
 pub use stats::{process_cpu_ms, VcpuStats, VcpuStatsSource};
 pub use stop::VcpuStop;
@@ -262,9 +263,10 @@ impl Vcpu {
     /// Run until the next exit the caller must handle.
     ///
     /// A virtual-timer exit is masked and injected as PPI 27, then the guest
-    /// resumes. WFI parks briefly, then returns [`ExitReason::Wfi`] so the caller
-    /// can poll devices. A recognized PSCI HVC or SMC is completed here. `SYSTEM_OFF`
-    /// and `SYSTEM_RESET` return without resuming the guest.
+    /// resumes. WFI/WFE parks until the next `CNTV_CVAL_EL0` deadline or a host
+    /// interrupt (`VcpuStop::nudge`), then returns [`ExitReason::Wfi`]. A recognized
+    /// PSCI HVC or SMC is completed here. `SYSTEM_OFF` and `SYSTEM_RESET` return
+    /// without resuming the guest.
     #[tracing::instrument(level = "debug", target = "ternvale::vcpu", skip_all, fields(vcpu_id = self.id))]
     pub fn run(&self) -> Result<ExitReason, VcpuError> {
         self.on_owner_thread()?;

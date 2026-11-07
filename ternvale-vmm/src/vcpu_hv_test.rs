@@ -1,5 +1,7 @@
 //! Runs one `hvc #0` and checks the raw exception syndrome in the log.
 
+use std::time::{Duration, Instant};
+
 use super::{ExitReason, Vcpu, VcpuError};
 use crate::{GuestMemory, GIC_DIST_BASE, GIC_REDIST_BASE, HOST_PAGE_SIZE};
 
@@ -73,6 +75,72 @@ fn runs_hvc0_and_rejects_run_from_another_thread() {
     std::fs::write(&sample, &text).expect("sample");
     std::fs::remove_dir_all(&dir).expect("remove log dir");
     // SAFETY: same as the set above; this test restores the variable it changed.
+    unsafe {
+        match previous {
+            Some(value) => std::env::set_var("TERNVALE_LOG", value),
+            None => std::env::remove_var("TERNVALE_LOG"),
+        }
+    }
+}
+
+/// AArch64 `WFI`.
+const WFI: u32 = 0xd503_207f;
+/// EL1h with IRQs unmasked (`I` clear) so WFI is allowed to wait.
+const CPSR_EL1H_IRQ_ON: u64 = 0x345;
+
+#[test]
+#[ignore = "needs-hv"]
+fn wfi_parks_until_vtimer_deadline_not_a_fixed_slice() {
+    let dir = std::env::temp_dir().join(format!("ternvale-vmm-{}-wfi", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("log dir");
+    let previous = std::env::var("TERNVALE_LOG").ok();
+    // SAFETY: this ignored test sets TERNVALE_LOG and restores it.
+    unsafe { std::env::set_var("TERNVALE_LOG", "info") };
+    let mut config = ternvale_log::LogConfig::new("wfi", dir.clone());
+    config.level = "info".to_string();
+    let guard = ternvale_log::init(config).expect("log");
+
+    let vm = ternvale_hv::Vm::create().expect("vm");
+    vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE).expect("gic");
+    let mut memory = GuestMemory::new().expect("memory");
+    memory.map(&vm, GUEST_PC, HOST_PAGE_SIZE).expect("map");
+    memory.write_u32(GUEST_PC, WFI).expect("store wfi");
+
+    let vcpu = Vcpu::create(&vm).expect("vcpu");
+    vcpu.set_cpsr(CPSR_EL1H_IRQ_ON).expect("cpsr");
+    vcpu.set_pc(GUEST_PC).expect("pc");
+
+    let offset = ternvale_hv::get_vtimer_offset(vcpu.id).expect("offset");
+    let now = ternvale_hv::host_ticks();
+    let wait_ticks = 80_000_000; // ~80 ms on a 1:1 Apple Silicon timebase
+    let cval = now.saturating_sub(offset).saturating_add(wait_ticks);
+    vcpu.set_sys_reg(ternvale_hv::SysReg::CntvCvalEl0, cval)
+        .expect("cval");
+    vcpu.set_sys_reg(ternvale_hv::SysReg::CntvCtlEl0, 1)
+        .expect("ctl enable");
+
+    let started = Instant::now();
+    let exit = vcpu.run().expect("run");
+    let parked = started.elapsed();
+    assert!(
+        matches!(exit, ExitReason::Wfi | ExitReason::VtimerActivated),
+        "idle wait should end as WFI or vtimer, got {exit:?}"
+    );
+    assert!(
+        parked >= Duration::from_millis(40),
+        "WFI must sleep until CVAL (~80ms), not a 10ms poll slice; parked {parked:?}"
+    );
+    assert!(
+        parked < Duration::from_millis(500),
+        "WFI must wake near CVAL, not hang; parked {parked:?}"
+    );
+
+    drop(vcpu);
+    drop(memory);
+    drop(vm);
+    drop(guard);
+    std::fs::remove_dir_all(&dir).expect("remove log dir");
+    // SAFETY: restore TERNVALE_LOG.
     unsafe {
         match previous {
             Some(value) => std::env::set_var("TERNVALE_LOG", value),

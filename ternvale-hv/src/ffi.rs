@@ -52,6 +52,16 @@ unsafe extern "C" {
     pub(crate) fn getentropy(buf: *mut c_void, buflen: usize) -> i32;
     /// `<mach/mach_time.h>`: the host counter the vtimer offset is relative to.
     pub(crate) fn mach_absolute_time() -> u64;
+    /// `<mach/mach_time.h>`: convert `mach_absolute_time` ticks to nanoseconds
+    /// (`ticks * numer / denom`).
+    pub(crate) fn mach_timebase_info(info: *mut MachTimebaseInfo) -> i32;
+}
+
+/// `mach_timebase_info_data_t`.
+#[repr(C)]
+pub(crate) struct MachTimebaseInfo {
+    pub numer: u32,
+    pub denom: u32,
 }
 
 /// `hv_vcpu_exit_t` from `hv_vcpu_types.h`. `reason` is at 0; `exception` is at 8.

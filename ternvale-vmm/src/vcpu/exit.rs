@@ -1,7 +1,6 @@
 //! Virtual timer, WFI, and PSCI exits inside [`super::Vcpu::run`].
 
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use ternvale_hv::{SysReg, VcpuExit};
 
@@ -128,7 +127,7 @@ impl Vcpu {
         if let Some((metrics, _)) = self.metrics.get() {
             metrics.record_interrupt();
         }
-        tracing::info!(
+        tracing::trace!(
             target: "ternvale::gic",
             vcpu_id = self.id,
             intid = ternvale_hv::VTIMER_PPI,
@@ -162,8 +161,9 @@ impl Vcpu {
             crate::esr::ExitEvent::Wfi { wfe } => {
                 self.wait_for_interrupt(wfe)?;
                 crate::psci::advance_pc(self)?;
-                // Return so the machine loop can push stdin into the UART.
-                // Staying inside `run` would leave those bytes queued forever.
+                // Return so the machine loop can drain host devices. Stdin and
+                // SPI re-pulses already `nudge` the vCPU; this is not a poll
+                // cap on the vCPU thread.
                 Ok(Loop::Done(ExitReason::Wfi))
             }
             _ => Ok(Loop::Done(ExitReason::Exception {
@@ -227,22 +227,31 @@ impl Vcpu {
         }
     }
 
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::vcpu",
+        skip_all,
+        fields(vcpu_id = self.id, wfe)
+    )]
     fn wait_for_interrupt(&self, wfe: bool) -> Result<(), VcpuError> {
-        if wfe {
-            tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "wfe yield");
-            std::thread::yield_now();
+        let ctl = ternvale_hv::get_sys_reg(self.id, SysReg::CntvCtlEl0)?;
+        let cval = ternvale_hv::get_sys_reg(self.id, SysReg::CntvCvalEl0)?;
+        let offset = ternvale_hv::get_vtimer_offset(self.id)?;
+        let cntvct = ternvale_hv::host_ticks().saturating_sub(offset);
+        let park = super::wfi::park_until(ctl, cval, cntvct, ternvale_hv::ticks_to_duration);
+        tracing::debug!(
+            target: "ternvale::vcpu",
+            vcpu_id = self.id,
+            wfe,
+            ctl = %format!("{ctl:#x}"),
+            cval = %format!("{cval:#x}"),
+            cntvct = %format!("{cntvct:#x}"),
+            ?park,
+            "wfi/wfe park decision"
+        );
+        if matches!(park, super::wfi::Park::Ready) {
             return Ok(());
         }
-        let cpsr = self.get_cpsr()?;
-        if cpsr & 0x80 != 0 {
-            tracing::debug!(
-                target: "ternvale::vcpu",
-                vcpu_id = self.id,
-                "wfi with irqs masked; not sleeping"
-            );
-            return Ok(());
-        }
-        tracing::debug!(target: "ternvale::vcpu", vcpu_id = self.id, "wfi park");
         let guard = crate::lockwatch::lock(&self.park, "wfi-park");
         if self.stop.load(Ordering::Acquire) || self.pending.swap(false, Ordering::AcqRel) {
             tracing::debug!(
@@ -253,13 +262,20 @@ impl Vcpu {
             return Ok(());
         }
         let parked = std::time::Instant::now();
-        let (_guard, timed_out) = guard.wait_timeout(&self.wake, Duration::from_millis(10));
+        let timed_out = if let super::wfi::Park::Until(wait) = park {
+            let (_guard, timed_out) = guard.wait_timeout(&self.wake, wait);
+            timed_out
+        } else {
+            let _guard = guard.park(&self.wake);
+            false
+        };
         self.counters.park(parked.elapsed());
         self.pending.store(false, Ordering::Release);
         tracing::debug!(
             target: "ternvale::vcpu",
             vcpu_id = self.id,
             timed_out,
+            parked_us = parked.elapsed().as_micros() as u64,
             "wfi woke"
         );
         Ok(())

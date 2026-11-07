@@ -161,6 +161,7 @@ impl TpmCrb {
             bytes = %self.loggable(header, &response),
             "tpm response"
         );
+        self.int_sts |= crate::regs::INT_STS_CMD_COMPLETE;
         tracing::debug!(
             target: "ternvale::tpm",
             locality,
@@ -168,6 +169,7 @@ impl TpmCrb {
             rc = %rc,
             response_len = response.len(),
             commands = self.commands,
+            int_sts = %format!("{:#x}", self.int_sts),
             "tpm command completed"
         );
     }

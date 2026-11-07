@@ -21,7 +21,7 @@ mod vmnet;
 #[cfg(feature = "vmnet")]
 mod vmnet_mode;
 
-pub use clock::host_ticks;
+pub use clock::{host_ticks, ticks_to_duration, ticks_to_duration_scaled};
 pub use entropy::{fill_entropy, GETENTROPY_MAX};
 pub use error::{
     HvError, HV_BAD_ARGUMENT, HV_BUSY, HV_DENIED, HV_ERROR, HV_EXISTS, HV_ILLEGAL_GUEST_STATE,

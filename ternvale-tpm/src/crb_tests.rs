@@ -211,14 +211,17 @@ fn bad_accesses_read_zero_and_write_nothing() {
 }
 
 #[test]
-fn interrupt_enable_is_stored_and_status_stays_zero() {
+fn interrupt_enable_is_stored_and_status_is_w1c() {
     let mut crb = crb();
     crb.write(INT_ENABLE, 4, 0x8000_0001);
     assert_eq!(crb.read(INT_ENABLE, 4), 0x8000_0001);
     crb.write(INT_ENABLE + 3, 1, 0);
     assert_eq!(crb.read(INT_ENABLE, 4), 1, "byte write merges");
+    assert_eq!(crb.read(INT_STS, 4), 0, "idle");
+    let _ = run(&mut crb, 0, &STARTUP);
+    assert_eq!(crb.read(INT_STS, 4), u64::from(INT_STS_CMD_COMPLETE));
     crb.write(INT_STS, 4, 1);
-    assert_eq!(crb.read(INT_STS, 4), 0);
+    assert_eq!(crb.read(INT_STS, 4), 0, "write-1-to-clear");
     crb.write(CTRL_CANCEL, 4, 1);
     assert_eq!(crb.read(CTRL_CANCEL, 4), 1);
 }

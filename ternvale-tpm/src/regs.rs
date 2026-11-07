@@ -120,6 +120,10 @@ pub const CTRL_STS_IDLE: u32 = 1 << 1;
 /// `TPM_CRB_CTRL_START_x` / `TPM_CRB_CTRL_CANCEL_x` bit 0.
 pub const START_INVOKE: u32 = 1 << 0;
 
+/// `TPM_CRB_INT_STS_x` bit 0: command completed (PTP §6.5.3 CRB interrupt
+/// status). Write-1-to-clear.
+pub const INT_STS_CMD_COMPLETE: u32 = 1 << 0;
+
 /// `TPM_CRB_INTF_ID_x` fields (low 32 bits).
 pub mod intf_id {
     /// InterfaceType (3:0) = 1: CRB interface active.
