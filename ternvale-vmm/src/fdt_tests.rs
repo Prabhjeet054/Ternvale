@@ -33,6 +33,9 @@ fn every_boot_has_the_pl031_and_firmware_boots_add_cfi_flash() {
     ] {
         assert!(node.contains(needle), "missing {needle}:\n{node}");
     }
+    assert!(direct.contains("pl061@9030000"), "{direct}");
+    assert!(direct.contains("compatible = \"gpio-keys\""), "{direct}");
+    assert!(direct.contains("linux,code = <0x74>"), "{direct}");
     assert!(!direct.contains("cfi-flash"), "{direct}");
     assert!(direct.contains("bootargs"), "{direct}");
 

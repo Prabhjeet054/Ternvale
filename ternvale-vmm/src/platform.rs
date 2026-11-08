@@ -40,6 +40,14 @@ pub const FW_CFG_BASE: u64 = 0x0902_0000;
 /// fw_cfg window. QEMU's registers span `0x18` bytes, Ternvale's `0x10` (no
 /// DMA); this reservation is one host page.
 pub const FW_CFG_SIZE: u64 = HOST_PAGE_SIZE;
+/// ARM PL061 GPIO. QEMU `VIRT_GPIO` is `0x09030000`.
+pub const PL061_BASE: u64 = 0x0903_0000;
+/// GPIO reservation (one host page).
+pub const PL061_SIZE: u64 = HOST_PAGE_SIZE;
+/// ACPI Generic Event Device event register (not a QEMU device).
+pub const GED_BASE: u64 = 0x0904_0000;
+/// GED reservation (one host page).
+pub const GED_SIZE: u64 = HOST_PAGE_SIZE;
 /// ACPI tables (RSDP first), mapped read-only. Not in QEMU, which hands its
 /// tables to firmware over fw_cfg; this sits past QEMU's last low device
 /// (`VIRT_SECURE_GPIO` at `0x090b0000`) and below the virtio-mmio window.
@@ -144,6 +152,8 @@ impl Layout {
             region("uart", UART_BASE, UART_SIZE),
             region("rtc", RTC_BASE, RTC_SIZE),
             region("fw-cfg", FW_CFG_BASE, FW_CFG_SIZE),
+            region("pl061", PL061_BASE, PL061_SIZE),
+            region("ged", GED_BASE, GED_SIZE),
             region("acpi", ACPI_BASE, ACPI_SIZE),
             region("tpm-crb", TPM_CRB_BASE, TPM_CRB_SIZE),
             region("xhci", XHCI_BASE, XHCI_SIZE),

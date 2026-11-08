@@ -200,6 +200,15 @@ pub enum ConfigError {
         reason: String,
     },
 
+    /// A `[power]` field is invalid.
+    #[error("{field}: {reason}")]
+    InvalidPower {
+        /// Field, such as `power.graceful_timeout_secs`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
+
     /// A `[[disks]]` cache/queue field is out of range.
     #[error("{field}: {reason}")]
     InvalidDisk {

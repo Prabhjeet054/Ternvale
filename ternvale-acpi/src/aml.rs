@@ -3,7 +3,7 @@
 //!
 //! ACPI 6.5 §20 (ACPI Machine Language Specification). Only the terms the
 //! DSDT needs are here. Data objects are in [`crate::aml_data`], resource
-//! descriptors in [`crate::aml_resource`]; there are no methods.
+//! descriptors in [`crate::aml_resource`].
 //!
 //! - NameSeg (§20.2.2): four characters, the first `A-Z` or `_`, the rest
 //!   `A-Z`, `0-9`, or `_`. Shorter ASL names are padded with `_`.
@@ -16,11 +16,17 @@
 //! - DefDevice (§20.2.5.2): `DeviceOp PkgLength NameString TermList`, where
 //!   `DeviceOp` is `ExtOpPrefix 0x82`.
 //! - DefName (§20.2.5.1): `NameOp NameString DataRefObject`.
+//! - DefMethod (§20.2.5.2): `MethodOp PkgLength NameString MethodFlags TermList`.
+//! - DefNotify (§20.2.5.4): `NotifyOp NotifyObject NotifyValue`.
 
 use crate::AcpiError;
 
 /// `ScopeOp`.
 pub const SCOPE_OP: u8 = 0x10;
+/// `MethodOp`.
+pub const METHOD_OP: u8 = 0x14;
+/// `NotifyOp`.
+pub const NOTIFY_OP: u8 = 0x86;
 /// `NameOp`.
 pub const NAME_OP: u8 = 0x08;
 /// `ExtOpPrefix`.
@@ -174,6 +180,48 @@ pub fn name(path: &str, value: &[u8]) -> Result<Vec<u8>, AcpiError> {
     out.push(NAME_OP);
     out.extend_from_slice(&name);
     out.extend_from_slice(value);
+    Ok(out)
+}
+
+/// `Method (path, args) { body }`. `args` is 0..=7 (ACPI 6.5 MethodFlags).
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::acpi",
+    skip_all,
+    fields(path = %path, args, body = body.len())
+)]
+pub fn method(path: &str, args: u8, body: &[u8]) -> Result<Vec<u8>, AcpiError> {
+    if args > 7 {
+        tracing::warn!(target: "ternvale::acpi", args, "aml method arg count > 7");
+        return Err(AcpiError::BadConfig {
+            reason: format!("Method {path} has {args} args (max 7)"),
+        });
+    }
+    let name = name_string(path)?;
+    let length = pkg_length(name.len() + 1 + body.len())?;
+    let mut out = Vec::with_capacity(1 + length.len() + name.len() + 1 + body.len());
+    out.push(METHOD_OP);
+    out.extend_from_slice(&length);
+    out.extend_from_slice(&name);
+    out.push(args);
+    out.extend_from_slice(body);
+    Ok(out)
+}
+
+/// `Notify (object, value)`.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::acpi",
+    skip_all,
+    fields(object = %object, value)
+)]
+pub fn notify(object: &str, value: u64) -> Result<Vec<u8>, AcpiError> {
+    let name = name_string(object)?;
+    let val = crate::aml_data::integer(value);
+    let mut out = Vec::with_capacity(1 + name.len() + val.len());
+    out.push(NOTIFY_OP);
+    out.extend_from_slice(&name);
+    out.extend_from_slice(&val);
     Ok(out)
 }
 

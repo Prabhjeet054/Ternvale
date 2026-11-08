@@ -176,6 +176,9 @@ pub enum Command {
         /// Send `force-stop`: the VM process exits even if teardown hangs.
         #[arg(long)]
         force: bool,
+        /// Pulse the guest power button and wait for a clean OS shutdown.
+        #[arg(long, conflicts_with = "force")]
+        graceful: bool,
         /// Return once the request is accepted instead of waiting for the VM to exit.
         #[arg(long)]
         no_wait: bool,

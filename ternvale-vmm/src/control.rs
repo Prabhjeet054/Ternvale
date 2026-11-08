@@ -228,6 +228,7 @@ pub struct VmControl {
     paused_ticks: AtomicU64,
     hooks: OnceLock<ControlHooks>,
     snapshot_host: OnceLock<Arc<snapshot::SnapshotHost>>,
+    power_button: OnceLock<Arc<crate::power::PowerButton>>,
     clock: fn() -> u64,
     diag: Arc<Diagnostics>,
     snapshot: snapshot::Session,
@@ -270,6 +271,7 @@ impl VmControl {
             paused_ticks: AtomicU64::new(0),
             hooks: OnceLock::new(),
             snapshot_host: OnceLock::new(),
+            power_button: OnceLock::new(),
             clock,
             diag: Arc::new(Diagnostics::new()),
             snapshot: snapshot::Session::idle(),
@@ -362,6 +364,30 @@ impl VmControl {
         let running = self.park(cpu, while_parked);
         flag.store(true, Ordering::SeqCst);
         running
+    }
+
+    /// PL061/GED power button used by `graceful-stop`.
+    #[tracing::instrument(level = "debug", target = "ternvale::power", skip_all, fields(vm = %self.name))]
+    pub fn bind_power_button(&self, button: Arc<crate::power::PowerButton>) {
+        if self.power_button.set(button).is_err() {
+            tracing::warn!(target: "ternvale::power", vm = %self.name, "power button already bound");
+        }
+    }
+
+    /// Pulse the ACPI GED and DT gpio-keys line. `false` if the machine has
+    /// not registered the button yet.
+    #[tracing::instrument(level = "debug", target = "ternvale::power", skip_all, fields(vm = %self.name))]
+    pub fn press_power_button(&self) -> bool {
+        match self.power_button.get() {
+            Some(button) => {
+                button.press();
+                true
+            }
+            None => {
+                tracing::warn!(target: "ternvale::power", vm = %self.name, "graceful-stop with no power button");
+                false
+            }
+        }
     }
 
     /// Install RAM/GIC capture for `snapshot create` / `restore`.

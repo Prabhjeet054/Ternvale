@@ -21,7 +21,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["a
 # Safe AF_VSOCK stream (rust-vsock); keeps this crate free of raw socket FFI.
 vsock = "0.5"
 # Safe sync(2) / reboot(2) wrappers for the Shutdown request.
-nix = { version = "0.31", default-features = false, features = ["fs", "reboot"] }
+nix = { version = "0.31", default-features = false, features = ["fs", "reboot", "time"] }
 
 [target.'cfg(windows)'.dependencies]
 # SCM dispatch (`--service`) and typed service status updates.

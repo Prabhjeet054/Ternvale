@@ -190,11 +190,19 @@ pub fn resume(name: &str, json: bool) -> Result<ExitCode> {
 
 /// `ternvale stop <name>`: send `shutdown` (or `force-stop`), then wait for
 /// the VM process to remove its socket unless `no_wait`.
-#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name, force, no_wait))]
-pub fn stop(name: &str, force: bool, no_wait: bool, json: bool) -> Result<ExitCode> {
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name, force, graceful, no_wait))]
+pub fn stop(
+    name: &str,
+    force: bool,
+    graceful: bool,
+    no_wait: bool,
+    json: bool,
+) -> Result<ExitCode> {
     let socket = paths::socket_path(name)?;
     let request = if force {
         Request::ForceStop
+    } else if graceful {
+        Request::GracefulStop { timeout_ms: None }
     } else {
         Request::Shutdown
     };

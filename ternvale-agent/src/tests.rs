@@ -46,6 +46,13 @@ impl Actions for Recorder {
         self.0.lock().expect("recorder").push("shutdown".into());
         Ok(())
     }
+    fn time_sync(&mut self, unix_secs: i64) -> Result<(), AgentError> {
+        self.0
+            .lock()
+            .expect("recorder")
+            .push(format!("time_sync {unix_secs}"));
+        Ok(())
+    }
 }
 
 fn socket(name: &str) -> PathBuf {
@@ -279,6 +286,9 @@ impl Actions for PushClip {
         Ok(Vec::new())
     }
     fn shutdown(&mut self) -> Result<(), AgentError> {
+        Ok(())
+    }
+    fn time_sync(&mut self, _unix_secs: i64) -> Result<(), AgentError> {
         Ok(())
     }
     fn take_clipboard_push(&mut self) -> Option<String> {

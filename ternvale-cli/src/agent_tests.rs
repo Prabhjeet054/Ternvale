@@ -57,6 +57,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         usb: None,
         audio: None,
         shares: Vec::new(),
+        power: Default::default(),
     }
 }
 

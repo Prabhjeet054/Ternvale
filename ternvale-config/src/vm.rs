@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use crate::disk::Disk;
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
-use crate::{AudioSection, IsoSection, Nic, Profile, Share, TpmSection, UsbSection, VsockSection};
+use crate::{
+    AudioSection, IsoSection, Nic, PowerSection, Profile, Share, TpmSection, UsbSection,
+    VsockSection,
+};
 
 const RAM_QUANTUM_MIB: u64 = 16;
 const MIN_CPUS: u32 = 1;
@@ -85,6 +88,9 @@ pub struct VmConfig {
     /// Host folders shared with the guest over virtio-fs (at most one today).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shares: Vec<Share>,
+    /// Host sleep/wake, quit, and window-hidden policy.
+    #[serde(default, skip_serializing_if = "PowerSection::is_default")]
+    pub power: PowerSection,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -237,6 +243,7 @@ impl VmConfig {
                 reason: "at most one share is supported today".into(),
             });
         }
+        self.power.validate()?;
         for (index, share) in self.shares.iter().enumerate() {
             if let Err(ConfigError::InvalidShare { field, reason }) = share.validate() {
                 return Err(ConfigError::InvalidShare {

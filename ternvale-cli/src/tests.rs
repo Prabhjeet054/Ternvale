@@ -202,7 +202,18 @@ fn parses_every_subcommand() {
         Command::Stop {
             name: "a".into(),
             force: true,
+            graceful: false,
             no_wait: true,
+            json: false
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "stop", "a", "--graceful"]),
+        Command::Stop {
+            name: "a".into(),
+            force: false,
+            graceful: true,
+            no_wait: false,
             json: false
         }
     );

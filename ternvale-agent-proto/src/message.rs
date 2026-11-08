@@ -70,6 +70,11 @@ pub enum Message {
     },
     /// Host → agent: flush and power the guest off.
     Shutdown,
+    /// Host → agent: set guest wall clock after host sleep/wake.
+    TimeSync {
+        /// Unix seconds (UTC).
+        unix_secs: i64,
+    },
     /// Host → agent: list mapped top-level windows (answer with `WindowListOk`, v3+).
     WindowListGet,
     /// Agent → host: answer to `WindowListGet`.
@@ -121,6 +126,7 @@ impl Message {
             Self::ClipboardGetOk { .. } => "clipboard_get_ok",
             Self::ShareMount { .. } => "share_mount",
             Self::Shutdown => "shutdown",
+            Self::TimeSync { .. } => "time_sync",
             Self::WindowListGet => "window_list_get",
             Self::WindowListOk { .. } => "window_list_ok",
         }

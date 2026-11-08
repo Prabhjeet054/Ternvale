@@ -11,6 +11,7 @@
 
 use crate::aml::scope;
 use crate::config::AcpiConfig;
+use crate::ged::power_devices;
 use crate::pci_root::pci_root;
 use crate::sdt::{table, SdtHeader};
 use crate::tpm2::tpm_device;
@@ -33,6 +34,7 @@ pub fn dsdt(config: &AcpiConfig) -> Result<Vec<u8>, AcpiError> {
     if let Some(tpm) = &config.tpm {
         devices.extend(tpm_device(tpm)?);
     }
+    devices.extend(power_devices(&config.ged)?);
     let body = scope("\\_SB", &devices)?;
     table(SdtHeader::new(DSDT_SIGNATURE, DSDT_REVISION), &body)
 }
@@ -58,6 +60,7 @@ mod tests {
             devices.extend(xhci_device(usb).expect("xhc0"));
         }
         devices.extend(tpm_device(config.tpm.as_ref().expect("tpm")).expect("tpm2"));
+        devices.extend(power_devices(&config.ged).expect("ged"));
         assert_eq!(body, scope("\\_SB", &devices).expect("scope").as_slice());
         assert_eq!(body[0], crate::aml::SCOPE_OP);
         let name_end = body.len() - devices.len();
@@ -65,14 +68,17 @@ mod tests {
     }
 
     #[test]
-    fn without_a_tpm_the_sb_scope_holds_only_pci0() {
+    fn without_a_tpm_the_sb_scope_holds_pci0_and_the_power_button() {
         let config = crate::config::tests::sample_without_tpm(1);
         let bytes = dsdt(&config).expect("dsdt");
-        let pci0 = pci_root(&config).expect("pci0");
+        let mut devices = pci_root(&config).expect("pci0");
+        devices.extend(power_devices(&config.ged).expect("ged"));
         assert_eq!(
             &bytes[SDT_HEADER_LEN..],
-            scope("\\_SB", &pci0).expect("scope").as_slice()
+            scope("\\_SB", &devices).expect("scope").as_slice()
         );
         assert!(!bytes.windows(4).any(|w| w == b"TPM2"));
+        assert!(bytes.windows(4).any(|w| w == b"GED0"));
+        assert!(bytes.windows(4).any(|w| w == b"PWRB"));
     }
 }

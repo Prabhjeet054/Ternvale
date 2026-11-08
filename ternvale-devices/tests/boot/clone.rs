@@ -370,6 +370,7 @@ fn boot_once(
         usb: None,
         audio: None,
         shares: Vec::new(),
+        power: Default::default(),
     };
     tracing::info!(
         target: "ternvale::boot",

@@ -47,6 +47,19 @@ pub struct AcpiConfig {
     pub tpm: Option<TpmConfig>,
     /// Platform xHCI MMIO (`\_SB.XHC0`). `None` when `[usb] enabled = false`.
     pub usb: Option<UsbConfig>,
+    /// Generic Event Device MMIO (`\_SB.GED0`) and power button (`\_SB.PWRB`).
+    pub ged: GedConfig,
+}
+
+/// Hardware-reduced ACPI power-button GED (ACPI0013).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GedConfig {
+    /// Event-register window (`_CRS` `Memory32Fixed`).
+    pub mmio_base: u64,
+    /// Decoded MMIO length.
+    pub mmio_len: u32,
+    /// DTB SPI index (GSIV = [`spi_gsiv`]).
+    pub spi: u32,
 }
 
 /// Virtual xHCI host controller window and its GIC SPI (DTB index).
@@ -226,6 +239,17 @@ impl AcpiConfig {
                 return fail(format!("usb SPI {} is past INTID {SPI_LAST}", usb.spi));
             }
         }
+        let ged = self.ged;
+        let ged_end = ged.mmio_base.checked_add(u64::from(ged.mmio_len));
+        if ged.mmio_len == 0 || ged_end.is_none_or(|end| end > 1 << 32) {
+            return fail(format!(
+                "ged mmio window {:#x}+{:#x} is empty or passes 4 GiB",
+                ged.mmio_base, ged.mmio_len
+            ));
+        }
+        if spi_gsiv(ged.spi) > SPI_LAST {
+            return fail(format!("ged SPI {} is past INTID {SPI_LAST}", ged.spi));
+        }
         Ok(())
     }
 }
@@ -275,6 +299,11 @@ pub(crate) mod tests {
                 mmio_len: 0x5000,
                 spi: 7,
             }),
+            ged: GedConfig {
+                mmio_base: 0x0904_0000,
+                mmio_len: 0x1000,
+                spi: 9,
+            },
         }
     }
 

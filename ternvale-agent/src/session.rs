@@ -176,6 +176,7 @@ fn serve_requests(
                 actions.shutdown()?;
                 return Ok(SessionEnd::Shutdown);
             }
+            Message::TimeSync { unix_secs } => actions.time_sync(unix_secs),
             other @ (Message::Hello { .. }
             | Message::Welcome { .. }
             | Message::Reject { .. }

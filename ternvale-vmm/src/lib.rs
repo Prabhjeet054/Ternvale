@@ -21,6 +21,7 @@ mod mmio;
 pub mod pci;
 mod platform;
 mod pmu;
+mod power;
 mod psci;
 mod rtc;
 mod serial;
@@ -40,8 +41,8 @@ pub use control::{
 pub use diag::{DeviceCount, Diagnostics, MmioEvent, MmioTrace, MMIO_TRACE_LEN};
 pub use esr::{decode as decode_esr, ExitEvent};
 pub use fdt::{
-    build_fdt, write_fdt, FdtError, GuestFdt, PL011_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS,
-    UART_SPI, VIRTIO_SPI0,
+    build_fdt, write_fdt, FdtError, GuestFdt, GED_SPI, GPIO_SPI, PL011_REG_SIZE, PL061_REG_SIZE,
+    TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI, VIRTIO_SPI0,
 };
 pub use firmware::{FirmwareError, RomdWindow, VarsFlash};
 pub use fw_cfg::{FwCfg, FW_CFG_REG_SIZE};
@@ -58,10 +59,11 @@ pub use memory::{GuestMemory, MemAdvice, MemoryError, HOST_PAGE_SIZE};
 pub use mmio::{GuestRegs, KickPort, MmioBus, MmioDevice, MmioError};
 pub use platform::{
     Layout, PlatformError, Region, ACPI_BASE, ACPI_SIZE, FLASH_BANK_SIZE, FLASH_CODE_BASE,
-    FLASH_VARS_BASE, FW_CFG_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE, PCIE_ECAM_SIZE,
-    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, RAM_BASE, RTC_BASE, TPM_CRB_BASE, TPM_CRB_SIZE, UART_BASE,
-    VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
+    FLASH_VARS_BASE, FW_CFG_BASE, GED_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, PCIE_ECAM_BASE,
+    PCIE_ECAM_SIZE, PCIE_MMIO_BASE, PCIE_MMIO_SIZE, PL061_BASE, RAM_BASE, RTC_BASE, TPM_CRB_BASE,
+    TPM_CRB_SIZE, UART_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE,
 };
+pub use power::{GedRegs, Pl061, PowerButton, GED_REG_SIZE, KEY_POWER, POWER_GPIO_PIN};
 pub use psci::{call as psci_call, PowerRequest, PsciAction, TRAP_PC_ADVANCE};
 pub use rtc::{Pl031, PL031_REG_SIZE, RTC_SPI};
 pub use serial::SerialDevice;

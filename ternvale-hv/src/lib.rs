@@ -11,6 +11,7 @@ mod footprint;
 mod gic;
 mod gic_order;
 mod host;
+mod host_power;
 mod map;
 mod osver;
 mod pressure;
@@ -30,6 +31,7 @@ pub use error::{
 pub use footprint::phys_footprint;
 pub use gic::{raise_ppi, Gic, IccReg, VTIMER_PPI};
 pub use host::{hypervisor_supported, macos_version, MacosVersion};
+pub use host_power::{watch_host_power, HostPowerEvent, HostPowerWatch};
 pub use map::{
     map_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX, HV_MEMORY_WRITE,
 };

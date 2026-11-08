@@ -52,6 +52,7 @@ impl ControlServer {
                 agent,
                 diag: None,
                 tools_iso: None,
+                power: None,
             },
         )
     }
@@ -64,6 +65,7 @@ impl ControlServer {
         agent: Option<Arc<AgentServer>>,
         diag: Arc<DiagSink>,
         tools_iso: Option<PathBuf>,
+        power: Option<Arc<crate::power::PowerState>>,
     ) -> Result<Self> {
         Self::serve_vm(
             path,
@@ -72,6 +74,7 @@ impl ControlServer {
                 agent,
                 diag: Some(diag),
                 tools_iso,
+                power,
             },
         )
     }
@@ -155,6 +158,7 @@ struct Served {
     agent: Option<Arc<AgentServer>>,
     diag: Option<Arc<DiagSink>>,
     tools_iso: Option<PathBuf>,
+    power: Option<Arc<crate::power::PowerState>>,
 }
 
 fn accept_loop(listener: &UnixListener, served: &Served, stop: &AtomicBool) {
@@ -222,6 +226,7 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
                 served.agent.as_deref(),
                 served.diag.as_deref(),
                 served.tools_iso.as_deref(),
+                served.power.as_deref(),
             )
         };
         let mut out = serde_json::to_string(&response).context("encode control response")?;
@@ -239,7 +244,7 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
 /// response includes `agent`'s connection.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name()))]
 pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>) -> Response {
-    handle_line_with(line, control, agent, None, None)
+    handle_line_with(line, control, agent, None, None, None)
 }
 
 /// [`handle_line`], with `diag` answering `dump-diagnostics` (an error without it).
@@ -250,6 +255,7 @@ pub fn handle_line_with(
     agent: Option<&AgentServer>,
     diag: Option<&DiagSink>,
     tools_iso: Option<&Path>,
+    power: Option<&crate::power::PowerState>,
 ) -> Response {
     let request: Request = match serde_json::from_str(line) {
         Ok(request) => request,
@@ -259,6 +265,15 @@ pub fn handle_line_with(
         }
     };
     tracing::info!(target: "ternvale::cli", cmd = request.name(), "control request");
+    if let Some(handled) = crate::power::handle(&request, control, agent, power) {
+        return match handled {
+            Ok(mut response) => {
+                decorate_status(&mut response, agent, tools_iso);
+                response
+            }
+            Err(error) => Response::error(error),
+        };
+    }
     let result = match request {
         Request::Status => Ok(Response::status(&control.status())),
         Request::QueryStats => Ok(Response::stats(
@@ -287,6 +302,9 @@ pub fn handle_line_with(
         Request::ForceStop => control
             .request_stop(true)
             .map(|status| Response::status(&status)),
+        Request::GracefulStop { .. } | Request::WindowHidden { .. } => {
+            return Response::error("internal: power request not handled");
+        }
         Request::SnapshotCreate { name } => {
             let bundle = match crate::paths::snapshot_bundle(control.name(), &name) {
                 Ok(path) => path,

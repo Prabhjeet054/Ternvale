@@ -45,6 +45,10 @@ fn dsdt_disassembles_cleanly_and_recompiles_to_the_same_aml() {
         "Name (_HID, EisaId (\"PNP0C02\") /* PNP Motherboard Resources */)",
         "Name (_CRS, Buffer (0x1C)",
         "Device (TPM2)",
+        "Device (PWRB)",
+        "Device (GED0)",
+        "Name (_HID, \"ACPI0013\"",
+        "Method (_EVT, 1, NotSerialized)",
         "Name (_HID, \"MSFT0101\" /* TPM 2.0 Security Device */)",
         "Name (_CRS, Buffer (0x0E)",
     ] {
@@ -199,6 +203,26 @@ fn reference_asl() -> String {
             {{
                 Memory32Fixed (ReadWrite, 0x09140000, 0x00005000)
             }})
+        }}
+        Device (PWRB)
+        {{
+            Name (_HID, EisaId ("PNP0C0C"))
+            Name (_UID, Zero)
+            Name (_STA, 0x0B)
+        }}
+        Device (GED0)
+        {{
+            Name (_HID, "ACPI0013")
+            Name (_UID, Zero)
+            Name (_CRS, ResourceTemplate ()
+            {{
+                Memory32Fixed (ReadWrite, 0x09040000, 0x00001000)
+                Interrupt (ResourceConsumer, Level, ActiveHigh, Shared, ,, ) {{ 0x29 }}
+            }})
+            Method (_EVT, 1, NotSerialized)
+            {{
+                Notify (PWRB, 0x80)
+            }}
         }}
     }}
 }}

@@ -128,14 +128,22 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
         Arc::clone(&stats),
     ));
     let tools_iso = config.iso.as_ref().and_then(|iso| iso.tools.clone());
+    let power = crate::power::PowerState::new(config.power.clone());
     let server = ControlServer::with_diag(
         &socket,
         Arc::clone(&control),
         agent.clone(),
         Arc::clone(&diag),
         tools_iso,
+        Some(Arc::clone(&power)),
     )
     .with_context(|| format!("start the control socket for vm {}", config.name))?;
+    let host_control = Arc::clone(&control);
+    let host_agent = agent.clone();
+    let host_power = Arc::clone(&power);
+    let _host_power_watch = ternvale_hv::watch_host_power(Arc::new(move |event| {
+        host_power.on_host_event(event, &host_control, host_agent.clone());
+    }));
     let reaper = spawn_reaper(Arc::clone(&control), socket.clone())?;
     let uart = Pl011::open(&config.serial_log)
         .with_context(|| format!("open serial log {}", config.serial_log.display()))?;

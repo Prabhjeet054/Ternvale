@@ -80,6 +80,8 @@ pub trait Actions {
     fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError>;
     /// `Shutdown`. On Linux this does not return on success.
     fn shutdown(&mut self) -> Result<(), AgentError>;
+    /// `TimeSync`: set `CLOCK_REALTIME` (needs privilege).
+    fn time_sync(&mut self, unix_secs: i64) -> Result<(), AgentError>;
     /// Guest clipboard text to push to the host (Windows listener).
     fn take_clipboard_push(&mut self) -> Option<String> {
         None
@@ -238,6 +240,16 @@ impl Actions for SystemActions {
     fn shutdown(&mut self) -> Result<(), AgentError> {
         power_off()
     }
+
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::agent",
+        skip_all,
+        fields(unix_secs)
+    )]
+    fn time_sync(&mut self, unix_secs: i64) -> Result<(), AgentError> {
+        set_wall_clock(unix_secs)
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -259,5 +271,36 @@ fn power_off() -> Result<(), AgentError> {
 #[cfg(not(target_os = "linux"))]
 fn power_off() -> Result<(), AgentError> {
     tracing::info!(target: "ternvale::agent", "host requested shutdown; not a Linux guest, exiting instead of powering off");
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn set_wall_clock(unix_secs: i64) -> Result<(), AgentError> {
+    use nix::sys::time::TimeSpec;
+    use nix::time::{clock_settime, ClockId};
+    tracing::info!(target: "ternvale::agent", unix_secs, "host time_sync");
+    clock_settime(ClockId::CLOCK_REALTIME, TimeSpec::new(unix_secs, 0)).map_err(|error| {
+        tracing::warn!(target: "ternvale::agent", error = %error, unix_secs, "clock_settime failed");
+        AgentError::Action {
+            action: "clock_settime",
+            source: std::io::Error::from(error),
+        }
+    })
+}
+
+#[cfg(windows)]
+fn set_wall_clock(unix_secs: i64) -> Result<(), AgentError> {
+    // TODO(verify): `SetSystemTime` from Unix seconds on Windows 11 ARM64.
+    tracing::info!(
+        target: "ternvale::agent",
+        unix_secs,
+        "host time_sync on Windows (guest w32time / ACPI time may already have stepped)"
+    );
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn set_wall_clock(unix_secs: i64) -> Result<(), AgentError> {
+    tracing::info!(target: "ternvale::agent", unix_secs, "time_sync ignored on this OS");
     Ok(())
 }

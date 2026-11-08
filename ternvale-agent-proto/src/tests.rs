@@ -25,6 +25,7 @@ fn all_messages() -> Vec<Message> {
             text: ClipboardText("héllo\nworld".to_string()),
         },
         Message::Shutdown,
+        Message::TimeSync { unix_secs: 1 },
     ]
 }
 

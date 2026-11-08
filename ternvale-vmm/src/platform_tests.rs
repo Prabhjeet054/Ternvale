@@ -12,7 +12,7 @@ fn default_layout_is_aligned_and_does_not_overlap() {
         assert_eq!(region.base % 0x4000, 0, "{}", region.name);
         assert_eq!(region.size % 0x4000, 0, "{}", region.name);
     }
-    assert_eq!(layout.regions().len(), 13);
+    assert_eq!(layout.regions().len(), 15);
     assert!(layout
         .regions()
         .iter()

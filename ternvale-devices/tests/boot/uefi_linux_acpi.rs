@@ -113,6 +113,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         usb: None,
         audio: None,
         shares: Vec::new(),
+        power: Default::default(),
     };
     tracing::info!(target: "ternvale::boot", esp = %esp.display(), serial = %serial_log.display(), "uefi linux acpi boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

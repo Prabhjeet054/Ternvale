@@ -15,8 +15,8 @@ mod pci_node;
 
 use crate::memory::{GuestMemory, MemoryError};
 use crate::platform::{
-    GIC_DIST_BASE, GIC_DIST_SIZE, GIC_REDIST_BASE, GIC_REDIST_SIZE, UART_BASE, VIRTIO_MMIO_BASE,
-    VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE, XHCI_BASE,
+    GIC_DIST_BASE, GIC_DIST_SIZE, GIC_REDIST_BASE, GIC_REDIST_SIZE, PL061_BASE, UART_BASE,
+    VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE, XHCI_BASE,
 };
 
 /// PL011 register block. QEMU's `VIRT_UART` size, not the 16 KiB reservation.
@@ -29,6 +29,18 @@ pub const VIRTIO_SPI0: u32 = 0x10;
 pub const UART_SPI: u32 = 1;
 /// GIC SPI for the platform xHCI device (must match [`crate::usb::USB_SPI`]).
 pub const USB_SPI: u32 = 7;
+/// GIC SPI for the PL061 GPIO (`gpio-keys` KEY_POWER).
+pub const GPIO_SPI: u32 = 8;
+/// GIC SPI for the ACPI GED event register.
+pub const GED_SPI: u32 = 9;
+/// PL061 register block (PrimeCell).
+pub const PL061_REG_SIZE: u64 = 0x1000;
+/// gpio-keys pin for KEY_POWER (QEMU virt).
+const POWER_GPIO_PIN: u32 = 3;
+/// `GPIO_ACTIVE_LOW` in `dt-bindings/gpio/gpio.h`.
+const GPIO_ACTIVE_LOW: u32 = 1;
+/// Linux `KEY_POWER`.
+const KEY_POWER: u32 = 116;
 /// xHCI MMIO length exposed in the DTB `reg` (must match `ternvale_usb::MMIO_SIZE`).
 const XHCI_MMIO_LEN: u64 = 0x5000;
 /// Architected timer PPIs, level-high, in `arm,armv8-timer` order: secure
@@ -115,6 +127,7 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     w.property_string("model", "ternvale,virt")?;
     let clock = 1;
     let gic = 2;
+    let gpio = 3;
     w.property_u32("interrupt-parent", gic)?;
     chosen(&mut w, fdt)?;
     memory(&mut w, fdt)?;
@@ -125,6 +138,8 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     uart(&mut w, clock)?;
     firmware_node::rtc(&mut w, clock)?;
     apb_clock(&mut w, clock)?;
+    pl061(&mut w, clock, gpio)?;
+    gpio_keys(&mut w, gpio)?;
     virtio(&mut w)?;
     if fdt.usb {
         xhci(&mut w, gic)?;
@@ -297,6 +312,33 @@ fn uart(w: &mut FdtWriter, clock: u32) -> FdtWriterResult<()> {
         "clock-names",
         vec!["uartclk".to_string(), "apb_pclk".to_string()],
     )?;
+    w.end_node(node)
+}
+
+fn pl061(w: &mut FdtWriter, clock: u32, phandle: u32) -> FdtWriterResult<()> {
+    let node = w.begin_node(&format!("pl061@{:x}", PL061_BASE))?;
+    w.property_phandle(phandle)?;
+    w.property_string_list(
+        "compatible",
+        vec!["arm,pl061".to_string(), "arm,primecell".to_string()],
+    )?;
+    w.property_array_u32("reg", &reg(PL061_BASE, PL061_REG_SIZE))?;
+    w.property_array_u32("interrupts", &[0, GPIO_SPI, IRQ_LEVEL_HIGH])?;
+    w.property_null("gpio-controller")?;
+    w.property_u32("#gpio-cells", 2)?;
+    w.property_array_u32("clocks", &[clock])?;
+    w.property_string("clock-names", "apb_pclk")?;
+    w.end_node(node)
+}
+
+fn gpio_keys(w: &mut FdtWriter, gpio: u32) -> FdtWriterResult<()> {
+    let node = w.begin_node("gpio-keys")?;
+    w.property_string("compatible", "gpio-keys")?;
+    let key = w.begin_node("poweroff")?;
+    w.property_string("label", "GPIO Key Poweroff")?;
+    w.property_u32("linux,code", KEY_POWER)?;
+    w.property_array_u32("gpios", &[gpio, POWER_GPIO_PIN, GPIO_ACTIVE_LOW])?;
+    w.end_node(key)?;
     w.end_node(node)
 }
 

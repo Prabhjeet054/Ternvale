@@ -273,6 +273,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         usb: None,
         audio: None,
         shares: Vec::new(),
+        power: Default::default(),
     };
     vm.validate()
         .map_err(|err| format!("linux config: {err}"))?;

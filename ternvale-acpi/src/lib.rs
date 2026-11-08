@@ -26,6 +26,7 @@ mod dump;
 mod error;
 mod fadt;
 mod gas;
+mod ged;
 mod gtdt;
 mod loader;
 mod loader_command;
@@ -43,8 +44,8 @@ mod xsdt;
 
 pub use compare::{compare, render_markdown, signature_diff, Row};
 pub use config::{
-    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GicConfig, PciConfig, TimerConfig, TpmConfig,
-    UartConfig, UsbConfig, MAX_CPUS,
+    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GedConfig, GicConfig, PciConfig, TimerConfig,
+    TpmConfig, UartConfig, UsbConfig, MAX_CPUS,
 };
 pub use dbg2::{dbg2, DBG2_REVISION, DBG2_SIGNATURE, PORT_SERIAL, SUBTYPE_PL011};
 pub use decode::{

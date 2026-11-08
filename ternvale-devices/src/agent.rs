@@ -252,6 +252,7 @@ impl AgentServer {
                 | Message::ShareMount { .. }
                 | Message::WindowListGet
                 | Message::Shutdown
+                | Message::TimeSync { .. }
         ) {
             return Err(AgentServerError::NotARequest {
                 kind: message.kind(),

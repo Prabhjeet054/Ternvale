@@ -156,6 +156,7 @@ fn run_once(
         usb: None,
         audio: None,
         shares: Vec::new(),
+        power: Default::default(),
     };
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));

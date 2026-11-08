@@ -34,8 +34,8 @@ use crate::fdt::PL011_REG_SIZE;
 use crate::gic_redist::{RedistId, RedistMap};
 use crate::mmio::{MmioBus, MmioDevice};
 use crate::platform::{
-    FLASH_BANK_SIZE, FLASH_VARS_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, RAM_BASE,
-    RTC_BASE, UART_BASE,
+    FLASH_BANK_SIZE, FLASH_VARS_BASE, GED_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE,
+    PL061_BASE, RAM_BASE, RTC_BASE, UART_BASE,
 };
 use crate::rtc::{Pl031, PL031_REG_SIZE};
 use crate::serial::SerialDevice;
@@ -290,6 +290,21 @@ impl Machine {
             Box::new(attach::SharedUart(Arc::clone(&serial))),
         )?;
         bus.register(RTC_BASE, PL031_REG_SIZE, Box::new(Pl031::new()))?;
+        let power_button = crate::power::PowerButton::new(
+            attached.spi_hook(crate::fdt::GPIO_SPI),
+            attached.spi_hook(crate::fdt::GED_SPI),
+        );
+        control.bind_power_button(Arc::clone(&power_button));
+        bus.register(
+            PL061_BASE,
+            crate::power::PL061_REG_SIZE,
+            Box::new(crate::power::Pl061::new(Arc::clone(&power_button))),
+        )?;
+        bus.register(
+            GED_BASE,
+            crate::power::GED_REG_SIZE,
+            Box::new(crate::power::GedRegs::new(power_button)),
+        )?;
         if let Some(path) = &nvram {
             bus.register(
                 FLASH_VARS_BASE,

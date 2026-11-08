@@ -32,6 +32,7 @@ pub mod keychain;
 pub mod logfmt;
 pub mod logs;
 pub mod paths;
+pub mod power;
 pub mod protocol;
 pub mod release_verify;
 pub mod report;
@@ -205,9 +206,10 @@ fn non_run(command: Command) -> Result<ExitCode> {
         Command::Stop {
             name,
             force,
+            graceful,
             no_wait,
             json,
-        } => commands::stop(&name, force, no_wait, json),
+        } => commands::stop(&name, force, graceful, no_wait, json),
         Command::Snapshot { action } => match action {
             cli::SnapshotCommand::Create { vm, name, json } => {
                 snapshot_cmd::create(&vm, &name, json)

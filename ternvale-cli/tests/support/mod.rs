@@ -29,7 +29,9 @@ pub fn signed_binary() -> PathBuf {
     SIGNED
         .get_or_init(|| {
             let bin = PathBuf::from(env!("CARGO_BIN_EXE_ternvale"));
-            let entitlements = root().join("entitlements/ternvale.entitlements");
+            let entitlements = std::env::var_os("TERNVALE_ENTITLEMENTS")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| root().join("entitlements/ternvale.entitlements"));
             let out = Command::new("codesign")
                 .args(["--sign", "-", "--force", "--entitlements"])
                 .arg(&entitlements)
@@ -232,6 +234,11 @@ impl Vm {
         }
     }
 
+    /// PID of `ternvale run` (for SIGUSR1/SIGUSR2 host-sleep injection).
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// Guest serial output so far.
     pub fn serial(&self) -> String {
         std::fs::read_to_string(&self.serial).unwrap_or_default()
@@ -253,6 +260,11 @@ impl Vm {
             );
             std::thread::sleep(Duration::from_millis(100));
         }
+    }
+
+    /// Non-blocking poll of `run`.
+    pub fn try_wait(&mut self) -> Option<ExitStatus> {
+        self.child.try_wait().expect("try_wait")
     }
 
     /// Wait for `run` to exit.

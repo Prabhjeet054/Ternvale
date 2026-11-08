@@ -11,20 +11,20 @@
 //! disagrees with the [`Layout::virt`] regions.
 
 use ternvale_acpi::{
-    AcpiConfig, AcpiError, DumpedTable, EcamConfig, GicConfig, PciConfig, PsciConduit, TimerConfig,
-    TpmConfig, UartConfig, UsbConfig,
+    AcpiConfig, AcpiError, DumpedTable, EcamConfig, GedConfig, GicConfig, PciConfig, PsciConduit,
+    TimerConfig, TpmConfig, UartConfig, UsbConfig,
 };
 use ternvale_config::VmConfig;
 use ternvale_tpm::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE};
 use ternvale_usb::MMIO_SIZE as XHCI_MMIO_SIZE;
 
-use crate::fdt::{PL011_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI};
+use crate::fdt::{GED_SPI, PL011_REG_SIZE, PL061_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI};
 use crate::gic_redist::REDIST_STRIDE;
 use crate::machine::MachineError;
 use crate::pci::{ECAM_BUSES, PCI_INTX_SPI0};
 use crate::platform::{
-    Layout, ACPI_BASE, ACPI_SIZE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE, PCIE_ECAM_BASE,
-    PCIE_MMIO_BASE, PCIE_MMIO_SIZE, TPM_CRB_BASE, UART_BASE, XHCI_BASE,
+    Layout, ACPI_BASE, ACPI_SIZE, GED_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE,
+    PCIE_ECAM_BASE, PCIE_MMIO_BASE, PCIE_MMIO_SIZE, TPM_CRB_BASE, UART_BASE, XHCI_BASE,
 };
 use crate::usb::USB_SPI;
 
@@ -85,6 +85,11 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
             mmio_len: XHCI_MMIO_SIZE as u32,
             spi: USB_SPI,
         }),
+        ged: GedConfig {
+            mmio_base: GED_BASE,
+            mmio_len: PL061_REG_SIZE as u32,
+            spi: GED_SPI,
+        },
     }
 }
 
@@ -167,6 +172,13 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
             "uart",
             |base, size| uart.base >= base && uart_end <= base.saturating_add(size),
             format!("{:#x}+{:#x}", uart.base, uart.len),
+        ),
+        region_problem(
+            layout,
+            "DSDT GED0 _CRS",
+            "ged",
+            |base, size| base == config.ged.mmio_base && u64::from(config.ged.mmio_len) <= size,
+            format!("{:#x}+{:#x}", config.ged.mmio_base, config.ged.mmio_len),
         ),
         config.tpm.and_then(|tpm| {
             region_problem(

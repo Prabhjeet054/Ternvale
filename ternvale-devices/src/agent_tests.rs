@@ -72,6 +72,13 @@ impl Actions for Recorder {
         self.0.lock().expect("recorder").push("shutdown".into());
         Ok(())
     }
+    fn time_sync(&mut self, unix_secs: i64) -> Result<(), AgentError> {
+        self.0
+            .lock()
+            .expect("recorder")
+            .push(format!("time_sync {unix_secs}"));
+        Ok(())
+    }
 }
 
 /// Connect a fake agent and say hello with `version`.

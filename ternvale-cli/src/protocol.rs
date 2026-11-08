@@ -37,6 +37,17 @@ pub enum Request {
     Shutdown,
     /// Stop; the VM process exits even if teardown hangs.
     ForceStop,
+    /// Pulse the guest power button and wait; force-stop after `timeout_ms`.
+    GracefulStop {
+        /// How long to wait for the guest OS (milliseconds).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
+    },
+    /// App display visibility (`pause_when_hidden` / `low_power`).
+    WindowHidden {
+        /// True when the VM window is not visible.
+        hidden: bool,
+    },
     /// State plus per-vCPU counters.
     QueryStats,
     /// Write the guest DTB, MMIO events, and summary beside the host log.
@@ -90,6 +101,8 @@ impl Request {
             Self::Resume => "resume",
             Self::Shutdown => "shutdown",
             Self::ForceStop => "force-stop",
+            Self::GracefulStop { .. } => "graceful-stop",
+            Self::WindowHidden { .. } => "window-hidden",
             Self::QueryStats => "query-stats",
             Self::DumpDiagnostics => "dump-diagnostics",
             Self::SnapshotCreate { .. } => "snapshot-create",
@@ -112,6 +125,8 @@ impl Request {
             Self::Resume => "resume",
             Self::Shutdown => "stop",
             Self::ForceStop => "force-stop",
+            Self::GracefulStop { .. } => "gracefully stop",
+            Self::WindowHidden { .. } => "update window visibility for",
             Self::SnapshotCreate { .. } => "snapshot create for",
             Self::SnapshotRestore { .. } => "snapshot restore for",
             Self::SnapshotList => "list snapshots for",
@@ -387,6 +402,16 @@ mod tests {
             (r#"{"cmd":"resume"}"#, Request::Resume),
             (r#"{"cmd":"shutdown"}"#, Request::Shutdown),
             (r#"{"cmd":"force-stop"}"#, Request::ForceStop),
+            (
+                r#"{"cmd":"graceful-stop","timeout_ms":5000}"#,
+                Request::GracefulStop {
+                    timeout_ms: Some(5000),
+                },
+            ),
+            (
+                r#"{"cmd":"window-hidden","hidden":true}"#,
+                Request::WindowHidden { hidden: true },
+            ),
             (r#"{"cmd":"query-stats"}"#, Request::QueryStats),
             (r#"{"cmd":"dump-diagnostics"}"#, Request::DumpDiagnostics),
             (

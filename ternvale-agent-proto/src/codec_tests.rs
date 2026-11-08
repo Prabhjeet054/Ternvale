@@ -48,6 +48,12 @@ fn golden() -> Vec<(Message, &'static str)> {
             r#"{"type":"clipboard_set","text":"a\"b\n"}"#,
         ),
         (Message::Shutdown, r#"{"type":"shutdown"}"#),
+        (
+            Message::TimeSync {
+                unix_secs: 1_700_000_000,
+            },
+            r#"{"type":"time_sync","unix_secs":1700000000}"#,
+        ),
         (Message::WindowListGet, r#"{"type":"window_list_get"}"#),
         (
             Message::WindowListOk {
