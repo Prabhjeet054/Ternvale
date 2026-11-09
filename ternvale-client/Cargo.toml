@@ -1,0 +1,16 @@
+[package]
+name = "ternvale-client"
+description = "Async JSON-RPC 2.0 client for the Ternvale control socket."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed client errors (library crate; no anyhow).
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Async UnixStream + timeouts for JSON-RPC lines.
+tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "macros", "sync"] }
+tracing = "0.1"
+ternvale-api = { path = "../ternvale-api" }

@@ -19,6 +19,8 @@ pub struct Cli {
 /// One `ternvale` subcommand.
 #[derive(Debug, Subcommand, PartialEq, Eq)]
 pub enum Command {
+    /// Listen on the JSON-RPC hub socket (`run/api.sock`) until killed.
+    Serve,
     /// Boot the VM described by a TOML config and serve its control socket
     /// until it stops.
     Run {

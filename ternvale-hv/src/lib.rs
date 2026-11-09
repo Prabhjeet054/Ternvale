@@ -43,7 +43,7 @@ pub use sec::{
     check_pid_requirement, create_security_scoped_bookmark, parse_requirement,
     resolve_security_scoped_bookmark, ScopedAccess, SecError,
 };
-pub use unix::{unix_peek, unix_peer_pid};
+pub use unix::{host_uid, unix_peek, unix_peer_is_same_user, unix_peer_pid, unix_peer_uid};
 pub use vcpu::{
     get_reg, get_sys_reg, get_vtimer_offset, set_reg, set_sys_reg, set_vtimer_mask,
     set_vtimer_offset, vcpu_create, vcpu_destroy, vcpu_run, vcpus_exit, Reg, SysReg, VcpuExit,

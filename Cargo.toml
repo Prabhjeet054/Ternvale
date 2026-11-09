@@ -23,6 +23,8 @@ members = [
     "ternvale-vmnetd",
     "ternvale-fuzz",
     "ternvale-sandbox",
+    "ternvale-api",
+    "ternvale-client",
 ]
 
 [workspace.package]

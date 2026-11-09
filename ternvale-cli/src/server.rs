@@ -191,6 +191,14 @@ fn accept_loop(listener: &UnixListener, served: &Served, stop: &AtomicBool) {
 fn serve(stream: UnixStream, served: &Served, id: u64) {
     let span = tracing::info_span!(target: "ternvale::cli", "control", vm = served.control.name(), conn = id);
     let _entered = span.enter();
+    if let Err(error) = crate::peer::authorize(&stream) {
+        tracing::warn!(
+            target: "ternvale::api",
+            error = %format!("{error:#}"),
+            "control connection rejected"
+        );
+        return;
+    }
     if let Err(error) = serve_lines(stream, served) {
         tracing::warn!(target: "ternvale::cli", error = %format!("{error:#}"), "control connection ended with an error");
     }
@@ -205,6 +213,7 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
         .context("set control connection read timeout")?;
     let mut writer = stream.try_clone().context("clone control connection")?;
     let mut reader = BufReader::new(stream);
+    let mut handshook = false;
     loop {
         let mut line = String::new();
         let read = reader
@@ -216,26 +225,47 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
             tracing::debug!(target: "ternvale::cli", "control connection closed");
             return Ok(());
         }
-        let response = if line.len() > MAX_LINE {
-            tracing::warn!(target: "ternvale::cli", bytes = line.len(), "control request too long");
-            Response::error(format!("request longer than {MAX_LINE} bytes"))
-        } else {
-            handle_line_with(
-                line.trim_end(),
-                &served.control,
-                served.agent.as_deref(),
-                served.diag.as_deref(),
-                served.tools_iso.as_deref(),
-                served.power.as_deref(),
-            )
-        };
-        let mut out = serde_json::to_string(&response).context("encode control response")?;
-        out.push('\n');
-        writer
-            .write_all(out.as_bytes())
-            .context("write control response")?;
         if line.len() > MAX_LINE {
+            tracing::warn!(target: "ternvale::cli", bytes = line.len(), "control request too long");
+            let mut out = serde_json::to_string(&Response::error(format!(
+                "request longer than {MAX_LINE} bytes"
+            )))
+            .context("encode control response")?;
+            out.push('\n');
+            writer
+                .write_all(out.as_bytes())
+                .context("write control response")?;
             return Ok(());
+        }
+        match crate::rpc_vm::dispatch_vm_line(
+            line.trim_end(),
+            &served.control,
+            served.agent.as_deref(),
+            served.diag.as_deref(),
+            served.tools_iso.as_deref(),
+            served.power.as_deref(),
+            &mut handshook,
+        ) {
+            crate::rpc_vm::Dispatch::Reply(out) => {
+                writer
+                    .write_all(out.as_bytes())
+                    .context("write control response")?;
+                writer.write_all(b"\n").context("write control newline")?;
+            }
+            crate::rpc_vm::Dispatch::Subscribe { reply, kinds } => {
+                writer
+                    .write_all(reply.as_bytes())
+                    .context("write subscribe result")?;
+                writer.write_all(b"\n").context("write control newline")?;
+                crate::events_sub::stream_vm_events(
+                    &mut writer,
+                    &served.control,
+                    served.agent.as_deref(),
+                    served.tools_iso.as_deref(),
+                    &kinds,
+                );
+                return Ok(());
+            }
         }
     }
 }

@@ -26,6 +26,26 @@ pub fn run_dir() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join("Library/Application Support/Ternvale/run"))
 }
 
+/// Supervisor JSON-RPC socket (`run_dir()/api.sock`).
+#[tracing::instrument(level = "debug", target = "ternvale::api", skip_all)]
+pub fn api_socket() -> Result<PathBuf> {
+    api_socket_in(&run_dir()?)
+}
+
+/// Supervisor socket in `dir`.
+#[tracing::instrument(level = "debug", target = "ternvale::api", skip_all)]
+pub fn api_socket_in(dir: &Path) -> Result<PathBuf> {
+    let path = dir.join("api.sock");
+    let len = path.as_os_str().len();
+    if len > MAX_SOCKET_PATH {
+        bail!(
+            "api socket path {} is {len} bytes; macOS allows {MAX_SOCKET_PATH} (set {RUN_DIR_ENV} to a shorter directory)",
+            path.display()
+        );
+    }
+    Ok(path)
+}
+
 /// Control socket path for VM `name` in [`run_dir`].
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
 pub fn socket_path(name: &str) -> Result<PathBuf> {
@@ -153,6 +173,10 @@ mod tests {
     fn socket_lives_in_the_run_dir_under_the_vm_name() {
         let path = socket_path_in(Path::new("/tmp/tv"), "vm-1_a").expect("path");
         assert_eq!(path, Path::new("/tmp/tv/vm-1_a.sock"));
+        assert_eq!(
+            api_socket_in(Path::new("/tmp/tv")).expect("api"),
+            Path::new("/tmp/tv/api.sock")
+        );
     }
 
     #[test]

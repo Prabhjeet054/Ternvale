@@ -78,6 +78,7 @@ fn parses_every_subcommand() {
             fps: ternvale_gpu::DEFAULT_FPS,
         }
     );
+    assert_eq!(parse(&["ternvale", "serve"]), Command::Serve);
     assert_eq!(
         parse(&[
             "ternvale",

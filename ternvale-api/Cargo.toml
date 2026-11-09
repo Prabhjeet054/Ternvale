@@ -1,0 +1,15 @@
+[package]
+name = "ternvale-api"
+description = "JSON-RPC 2.0 control API types, schema, and Swift client generation."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed errors for handshake and RPC envelope failures.
+thiserror = "2"
+# JSON-RPC request/response and event payloads.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Required project-wide logging facade (target ternvale::api).
+tracing = "0.1"

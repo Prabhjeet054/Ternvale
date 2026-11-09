@@ -3,7 +3,8 @@
 //! `ternvale run <config>` boots a VM in the foreground and serves a Unix
 //! control socket at `~/Library/Application Support/Ternvale/run/<name>.sock`
 //! (JSON lines, see [`protocol`]). `status`, `pause`, `resume`, and `stop`
-//! are clients of that socket. `validate` and `create-disk` work offline.
+//! are clients of that socket. `serve` binds the JSON-RPC hub at
+//! `run/api.sock` (`docs/API.md`). `validate` and `create-disk` work offline.
 //! `doctor` checks the host, `logs` reads host logs, and `report` zips a
 //! crash report (asking a running VM to `dump-diagnostics` first).
 //! `acpi-dump` reads the ACPI tables back from a probe VM and can diff them
@@ -15,6 +16,9 @@
 
 pub mod acpi;
 pub mod acpi_fault;
+pub mod api_hub;
+pub mod api_library;
+pub mod api_server;
 pub mod balloon_cmd;
 pub mod cli;
 pub mod client;
@@ -29,14 +33,17 @@ pub mod disk;
 pub mod display;
 pub mod display_input;
 pub mod doctor;
+pub mod events_sub;
 pub mod keychain;
 pub mod logfmt;
 pub mod logs;
 pub mod paths;
+pub mod peer;
 pub mod power;
 pub mod protocol;
 pub mod release_verify;
 pub mod report;
+pub mod rpc_vm;
 pub mod run;
 pub mod sandbox_run;
 pub mod seamless;
@@ -139,6 +146,13 @@ fn cli_log() -> Result<ternvale_log::LogGuard> {
 
 fn non_run(command: Command) -> Result<ExitCode> {
     match command {
+        Command::Serve => {
+            let server = crate::api_server::ApiServer::start()?;
+            println!("listening {}", server.path().display());
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3600));
+            }
+        }
         Command::Run {
             config,
             display,
@@ -285,3 +299,7 @@ mod tools_tests;
 #[cfg(test)]
 #[path = "create_tests.rs"]
 mod create_tests;
+
+#[cfg(test)]
+#[path = "api_rpc_tests.rs"]
+mod api_rpc_tests;

@@ -254,6 +254,15 @@ pub struct StatsJson {
     pub balloon: Option<BalloonSnapshot>,
 }
 
+/// One library VM in a `list` result (optional field; older clients ignore it).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VmListEntry {
+    pub name: String,
+    pub running: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+}
+
 /// One response line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Response {
@@ -275,21 +284,75 @@ pub struct Response {
     /// Plain text from `clipboard-get`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clipboard_text: Option<String>,
+    /// Set on JSON-RPC `handshake` only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_api_version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_api_version: Option<u32>,
+    /// `list` / `create` / `delete` payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vms: Option<Vec<VmListEntry>>,
+    /// `subscribe` acknowledgement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscribed: Option<Vec<String>>,
 }
 
 impl Response {
-    /// Success with a status.
-    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
-    pub fn status(status: &VmStatus) -> Self {
+    fn blank(ok: bool) -> Self {
         Self {
-            ok: true,
+            ok,
             error: None,
-            status: Some(StatusJson::from(status)),
+            status: None,
             stats: None,
             files: None,
             snapshots: None,
             snapshot_path: None,
             clipboard_text: None,
+            api_version: None,
+            min_api_version: None,
+            max_api_version: None,
+            vms: None,
+            subscribed: None,
+        }
+    }
+
+    /// Success with a status.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn status(status: &VmStatus) -> Self {
+        Self {
+            status: Some(StatusJson::from(status)),
+            ..Self::blank(true)
+        }
+    }
+
+    /// JSON-RPC handshake payload (optional fields; legacy clients ignore them).
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn handshake(api_version: u32, min: u32, max: u32) -> Self {
+        Self {
+            api_version: Some(api_version),
+            min_api_version: Some(min),
+            max_api_version: Some(max),
+            ..Self::blank(true)
+        }
+    }
+
+    /// `list` result.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(n = vms.len()))]
+    pub fn vms(vms: Vec<VmListEntry>) -> Self {
+        Self {
+            vms: Some(vms),
+            ..Self::blank(true)
+        }
+    }
+
+    /// `subscribe` acknowledgement.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn subscribed(kinds: Vec<String>) -> Self {
+        Self {
+            subscribed: Some(kinds),
+            ..Self::blank(true)
         }
     }
 
@@ -297,14 +360,8 @@ impl Response {
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
     pub fn clipboard(status: &VmStatus, text: String) -> Self {
         Self {
-            ok: true,
-            error: None,
-            status: Some(StatusJson::from(status)),
-            stats: None,
-            files: None,
-            snapshots: None,
-            snapshot_path: None,
             clipboard_text: Some(text),
+            ..Self::status(status)
         }
     }
 
@@ -334,19 +391,13 @@ impl Response {
             })
             .collect();
         Self {
-            ok: true,
-            error: None,
-            status: Some(StatusJson::from(&stats.status)),
             stats: Some(StatsJson {
                 cpus,
                 process_cpu_ms: stats.process_cpu_ms,
                 metrics: Some(stats.metrics.clone()),
                 balloon,
             }),
-            files: None,
-            snapshots: None,
-            snapshot_path: None,
-            clipboard_text: None,
+            ..Self::status(&stats.status)
         }
     }
 
@@ -354,14 +405,9 @@ impl Response {
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
     pub fn snapshots(status: &VmStatus, names: Vec<String>, path: Option<String>) -> Self {
         Self {
-            ok: true,
-            error: None,
-            status: Some(StatusJson::from(status)),
-            stats: None,
-            files: None,
             snapshots: Some(names),
             snapshot_path: path,
-            clipboard_text: None,
+            ..Self::status(status)
         }
     }
 
@@ -369,14 +415,8 @@ impl Response {
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
     pub fn error(message: impl Into<String>) -> Self {
         Self {
-            ok: false,
             error: Some(message.into()),
-            status: None,
-            stats: None,
-            files: None,
-            snapshots: None,
-            snapshot_path: None,
-            clipboard_text: None,
+            ..Self::blank(false)
         }
     }
 }
@@ -508,5 +548,49 @@ mod tests {
         assert_eq!(stats.stats.as_ref().and_then(|s| s.cpus[0].runs), None);
         let error = serde_json::to_string(&Response::error("nope")).expect("encode");
         assert_eq!(error, r#"{"ok":false,"error":"nope"}"#);
+    }
+
+    fn golden(name: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("goldens")
+            .join(name);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    }
+
+    fn assert_golden(name: &str, value: &impl serde::Serialize) {
+        let got = serde_json::to_string(value).expect("enc");
+        let want: serde_json::Value = serde_json::from_str(golden(name).trim()).expect("want json");
+        let got_v: serde_json::Value = serde_json::from_str(&got).expect("got json");
+        assert_eq!(got_v, want, "{name} got={got}");
+    }
+
+    #[test]
+    fn golden_files_freeze_legacy_cmd_and_error_shapes() {
+        assert_golden("cmd-status.json", &Request::Status);
+        assert_golden("cmd-pause.json", &Request::Pause { timeout_ms: None });
+        assert_golden("cmd-query-stats.json", &Request::QueryStats);
+        assert_golden(
+            "cmd-balloon-set.json",
+            &Request::BalloonSet {
+                target_mib: Some(1024),
+                auto: None,
+            },
+        );
+        assert_golden(
+            "cmd-set-data-key.json",
+            &Request::SetDataKey {
+                key_hex: DataKeyHex("aa".into()),
+            },
+        );
+        assert_golden("response-error.json", &Response::error("nope"));
+    }
+
+    #[test]
+    fn v1_response_shape_accepts_new_optional_fields() {
+        let line = r#"{"ok":true,"error":null,"build":"future","vms":[]}"#;
+        let parsed: Response = serde_json::from_str(line).expect("v1 client");
+        assert!(parsed.ok);
+        assert!(parsed.error.is_none());
+        assert!(parsed.vms.is_none() || parsed.vms.as_ref().is_some_and(Vec::is_empty));
     }
 }

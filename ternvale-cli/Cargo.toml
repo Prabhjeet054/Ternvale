@@ -37,6 +37,8 @@ clap = { version = "4.5", features = ["derive"] }
 # Control socket JSON-lines requests and responses.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# JSON-RPC 2.0 method names, handshake, and events (Step 83).
+ternvale-api = { path = "../ternvale-api" }
 # Required project-wide logging facade (target ternvale::cli).
 tracing = "0.1"
 # Log files, panic hook, and the stderr layer.
