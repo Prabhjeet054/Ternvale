@@ -74,6 +74,7 @@ pub fn run() -> Result<(), String> {
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     };
     if vm.effective_firmware_tables() != FirmwareTables::Acpi {
         return Err("a firmware boot without firmware_tables should default to acpi".into());

@@ -131,6 +131,12 @@ pub fn vm_config_path(name: &str) -> Result<PathBuf> {
     Ok(vm_dir(name)?.join("config.toml"))
 }
 
+/// Wrapped data-encryption key (`TVKW`) for VM `name`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
+pub fn dek_path(name: &str) -> Result<PathBuf> {
+    Ok(vm_dir(name)?.join("dek.tkey"))
+}
+
 /// `snapshots_root/<vm>/<label>/` bundle directory.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm, label))]
 pub fn snapshot_bundle(vm: &str, label: &str) -> Result<PathBuf> {

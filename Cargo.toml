@@ -12,6 +12,7 @@ members = [
     "ternvale-usb-host",
     "ternvale-audio-host",
     "ternvale-snapshot",
+    "ternvale-crypto",
     "ternvale-vmm",
     "ternvale-devices",
     "ternvale-cli",

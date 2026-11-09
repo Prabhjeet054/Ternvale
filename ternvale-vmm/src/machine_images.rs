@@ -134,10 +134,14 @@ impl Inputs {
 
 /// The variable flash for a firmware boot, backed by `nvram`.
 #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(nvram = %nvram.display()))]
-pub(super) fn vars_flash(nvram: &Path) -> Result<VarsFlash, MachineError> {
-    Ok(VarsFlash::open(
+pub(super) fn vars_flash(
+    nvram: &Path,
+    gcm: Option<ternvale_crypto::GcmKey>,
+) -> Result<VarsFlash, MachineError> {
+    Ok(VarsFlash::open_crypto(
         nvram,
         Box::new(HvWindow::new(FLASH_VARS_BASE)),
+        gcm,
     )?)
 }
 

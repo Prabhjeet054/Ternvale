@@ -5,6 +5,7 @@
 //! fake [`ternvale_vmm::GuestMemory`] (no Hypervisor.framework).
 
 mod agent;
+mod crypto;
 mod esr;
 mod fuse;
 mod guest;
@@ -26,6 +27,7 @@ mod vsock_packet;
 mod xhci;
 
 pub use agent::run as agent_proto;
+pub use crypto::run as crypto_at_rest;
 pub use esr::run as esr;
 pub use fuse::run as fuse;
 pub use psci::run as psci;
@@ -73,6 +75,7 @@ pub const TARGETS: &[&str] = &[
     "psci",
     "user_net",
     "fuse",
+    "crypto",
 ];
 
 /// Run the named target on `data`. Unknown names are ignored.
@@ -97,6 +100,7 @@ pub fn run_named(target: &str, data: &[u8]) {
         "psci" => psci(data),
         "user_net" => user_net(data),
         "fuse" => fuse(data),
+        "crypto" => crypto_at_rest(data),
         _ => {}
     }
 }

@@ -154,6 +154,16 @@ backend = "user"
     }
 
     #[test]
+    fn encryption_flag_parses() {
+        let fix = Fixture::new();
+        let text = format!("encryption = true\n{}", sample(&fix));
+        let config = VmConfig::from_toml(&text).expect("parse");
+        assert!(config.encryption);
+        let dumped = config.to_toml().expect("toml");
+        assert!(dumped.contains("encryption = true"), "{dumped}");
+    }
+
+    #[test]
     fn valid_config_round_trips() {
         let fix = Fixture::new();
         let config = VmConfig::from_toml(&sample(&fix)).expect("parse");
@@ -167,6 +177,7 @@ backend = "user"
         assert_eq!(config.nics.len(), 1);
         assert_eq!(config.nics[0].backend, "user");
         assert_eq!(config.nics[0].mode, crate::NicMode::Shared);
+        assert!(!config.encryption);
         let text = config.to_toml().expect("serialize");
         let again = VmConfig::from_toml(&text).expect("reparse");
         assert_eq!(config, again);

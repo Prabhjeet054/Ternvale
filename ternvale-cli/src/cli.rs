@@ -262,6 +262,11 @@ pub enum Command {
         #[command(subcommand)]
         action: crate::tools::ToolsCommand,
     },
+    /// At-rest encryption: rotate the wrapping key without re-encrypting data.
+    Crypto {
+        #[command(subcommand)]
+        action: CryptoCommand,
+    },
     /// Check a signed `.app`: `codesign --verify --deep --strict`, hypervisor entitlements, `spctl`.
     ReleaseVerify {
         /// Path to `Ternvale.app`.
@@ -278,6 +283,16 @@ pub enum Command {
 pub enum VmCommand {
     /// Remove a VM from the library and release shared disk base refcounts.
     Delete {
+        /// VM name.
+        name: String,
+    },
+}
+
+/// `ternvale crypto …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum CryptoCommand {
+    /// Re-wrap the data key with a new Keychain wrapping key (no data rewrite).
+    Rotate {
         /// VM name.
         name: String,
     },

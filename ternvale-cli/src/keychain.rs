@@ -24,6 +24,12 @@ pub fn product_key_account(vm: &str) -> String {
     format!("{vm}/windows-product-key")
 }
 
+/// Account for the 32-byte wrapping key (hex) that protects the per-VM DEK.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm))]
+pub fn wrapping_key_account(vm: &str) -> String {
+    format!("{vm}/wrapping-key")
+}
+
 /// Store `secret` under `account`.
 #[tracing::instrument(level = "info", target = "ternvale::cli", skip_all, fields(account))]
 pub fn store(account: &str, secret: &Secret) -> Result<()> {

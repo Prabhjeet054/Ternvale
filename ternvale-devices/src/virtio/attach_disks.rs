@@ -63,6 +63,17 @@ pub fn attach_blocks(
     devices: &[BlockDevice],
     transport: VirtioTransport,
 ) -> Result<AttachedBlocks, MachineError> {
+    attach_blocks_crypto(attach, devices, transport, None)
+}
+
+/// [`attach_blocks`] with AES-256-XTS on disk slots (ISO slots stay plaintext).
+#[tracing::instrument(level = "debug", target = "ternvale::virtio::blk", skip_all, fields(devices = devices.len(), %transport, encrypted = xts.is_some()))]
+pub fn attach_blocks_crypto(
+    attach: &DeviceAttach,
+    devices: &[BlockDevice],
+    transport: VirtioTransport,
+    xts: Option<ternvale_crypto::DiskXts>,
+) -> Result<AttachedBlocks, MachineError> {
     let mut out = AttachedBlocks {
         mmio: Vec::new(),
         devices: Vec::with_capacity(devices.len()),
@@ -84,11 +95,21 @@ pub fn attach_blocks(
             ))
         };
         let options = BlkOptions::from_device(device, attach.vcpus);
+        let slot_xts = if device.is_optical() {
+            None
+        } else {
+            xts.clone()
+        };
         let (placement, stats) = match transport {
             VirtioTransport::Pci => {
-                let (bdf, stats) =
-                    VirtioBlk::attach_pci_media(attach, &device.path, media, options)
-                        .map_err(|error| fail(error.to_string()))?;
+                let (bdf, stats) = VirtioBlk::attach_pci_media_crypto(
+                    attach,
+                    &device.path,
+                    media,
+                    options,
+                    slot_xts,
+                )
+                .map_err(|error| fail(error.to_string()))?;
                 if ternvale_vmm::pci_disk_bdf(index) != Some(bdf) {
                     tracing::warn!(target: "ternvale::virtio::blk", index, %bdf, "block device is not on the PCI slot the uefi boot order names");
                 }
@@ -98,7 +119,7 @@ pub fn attach_blocks(
             VirtioTransport::Mmio => {
                 let slot =
                     u32::try_from(index).map_err(|_| fail("slot does not fit in u32".into()))?;
-                let (base, size, mmio, stats) = VirtioBlk::attach_media(
+                let (base, size, mmio, stats) = VirtioBlk::attach_media_crypto(
                     slot,
                     &device.path,
                     media,
@@ -106,6 +127,7 @@ pub fn attach_blocks(
                     Arc::clone(&attach.memory),
                     attach.virtio_irq_hook(slot),
                     Arc::clone(&attach.metrics),
+                    slot_xts,
                 )
                 .map_err(|error| fail(error.to_string()))?;
                 out.mmio.push((base, size, mmio));
@@ -188,6 +210,21 @@ pub fn attach_disks<P: AsRef<Path>>(
     attach: &DeviceAttach,
     disks: &[(P, bool)],
 ) -> Result<Vec<AttachedDisk>, MachineError> {
+    attach_disks_crypto(attach, disks, None)
+}
+
+/// [`attach_disks`] with optional AES-256-XTS on disk slots.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::virtio::blk",
+    skip_all,
+    fields(disks = disks.len(), encrypted = xts.is_some())
+)]
+pub fn attach_disks_crypto<P: AsRef<Path>>(
+    attach: &DeviceAttach,
+    disks: &[(P, bool)],
+    xts: Option<ternvale_crypto::DiskXts>,
+) -> Result<Vec<AttachedDisk>, MachineError> {
     let mut devices = Vec::with_capacity(disks.len());
     for (slot, (path, read_only)) in disks.iter().enumerate() {
         let slot = u32::try_from(slot)
@@ -198,15 +235,20 @@ pub fn attach_disks<P: AsRef<Path>>(
             slot,
             path = %path.display(),
             read_only = *read_only,
+            encrypted = xts.is_some(),
             "attaching virtio-blk from config disk"
         );
-        let (base, size, device, _stats) = VirtioBlk::attach(
+        let (base, size, device, _stats) = VirtioBlk::attach_media_crypto(
             slot,
             path,
-            *read_only,
+            BlkMedia::Disk {
+                read_only: *read_only,
+            },
+            BlkOptions::default(),
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(slot),
             Arc::clone(&attach.metrics),
+            xts.clone(),
         )
         .map_err(|error| MachineError::Attach(error.to_string()))?;
         devices.push((base, size, device));

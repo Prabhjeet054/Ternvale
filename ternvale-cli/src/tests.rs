@@ -255,6 +255,14 @@ fn parses_every_subcommand() {
             }
         }
     );
+    assert_eq!(
+        parse(&["ternvale", "crypto", "rotate", "win11"]),
+        Command::Crypto {
+            action: crate::cli::CryptoCommand::Rotate {
+                name: "win11".into()
+            }
+        }
+    );
 }
 
 #[test]

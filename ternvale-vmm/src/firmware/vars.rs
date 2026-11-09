@@ -72,19 +72,29 @@ impl VarsFlash {
     /// Load `nvram` (creating it if missing) and map the bank read-only.
     #[tracing::instrument(level = "debug", target = "ternvale::flash", skip_all, fields(nvram = %nvram.display()))]
     pub fn open(nvram: &Path, window: Box<dyn RomdWindow>) -> Result<Self, FirmwareError> {
-        Self::with_size(nvram, window, FLASH_BANK_SIZE)
+        Self::open_crypto(nvram, window, None)
+    }
+
+    /// [`open`] with AES-256-GCM on the NVRAM file.
+    pub fn open_crypto(
+        nvram: &Path,
+        window: Box<dyn RomdWindow>,
+        gcm: Option<ternvale_crypto::GcmKey>,
+    ) -> Result<Self, FirmwareError> {
+        Self::with_size(nvram, window, FLASH_BANK_SIZE, gcm)
     }
 
     pub(super) fn with_size(
         nvram: &Path,
         window: Box<dyn RomdWindow>,
         size: u64,
+        gcm: Option<ternvale_crypto::GcmKey>,
     ) -> Result<Self, FirmwareError> {
         let mut storage = HostPages::new(size).map_err(|source| FirmwareError::Memory {
             what: "allocate variable bank",
             source,
         })?;
-        let nvram = NvramFile::open(nvram, storage.as_mut_slice())?;
+        let nvram = NvramFile::open(nvram, storage.as_mut_slice(), gcm)?;
         let mut flash = Self {
             cfi: Cfi::new(),
             storage,
@@ -130,7 +140,12 @@ impl VarsFlash {
             return;
         };
         let bytes = bytes.to_vec();
-        if self.nvram.persist(changed.offset, &bytes).is_err() {
+        let ok = if self.nvram.encrypted() {
+            self.nvram.persist_bank(self.storage.as_slice()).is_ok()
+        } else {
+            self.nvram.persist(changed.offset, &bytes).is_ok()
+        };
+        if !ok {
             self.cfi.fail_program();
         }
     }

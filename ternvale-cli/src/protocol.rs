@@ -12,6 +12,16 @@ use serde::{Deserialize, Serialize};
 use ternvale_devices::{AgentStatus, BalloonSnapshot};
 use ternvale_vmm::{VmStats, VmStatus};
 
+/// Hex-encoded DEK on `set-data-key`. `Debug` is `[redacted]`.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataKeyHex(pub String);
+
+impl std::fmt::Debug for DataKeyHex {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("[redacted]")
+    }
+}
+
 /// Longest request line accepted, in bytes.
 pub const MAX_LINE: usize = 4096;
 /// Default and largest `pause` wait.
@@ -89,6 +99,11 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         auto: Option<bool>,
     },
+    /// Unwrapped 32-byte data key as hex. Never put this on argv or in the environment.
+    SetDataKey {
+        /// Lowercase hex of the 32-byte DEK.
+        key_hex: DataKeyHex,
+    },
 }
 
 impl Request {
@@ -112,6 +127,7 @@ impl Request {
             Self::ClipboardGet { .. } => "clipboard-get",
             Self::ClipboardSet { .. } => "clipboard-set",
             Self::BalloonSet { .. } => "balloon-set",
+            Self::SetDataKey { .. } => "set-data-key",
         }
     }
 
@@ -134,6 +150,7 @@ impl Request {
             Self::ClipboardGet { .. } => "clipboard get for",
             Self::ClipboardSet { .. } => "clipboard set for",
             Self::BalloonSet { .. } => "set balloon for",
+            Self::SetDataKey { .. } => "set data key for",
         }
     }
 }
@@ -438,6 +455,12 @@ mod tests {
                     auto: Some(true),
                 },
             ),
+            (
+                r#"{"cmd":"set-data-key","key_hex":"aa"}"#,
+                Request::SetDataKey {
+                    key_hex: DataKeyHex("aa".into()),
+                },
+            ),
         ];
         for (line, want) in cases {
             let got: Request = serde_json::from_str(line).expect(line);
@@ -452,6 +475,24 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<Request>(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn set_data_key_debug_never_prints_hex() {
+        let hex = "aa".repeat(32);
+        let req = Request::SetDataKey {
+            key_hex: DataKeyHex(hex.clone()),
+        };
+        let debug = format!("{req:?}");
+        assert!(
+            debug.contains("[redacted]"),
+            "expected redacted Debug: {debug}"
+        );
+        assert!(
+            !debug.contains(&hex),
+            "set-data-key Debug leaked key hex: {debug}"
+        );
+        tracing::info!(target: "ternvale::crypto", request = ?req, "control set-data-key");
     }
 
     #[test]

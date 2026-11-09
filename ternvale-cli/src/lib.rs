@@ -23,6 +23,7 @@ pub mod clone_cmd;
 pub mod commands;
 pub mod create_cmd;
 pub mod create_progress;
+pub mod crypto_cmd;
 pub mod diag;
 pub mod disk;
 pub mod display;
@@ -224,6 +225,12 @@ fn non_run(command: Command) -> Result<ExitCode> {
             }
         },
         Command::Clone { source, new_name } => clone_cmd::clone_vm(&source, &new_name),
+        Command::Crypto { action } => match action {
+            cli::CryptoCommand::Rotate { name } => {
+                crate::crypto_cmd::rotate(&name)?;
+                Ok(ExitCode::SUCCESS)
+            }
+        },
         Command::Vm { action } => match action {
             cli::VmCommand::Delete { name } => clone_cmd::delete_vm(&name),
         },

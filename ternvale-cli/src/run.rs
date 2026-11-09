@@ -20,8 +20,8 @@ use anyhow::{Context, Result};
 use ternvale_agent_proto::AGENT_PORT;
 use ternvale_config::{BlockDevice, Nic, Profile, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
-    attach_blocks, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon, VirtioConsole,
-    VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
+    attach_blocks_crypto, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon,
+    VirtioConsole, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -150,6 +150,14 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
         Some(Arc::clone(&power)),
     )
     .with_context(|| format!("start the control socket for vm {}", config.name))?;
+    crate::crypto_cmd::deliver_over_control(&config, &socket)
+        .with_context(|| format!("deliver data key for vm {}", config.name))?;
+    if config.encryption {
+        if let Ok(Some(state)) = config.tpm_state_path() {
+            crate::crypto_cmd::unwrap_tpm_state(&config.name, &state)
+                .with_context(|| format!("unwrap TPM state {}", state.display()))?;
+        }
+    }
     let host_control = Arc::clone(&control);
     let host_agent = agent.clone();
     let host_power = Arc::clone(&power);
@@ -185,9 +193,11 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     let share = config.shares.first();
     let windows_names = config.profile == Profile::Windows;
     let session_slot = Arc::clone(&session);
+    let xts = control.crypto().map(|ctx| ctx.xts().clone());
     let exit = Machine::run_controlled(&config, Box::new(uart), &control, move |attach| {
         let wanted = Wanted {
             blocks: &blocks,
+            xts,
             transport,
             nics: &nics,
             vsock: if attach_vsock { device.as_ref() } else { None },
@@ -204,6 +214,18 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
         attach_devices(attach, &wanted, &stats, &session_slot)
     });
     drop(lockwatch::lock(&session, "display-session").take());
+    if config.encryption {
+        if let Ok(Some(state)) = config.tpm_state_path() {
+            if let Err(error) = crate::crypto_cmd::wrap_tpm_state(&config.name, &state) {
+                tracing::warn!(
+                    target: "ternvale::crypto",
+                    path = %state.display(),
+                    error = %format!("{error:#}"),
+                    "could not wrap TPM state after stop"
+                );
+            }
+        }
+    }
 
     if reaper.join().is_err() {
         tracing::error!(target: "ternvale::cli", "force-stop reaper thread panicked");
@@ -274,6 +296,8 @@ type Attached = Vec<(u64, u64, Box<dyn MmioDevice>)>;
 struct Wanted<'a> {
     /// `[[disks]]`, then the `[iso]` slots.
     blocks: &'a [BlockDevice],
+    /// AES-256-XTS for disk slots when `encryption = true`.
+    xts: Option<ternvale_crypto::DiskXts>,
     /// Where the block devices go. NICs and vsock have no PCI transport yet.
     transport: VirtioTransport,
     nics: &'a [Nic],
@@ -310,7 +334,7 @@ fn attach_devices(
 ) -> Result<Attached, MachineError> {
     let (nics, vsock) = (wanted.nics, wanted.vsock);
     let mut stats = lockwatch::lock(stats, "device-stats");
-    let blocks = attach_blocks(attach, wanted.blocks, wanted.transport)?;
+    let blocks = attach_blocks_crypto(attach, wanted.blocks, wanted.transport, wanted.xts.clone())?;
     for block in blocks.devices {
         stats.disks.push((block.path, block.stats));
     }

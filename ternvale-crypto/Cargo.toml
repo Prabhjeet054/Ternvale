@@ -1,0 +1,27 @@
+[package]
+name = "ternvale-crypto"
+description = "At-rest encryption for Ternvale disks, NVRAM, TPM state, and VM snapshots."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# AES-256 (ARMv8 crypto extensions via the aes crate on aarch64).
+aes = "0.8"
+# AES-256-XTS per 512-byte disk sector. Confidentiality only; no integrity.
+xts-mode = "0.5"
+# AES-256-GCM for NVRAM, TPM state, memory-snapshot files, and DEK wrapping.
+aes-gcm = "0.10"
+# HKDF-SHA256 to derive the XTS and GCM keys from one 32-byte data key.
+hkdf = "0.12"
+sha2 = "0.10"
+# Random DEK, wrapping key, and GCM nonces.
+getrandom = "0.2"
+# Redact-on-debug and overwrite-on-drop for key material.
+zeroize = { version = "1", features = ["zeroize_derive"] }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+# Capture log text so tests can prove key material is never printed.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }

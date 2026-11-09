@@ -77,6 +77,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

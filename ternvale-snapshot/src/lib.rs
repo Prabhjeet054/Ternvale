@@ -23,8 +23,9 @@ pub use format::{
 pub use manifest::StackManifest;
 pub use stack::ImageStack;
 pub use vm_bundle::{
-    delete_bundle, list_snapshots, new_meta, read_bundle, write_bundle, VmSnapshotMeta,
-    VmSnapshotPayload, BUNDLE_MAGIC, BUNDLE_VERSION,
+    bundle_encrypted, delete_bundle, list_snapshots, new_meta, read_bundle, read_bundle_crypto,
+    write_bundle, write_bundle_crypto, VmSnapshotMeta, VmSnapshotPayload, BUNDLE_MAGIC,
+    BUNDLE_VERSION,
 };
 
 /// Stack / delta errors.
@@ -104,6 +105,10 @@ pub fn is_stack_manifest(path: &std::path::Path) -> bool {
 #[cfg(test)]
 #[path = "layer_tests.rs"]
 mod layer_tests;
+
+#[cfg(test)]
+#[path = "crypto_layer_tests.rs"]
+mod crypto_layer_tests;
 
 #[cfg(test)]
 mod tests {

@@ -95,6 +95,7 @@ fn boot(firmware: &Path, serial_log: &Path, log_dir: &Path, host_log: &Path) -> 
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     };
     tracing::info!(
         target: "ternvale::boot",

@@ -109,11 +109,12 @@ done <"${tmp}/order"
 
 cat >"${tmp}/initrd/init" <<'INIT'
 #!/bin/busybox sh
-/bin/busybox mkdir -p /proc /sys /dev
+/bin/busybox mkdir -p /proc /sys /dev /bin /sbin /usr/bin /usr/sbin
 /bin/busybox mount -t proc proc /proc
 /bin/busybox mount -t sysfs sys /sys
 /bin/busybox mount -t devtmpfs dev /dev
 /bin/busybox --install -s
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 for m in $(cat /modules/order); do
   insmod /modules/${m}.ko || echo "insmod ${m} failed"
 done
@@ -122,6 +123,17 @@ while [ ! -b /dev/vda ] && [ "$i" -lt 150 ]; do
   sleep 0.1
   i=$((i + 1))
 done
+if grep -q 'ternvale.crypto=1' /proc/cmdline; then
+  off=$((4 * 65536))
+  if [ ! -b /dev/vda ]; then
+    echo "ternvale crypto missing /dev/vda"
+    exec /bin/busybox poweroff -f
+  fi
+  # 512-byte aligned OUT (bs=1 RMW can stall virtio-blk workers).
+  printf 'TERNVALE-PLAINTEXT-MARKER' | /bin/busybox dd of=/dev/vda bs=512 seek=$((off / 512)) conv=notrunc,sync status=none
+  echo "ternvale crypto marker done"
+  exec /bin/busybox poweroff -f
+fi
 phase=$(sed -n 's/.*ternvale\.snap=\([0-9]\).*/\1/p' /proc/cmdline)
 bs=65536
 case "$phase" in

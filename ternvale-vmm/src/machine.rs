@@ -122,6 +122,9 @@ pub enum MachineError {
     /// The lifecycle controller does not match the config.
     #[error("vm control: {0}")]
     Control(String),
+    /// Encryption is on but no data key was delivered, or crypto failed.
+    #[error("vm encryption: {0}")]
+    Crypto(String),
 }
 
 /// One guest. [`Machine::run`] owns the hypervisor VM until the guest stops.
@@ -225,6 +228,12 @@ impl Machine {
         F: FnOnce(&DeviceAttach) -> Result<Vec<(u64, u64, Box<dyn MmioDevice>)>, MachineError>,
     {
         config.validate()?;
+        if config.encryption && control.crypto().is_none() {
+            return Err(MachineError::Crypto(
+                "encryption = true but no data key (send set-data-key over the control socket)"
+                    .into(),
+            ));
+        }
         let cmdline = guest_cmdline_for(&config.cmdline, config.boot_disk);
         tracing::info!(
             target: "ternvale::boot",
@@ -309,7 +318,10 @@ impl Machine {
             bus.register(
                 FLASH_VARS_BASE,
                 FLASH_BANK_SIZE,
-                Box::new(images::vars_flash(path)?),
+                Box::new(images::vars_flash(
+                    path,
+                    control.crypto().map(|ctx| ctx.gcm().clone()),
+                )?),
             )?;
         }
         for (base, size, device) in devices.into_iter().chain(fw_cfg) {

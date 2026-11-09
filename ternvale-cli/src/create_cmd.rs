@@ -185,7 +185,7 @@ fn windows_config(
     unattend: &Path,
 ) -> Result<VmConfig> {
     let config = VmConfig::parse(&format!(
-        "name = {name}\nprofile = \"windows\"\ncpus = 2\nram_mib = 4096\nfirmware = {fw}\nserial_log = {serial}\n\n[[disks]]\npath = {disk}\nread_only = false\n\n[iso]\ninstaller = {installer}\ntools = {tools}\nunattend = {unattend}\n\n[[nics]]\nbackend = \"user\"\n\n[vsock]\nagent = true\nserial = true\n",
+        "name = {name}\nprofile = \"windows\"\ncpus = 2\nram_mib = 4096\nfirmware = {fw}\nserial_log = {serial}\nencryption = false\n\n[[disks]]\npath = {disk}\nread_only = false\n\n[iso]\ninstaller = {installer}\ntools = {tools}\nunattend = {unattend}\n\n[[nics]]\nbackend = \"user\"\n\n[vsock]\nagent = true\nserial = true\n",
         name = toml_string(name),
         fw = toml_string(&firmware.display().to_string()),
         serial = toml_string(&dest.join("serial.log").display().to_string()),

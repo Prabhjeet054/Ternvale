@@ -11,3 +11,5 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 tracing = "0.1"
+# AES-256-XTS on COW layer payloads; AES-256-GCM on memory-snapshot files.
+ternvale-crypto = { path = "../ternvale-crypto" }

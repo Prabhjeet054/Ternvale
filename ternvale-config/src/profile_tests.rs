@@ -111,6 +111,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     }
 }
 
@@ -269,6 +270,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     }
 }
 

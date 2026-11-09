@@ -67,6 +67,18 @@ pub fn prepare(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<Launch
         }
     }
     let code = maybe_relaunch(config_path, &exe, &args, &config).context("launch sandboxed VMM")?;
+    if code.is_some() && config.encryption {
+        if let Ok(Some(state)) = config.tpm_state_path() {
+            if let Err(error) = crate::crypto_cmd::wrap_tpm_state(&config.name, &state) {
+                tracing::warn!(
+                    target: "ternvale::crypto",
+                    path = %state.display(),
+                    error = %format!("{error:#}"),
+                    "could not wrap TPM state after sandboxed VMM exit"
+                );
+            }
+        }
+    }
     Ok(LaunchHold {
         child_exit: code,
         swtpm,
@@ -128,6 +140,10 @@ fn start_swtpm_if_needed(config: &VmConfig) -> Result<Option<SwtpmDaemon>> {
             "launcher: swtpm missing; sandboxed VMM will use the stub"
         );
         return Ok(None);
+    }
+    if config.encryption {
+        crate::crypto_cmd::unwrap_tpm_state(&config.name, &state)
+            .with_context(|| format!("unwrap TPM state {}", state.display()))?;
     }
     let daemon = SwtpmDaemon::start(section.swtpm.as_deref(), &state)
         .with_context(|| format!("spawn swtpm for {}", state.display()))?;

@@ -228,6 +228,7 @@ pub struct VmControl {
     paused_ticks: AtomicU64,
     hooks: OnceLock<ControlHooks>,
     snapshot_host: OnceLock<Arc<snapshot::SnapshotHost>>,
+    crypto: Mutex<Option<Arc<ternvale_crypto::CryptoContext>>>,
     power_button: OnceLock<Arc<crate::power::PowerButton>>,
     clock: fn() -> u64,
     diag: Arc<Diagnostics>,
@@ -271,6 +272,7 @@ impl VmControl {
             paused_ticks: AtomicU64::new(0),
             hooks: OnceLock::new(),
             snapshot_host: OnceLock::new(),
+            crypto: Mutex::new(None),
             power_button: OnceLock::new(),
             clock,
             diag: Arc::new(Diagnostics::new()),
@@ -301,6 +303,23 @@ impl VmControl {
     #[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all)]
     pub fn cpus(&self) -> u32 {
         self.cpus
+    }
+
+    /// Install the unwrapped data key (control socket `set-data-key`).
+    #[tracing::instrument(level = "info", target = "ternvale::crypto", skip_all, fields(vm = %self.name))]
+    pub fn set_crypto(&self, ctx: Arc<ternvale_crypto::CryptoContext>) {
+        *crate::lockwatch::lock(&self.crypto, "vm-crypto") = Some(ctx);
+        tracing::info!(
+            target: "ternvale::crypto",
+            vm = %self.name,
+            "data key installed for this VM"
+        );
+    }
+
+    /// Current at-rest crypto, if `set-data-key` ran.
+    #[tracing::instrument(level = "debug", target = "ternvale::crypto", skip_all, fields(vm = %self.name))]
+    pub fn crypto(&self) -> Option<Arc<ternvale_crypto::CryptoContext>> {
+        crate::lockwatch::lock(&self.crypto, "vm-crypto").clone()
     }
 
     /// Current state.

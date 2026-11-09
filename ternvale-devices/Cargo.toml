@@ -42,6 +42,8 @@ ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 ternvale-config = { path = "../ternvale-config" }
 ternvale-audio-host = { path = "../ternvale-audio-host" }
 ternvale-snapshot = { path = "../ternvale-snapshot" }
+# AES-256-XTS for virtio-blk raw images (layers go through ternvale-snapshot).
+ternvale-crypto = { path = "../ternvale-crypto" }
 # preadv/pwritev, F_NOCACHE, F_FULLFSYNC for virtio-blk.
 libc = "0.2"
 # BalloonSnapshot in query-stats JSON.

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use ternvale_crypto::{GcmKey, AAD_SNAP_DEV, AAD_SNAP_GIC, AAD_SNAP_RAM, AAD_SNAP_VCPU};
 
 use crate::SnapshotError;
 
@@ -85,6 +86,16 @@ pub fn new_meta(
 /// Write a versioned bundle directory (created if missing).
 #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display()))]
 pub fn write_bundle(dir: &Path, payload: &VmSnapshotPayload) -> Result<(), SnapshotError> {
+    write_bundle_crypto(dir, payload, None)
+}
+
+/// [`write_bundle`], sealing RAM/GIC/JSON with AES-256-GCM when `gcm` is set.
+#[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display(), encrypted = gcm.is_some()))]
+pub fn write_bundle_crypto(
+    dir: &Path,
+    payload: &VmSnapshotPayload,
+    gcm: Option<&GcmKey>,
+) -> Result<(), SnapshotError> {
     if payload.meta.magic != BUNDLE_MAGIC || payload.meta.version != BUNDLE_VERSION {
         return Err(SnapshotError::InvalidRequest {
             detail: "bundle meta magic/version mismatch".to_string(),
@@ -98,10 +109,20 @@ pub fn write_bundle(dir: &Path, payload: &VmSnapshotPayload) -> Result<(), Snaps
         }
     })?;
     write_bytes(meta_path, &json)?;
-    write_bytes(dir.join(GIC), &payload.gic)?;
-    write_bytes(dir.join(RAM), &payload.ram)?;
-    write_bytes(dir.join(VCPUS), payload.vcpus_json.as_bytes())?;
-    write_bytes(dir.join(DEVICES), payload.devices_json.as_bytes())?;
+    write_protected(dir.join(GIC), &payload.gic, gcm, AAD_SNAP_GIC)?;
+    write_protected(dir.join(RAM), &payload.ram, gcm, AAD_SNAP_RAM)?;
+    write_protected(
+        dir.join(VCPUS),
+        payload.vcpus_json.as_bytes(),
+        gcm,
+        AAD_SNAP_VCPU,
+    )?;
+    write_protected(
+        dir.join(DEVICES),
+        payload.devices_json.as_bytes(),
+        gcm,
+        AAD_SNAP_DEV,
+    )?;
     tracing::info!(
         target: "ternvale::snapshot",
         dir = %dir.display(),
@@ -116,6 +137,15 @@ pub fn write_bundle(dir: &Path, payload: &VmSnapshotPayload) -> Result<(), Snaps
 /// Read and validate a bundle directory.
 #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display()))]
 pub fn read_bundle(dir: &Path) -> Result<VmSnapshotPayload, SnapshotError> {
+    read_bundle_crypto(dir, None)
+}
+
+/// [`read_bundle`], opening GCM envelopes when `gcm` is set.
+#[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display(), encrypted = gcm.is_some()))]
+pub fn read_bundle_crypto(
+    dir: &Path,
+    gcm: Option<&GcmKey>,
+) -> Result<VmSnapshotPayload, SnapshotError> {
     let meta_path = dir.join(META);
     let meta_bytes = read_file(&meta_path)?;
     let meta: VmSnapshotMeta =
@@ -136,8 +166,8 @@ pub fn read_bundle(dir: &Path) -> Result<VmSnapshotPayload, SnapshotError> {
             supported: BUNDLE_VERSION,
         });
     }
-    let gic = read_file(&dir.join(GIC))?;
-    let ram = read_file(&dir.join(RAM))?;
+    let gic = read_protected(&dir.join(GIC), gcm, AAD_SNAP_GIC)?;
+    let ram = read_protected(&dir.join(RAM), gcm, AAD_SNAP_RAM)?;
     if ram.len() as u64 != meta.ram_size {
         tracing::warn!(
             target: "ternvale::snapshot",
@@ -146,18 +176,16 @@ pub fn read_bundle(dir: &Path) -> Result<VmSnapshotPayload, SnapshotError> {
             "guest.ram size differs from meta.ram_size"
         );
     }
-    let vcpus_json = String::from_utf8(read_file(&dir.join(VCPUS))?).map_err(|error| {
-        SnapshotError::InvalidManifest {
+    let vcpus_json = String::from_utf8(read_protected(&dir.join(VCPUS), gcm, AAD_SNAP_VCPU)?)
+        .map_err(|error| SnapshotError::InvalidManifest {
             path: dir.join(VCPUS),
             detail: format!("vcpus.json not utf-8: {error}"),
-        }
-    })?;
-    let devices_json = String::from_utf8(read_file(&dir.join(DEVICES))?).map_err(|error| {
-        SnapshotError::InvalidManifest {
+        })?;
+    let devices_json = String::from_utf8(read_protected(&dir.join(DEVICES), gcm, AAD_SNAP_DEV)?)
+        .map_err(|error| SnapshotError::InvalidManifest {
             path: dir.join(DEVICES),
             detail: format!("devices.json not utf-8: {error}"),
-        }
-    })?;
+        })?;
     tracing::debug!(
         target: "ternvale::snapshot",
         label = %meta.label,
@@ -207,6 +235,38 @@ pub fn delete_bundle(bundle: &Path) -> Result<(), SnapshotError> {
     Ok(())
 }
 
+/// True when `guest.ram` is a GCM envelope (clone can copy without the DEK).
+#[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display()))]
+pub fn bundle_encrypted(dir: &Path) -> bool {
+    let Ok(bytes) = read_file(&dir.join(RAM)) else {
+        return false;
+    };
+    ternvale_crypto::is_envelope(&bytes)
+}
+
+fn write_protected(
+    path: PathBuf,
+    data: &[u8],
+    gcm: Option<&GcmKey>,
+    aad: &[u8],
+) -> Result<(), SnapshotError> {
+    if let Some(gcm) = gcm {
+        ternvale_crypto::write_gcm_file(gcm, &path, data, aad).map_err(|error| {
+            SnapshotError::InvalidRequest {
+                detail: error.to_string(),
+            }
+        })
+    } else {
+        write_bytes(path, data)
+    }
+}
+
+fn read_protected(path: &Path, gcm: Option<&GcmKey>, aad: &[u8]) -> Result<Vec<u8>, SnapshotError> {
+    ternvale_crypto::read_gcm_file(gcm, path, aad).map_err(|error| SnapshotError::InvalidRequest {
+        detail: error.to_string(),
+    })
+}
+
 fn write_bytes(path: PathBuf, data: &[u8]) -> Result<(), SnapshotError> {
     let mut file = File::create(&path).map_err(|source| io_err(&path, source))?;
     file.write_all(data)
@@ -250,6 +310,42 @@ mod tests {
         assert_eq!(back.meta.label, "snap1");
         assert_eq!(back.gic, payload.gic);
         assert_eq!(back.ram.len(), 1024);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn gcm_bundle_hides_ram_and_rejects_tamper() {
+        let dir = std::env::temp_dir().join(format!("tvsb-gcm-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let gcm = GcmKey::from_key(&ternvale_crypto::Secret::new(vec![4u8; 32])).expect("gcm");
+        let meta = new_meta("vm", "enc", 0x4000_0000, 1024, 8, 1);
+        let payload = VmSnapshotPayload {
+            meta,
+            gic: vec![9; 8],
+            ram: b"TERNVALE-PLAINTEXT-MARKER".to_vec(),
+            vcpus_json: "[]".into(),
+            devices_json: "{}".into(),
+        };
+        write_bundle_crypto(&dir, &payload, Some(&gcm)).expect("write");
+        let raw = fs::read(dir.join(RAM)).expect("ram");
+        assert!(!raw
+            .windows(b"TERNVALE-PLAINTEXT-MARKER".len())
+            .any(|w| w == b"TERNVALE-PLAINTEXT-MARKER"));
+        assert!(bundle_encrypted(&dir));
+        let back = read_bundle_crypto(&dir, Some(&gcm)).expect("read");
+        assert_eq!(back.ram, payload.ram);
+        let mut tampered = raw;
+        let mid = tampered.len() / 2;
+        tampered[mid] ^= 1;
+        fs::write(dir.join(RAM), &tampered).expect("tamper");
+        let err = read_bundle_crypto(&dir, Some(&gcm)).expect_err("auth");
+        assert!(
+            err.to_string().contains("authentication")
+                || err.to_string().contains("wrong key")
+                || err.to_string().contains("modified")
+                || err.to_string().contains("invalid"),
+            "{err}"
+        );
         fs::remove_dir_all(&dir).ok();
     }
 

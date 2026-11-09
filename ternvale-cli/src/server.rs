@@ -391,6 +391,12 @@ pub fn handle_line_with(
             decorate_status(&mut response, Some(agent), tools_iso);
             return response;
         }
+        Request::SetDataKey { key_hex } => {
+            match crate::crypto_cmd::apply_data_key(control, &key_hex.0) {
+                Ok(()) => Ok(Response::status(&control.status())),
+                Err(error) => return Response::error(error.to_string()),
+            }
+        }
         Request::DumpDiagnostics => {
             let Some(diag) = diag else {
                 tracing::warn!(target: "ternvale::cli", "dump-diagnostics on a server without diagnostics");

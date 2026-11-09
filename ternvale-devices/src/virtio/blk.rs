@@ -59,6 +59,9 @@ pub enum VirtioBlkError {
     /// Layered snapshot stack error.
     #[error("virtio-blk snapshot: {0}")]
     Snapshot(ternvale_snapshot::SnapshotError),
+    /// AES-256-XTS failed (unaligned I/O or bad key).
+    #[error("virtio-blk encryption: {0}")]
+    Crypto(ternvale_crypto::CryptoError),
 }
 
 /// Base, size, MMIO device, and live stats from [`VirtioBlk::attach`].
@@ -169,7 +172,31 @@ impl VirtioBlk {
         irq: Arc<VirtioIrq>,
         metrics: Arc<Metrics>,
     ) -> Result<Self, VirtioBlkError> {
-        let backend = BlkBackend::open(path, media.read_only(), options)?;
+        Self::open_media_crypto(path, media, options, memory, irq, metrics, None)
+    }
+
+    /// [`open_media`] with AES-256-XTS on disk images (not optical ISOs).
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip(memory, irq, metrics, xts),
+        fields(path = %path.display(), media = media.name(), encrypted = xts.is_some())
+    )]
+    pub fn open_media_crypto(
+        path: &Path,
+        media: BlkMedia,
+        options: BlkOptions,
+        memory: Arc<Mutex<GuestMemory>>,
+        irq: Arc<VirtioIrq>,
+        metrics: Arc<Metrics>,
+        xts: Option<ternvale_crypto::DiskXts>,
+    ) -> Result<Self, VirtioBlkError> {
+        let xts = if matches!(media, BlkMedia::Optical) {
+            None
+        } else {
+            xts
+        };
+        let backend = BlkBackend::open_crypto(path, media.read_only(), options, xts)?;
         let capacity = backend.capacity();
         tracing::info!(
             target: "ternvale::virtio::blk",
@@ -266,9 +293,25 @@ impl VirtioBlk {
         irq_hook: IrqHook,
         metrics: Arc<Metrics>,
     ) -> Result<AttachedBlk, VirtioBlkError> {
+        Self::attach_media_crypto(slot, path, media, options, memory, irq_hook, metrics, None)
+    }
+
+    /// [`attach_media`] with AES-256-XTS.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attach_media_crypto(
+        slot: u32,
+        path: &Path,
+        media: BlkMedia,
+        options: BlkOptions,
+        memory: Arc<Mutex<GuestMemory>>,
+        irq_hook: IrqHook,
+        metrics: Arc<Metrics>,
+        xts: Option<ternvale_crypto::DiskXts>,
+    ) -> Result<AttachedBlk, VirtioBlkError> {
         let irq = VirtioIrq::new();
         irq.set_hook(irq_hook);
-        let blk = Self::open_media(path, media, options, memory, Arc::clone(&irq), metrics)?;
+        let blk =
+            Self::open_media_crypto(path, media, options, memory, Arc::clone(&irq), metrics, xts)?;
         let stats = Arc::clone(&blk.stats);
         let base = crate::virtio::slot_base(slot).ok_or_else(|| VirtioBlkError::Open {
             path: path.to_path_buf(),
@@ -316,14 +359,26 @@ impl VirtioBlk {
         media: BlkMedia,
         options: BlkOptions,
     ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
+        Self::attach_pci_media_crypto(attach, path, media, options, None)
+    }
+
+    /// [`attach_pci_media`] with AES-256-XTS.
+    pub fn attach_pci_media_crypto(
+        attach: &DeviceAttach,
+        path: &Path,
+        media: BlkMedia,
+        options: BlkOptions,
+        xts: Option<ternvale_crypto::DiskXts>,
+    ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
         let irq = VirtioIrq::new();
-        let blk = Self::open_media(
+        let blk = Self::open_media_crypto(
             path,
             media,
             options,
             Arc::clone(&attach.memory),
             Arc::clone(&irq),
             Arc::clone(&attach.metrics),
+            xts,
         )
         .map_err(|error| MachineError::Attach(error.to_string()))?;
         let stats = Arc::clone(&blk.stats);
@@ -398,3 +453,7 @@ mod tests;
 #[cfg(test)]
 #[path = "blk_cache_tests.rs"]
 mod cache_tests;
+
+#[cfg(test)]
+#[path = "blk_crypto_tests.rs"]
+mod crypto_tests;

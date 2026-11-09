@@ -371,6 +371,7 @@ fn boot_once(
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     };
     tracing::info!(
         target: "ternvale::boot",

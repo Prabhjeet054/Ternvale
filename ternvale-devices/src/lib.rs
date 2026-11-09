@@ -11,9 +11,9 @@ pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 #[doc(hidden)]
 pub use virtio::try_open_disk_for_write;
 pub use virtio::{
-    attach_blocks, attach_disks, attach_disks_pci, attach_pci, AttachedBlock, AttachedBlocks,
-    BlkMedia, BlkOptions, BlkPlacement, VirtioPci, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE,
-    VIRTIO_PCI_DEVICE_BASE, VIRTIO_PCI_VENDOR_ID,
+    attach_blocks, attach_blocks_crypto, attach_disks, attach_disks_crypto, attach_disks_pci,
+    attach_pci, AttachedBlock, AttachedBlocks, BlkMedia, BlkOptions, BlkPlacement, VirtioPci,
+    OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE, VIRTIO_PCI_DEVICE_BASE, VIRTIO_PCI_VENDOR_ID,
 };
 pub use virtio::{
     guest_socket_path, host_socket_path, vsock_op_name, AttachedVsock, CidLease, VirtioVsock,

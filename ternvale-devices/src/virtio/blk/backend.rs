@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use libc::F_NOCACHE;
 use ternvale_config::{DiskCache, DiskFlush};
+use ternvale_crypto::{covering_range, DiskXts};
 use ternvale_snapshot::ImageStack;
 use ternvale_vmm::GuestMemory;
 
@@ -31,6 +32,7 @@ pub enum BlkBackend {
 
 impl BlkBackend {
     /// Open a raw image or a `.tstack` layered stack at `path`.
+    #[allow(dead_code)]
     #[tracing::instrument(
         level = "debug",
         target = "ternvale::virtio::blk",
@@ -38,6 +40,16 @@ impl BlkBackend {
         fields(path = %path.display(), read_only)
     )]
     pub fn open(path: &Path, read_only: bool, options: BlkOptions) -> Result<Self, VirtioBlkError> {
+        Self::open_crypto(path, read_only, options, None)
+    }
+
+    /// [`open`] with optional AES-256-XTS on disk and COW payloads.
+    pub fn open_crypto(
+        path: &Path,
+        read_only: bool,
+        options: BlkOptions,
+        xts: Option<DiskXts>,
+    ) -> Result<Self, VirtioBlkError> {
         if ternvale_snapshot::is_stack_manifest(path) {
             if options.cache == DiskCache::None {
                 tracing::warn!(
@@ -46,7 +58,8 @@ impl BlkBackend {
                     "F_NOCACHE is not applied to layered .tstack images"
                 );
             }
-            let stack = ImageStack::open(path, read_only).map_err(VirtioBlkError::Snapshot)?;
+            let stack =
+                ImageStack::open_crypto(path, read_only, xts).map_err(VirtioBlkError::Snapshot)?;
             let bytes = stack.virtual_size();
             tracing::info!(
                 target = "ternvale::virtio::blk",
@@ -61,7 +74,7 @@ impl BlkBackend {
             );
             Ok(Self::Stack(Arc::new(Mutex::new(stack))))
         } else {
-            FileBackend::open(path, read_only, options).map(Self::from_file)
+            FileBackend::open_crypto(path, read_only, options, xts).map(Self::from_file)
         }
     }
 
@@ -128,6 +141,7 @@ pub struct FileBackend {
     cache: DiskCache,
     flush: DiskFlush,
     sync: Arc<dyn HostSync>,
+    xts: Option<DiskXts>,
 }
 
 impl FileBackend {
@@ -139,7 +153,16 @@ impl FileBackend {
         fields(path = %path.display(), read_only)
     )]
     pub fn open(path: &Path, read_only: bool, options: BlkOptions) -> Result<Self, VirtioBlkError> {
-        Self::open_with_sync(path, read_only, options, Arc::new(LibcSync))
+        Self::open_crypto(path, read_only, options, None)
+    }
+
+    pub fn open_crypto(
+        path: &Path,
+        read_only: bool,
+        options: BlkOptions,
+        xts: Option<DiskXts>,
+    ) -> Result<Self, VirtioBlkError> {
+        Self::open_with_sync_crypto(path, read_only, options, Arc::new(LibcSync), xts)
     }
 
     /// Open `path` with an injected [`HostSync`] (tests count `F_FULLFSYNC`).
@@ -149,11 +172,22 @@ impl FileBackend {
         skip_all,
         fields(path = %path.display(), read_only, cache = ?options.cache, flush = ?options.flush)
     )]
+    #[allow(dead_code)]
     pub fn open_with_sync(
         path: &Path,
         read_only: bool,
         options: BlkOptions,
         sync: Arc<dyn HostSync>,
+    ) -> Result<Self, VirtioBlkError> {
+        Self::open_with_sync_crypto(path, read_only, options, sync, None)
+    }
+
+    pub fn open_with_sync_crypto(
+        path: &Path,
+        read_only: bool,
+        options: BlkOptions,
+        sync: Arc<dyn HostSync>,
+        xts: Option<DiskXts>,
     ) -> Result<Self, VirtioBlkError> {
         if !read_only {
             reject_shared_base(path)?;
@@ -188,6 +222,7 @@ impl FileBackend {
             read_only,
             cache = ?options.cache,
             flush = ?options.flush,
+            encrypted = xts.is_some(),
             "virtio-blk image opened"
         );
         Ok(Self {
@@ -197,6 +232,7 @@ impl FileBackend {
             cache: options.cache,
             flush: options.flush,
             sync,
+            xts,
         })
     }
 
@@ -213,29 +249,39 @@ impl FileBackend {
         if offset.saturating_add(buf.len() as u64) > self.bytes {
             return Err(io::Error::new(ErrorKind::InvalidInput, "read past end"));
         }
-        let mut done = 0;
-        while done < buf.len() {
-            let n = self.file.read_at(&mut buf[done..], offset + done as u64)?;
-            if n == 0 {
-                buf[done..].fill(0);
-                return Ok(());
-            }
-            done += n;
+        if self.xts.is_none() {
+            return read_exact_at(&self.file, buf, offset);
         }
+        let (cover_off, cover_len) = covering_range(offset, buf.len());
+        let mut cover = vec![0u8; cover_len];
+        read_exact_at(&self.file, &mut cover, cover_off)?;
+        let xts = self.xts.as_ref().expect("xts");
+        xts.crypt(&mut cover, cover_off, false)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        let skip = (offset - cover_off) as usize;
+        buf.copy_from_slice(&cover[skip..skip + buf.len()]);
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<()> {
         self.check_write(offset, buf.len() as u64)?;
-        let mut done = 0;
-        while done < buf.len() {
-            let n = self.file.write_at(&buf[done..], offset + done as u64)?;
-            if n == 0 {
-                return Err(io::Error::new(ErrorKind::WriteZero, "short pwrite"));
+        if let Some(xts) = &self.xts {
+            let (cover_off, cover_len) = covering_range(offset, buf.len());
+            let mut cover = vec![0u8; cover_len];
+            if cover_off != offset || cover_len != buf.len() {
+                read_exact_at(&self.file, &mut cover, cover_off)?;
+                xts.crypt(&mut cover, cover_off, false)
+                    .map_err(|error| io::Error::other(error.to_string()))?;
             }
-            done += n;
+            let skip = (offset - cover_off) as usize;
+            cover[skip..skip + buf.len()].copy_from_slice(buf);
+            xts.crypt(&mut cover, cover_off, true)
+                .map_err(|error| io::Error::other(error.to_string()))?;
+            write_all_at(&self.file, &cover, cover_off)?;
+            return self.after_write();
         }
+        write_all_at(&self.file, buf, offset)?;
         self.after_write()
     }
 
@@ -244,14 +290,64 @@ impl FileBackend {
         if offset.saturating_add(total) > self.bytes {
             return Err(io::Error::new(ErrorKind::InvalidInput, "read past end"));
         }
+        if self.xts.is_some() {
+            return self.copy_read_guest(mem, bufs, offset);
+        }
         vectored::vectored(&self.file, mem, bufs, offset, true)
     }
 
     pub fn write_guest(&self, mem: &GuestMemory, bufs: &[Buffer], offset: u64) -> io::Result<()> {
         let total = bufs.iter().map(|b| u64::from(b.len)).sum::<u64>();
         self.check_write(offset, total)?;
+        if self.xts.is_some() {
+            self.copy_write_guest(mem, bufs, offset)?;
+            return self.after_write();
+        }
         vectored::vectored(&self.file, mem, bufs, offset, false)?;
         self.after_write()
+    }
+
+    fn copy_read_guest(
+        &self,
+        mem: &GuestMemory,
+        bufs: &[Buffer],
+        mut offset: u64,
+    ) -> io::Result<()> {
+        for buf in bufs {
+            if buf.len == 0 {
+                continue;
+            }
+            let mut tmp = vec![0u8; buf.len as usize];
+            self.read_at(&mut tmp, offset)?;
+            let ptr = mem
+                .host_ptr(buf.addr, buf.len as usize)
+                .map_err(|error| io::Error::new(ErrorKind::InvalidInput, error.to_string()))?;
+            // SAFETY: `host_ptr` validated the GPA range.
+            unsafe {
+                std::ptr::copy_nonoverlapping(tmp.as_ptr(), ptr, tmp.len());
+            }
+            offset += u64::from(buf.len);
+        }
+        Ok(())
+    }
+
+    fn copy_write_guest(
+        &self,
+        mem: &GuestMemory,
+        bufs: &[Buffer],
+        mut offset: u64,
+    ) -> io::Result<()> {
+        for buf in bufs {
+            if buf.len == 0 {
+                continue;
+            }
+            let mut tmp = vec![0u8; buf.len as usize];
+            mem.read_bytes(buf.addr, &mut tmp)
+                .map_err(|error| io::Error::new(ErrorKind::InvalidInput, error.to_string()))?;
+            self.write_at(&tmp, offset)?;
+            offset += u64::from(buf.len);
+        }
+        Ok(())
     }
 
     pub fn flush(&self) -> io::Result<()> {
@@ -315,6 +411,31 @@ fn set_nocache(file: &File) -> io::Result<()> {
         tracing::debug!(target: "ternvale::virtio::blk", "set F_NOCACHE on disk image");
         Ok(())
     }
+}
+
+fn read_exact_at(file: &File, buf: &mut [u8], offset: u64) -> io::Result<()> {
+    let mut done = 0;
+    while done < buf.len() {
+        let n = file.read_at(&mut buf[done..], offset + done as u64)?;
+        if n == 0 {
+            buf[done..].fill(0);
+            return Ok(());
+        }
+        done += n;
+    }
+    Ok(())
+}
+
+fn write_all_at(file: &File, buf: &[u8], offset: u64) -> io::Result<()> {
+    let mut done = 0;
+    while done < buf.len() {
+        let n = file.write_at(&buf[done..], offset + done as u64)?;
+        if n == 0 {
+            return Err(io::Error::new(ErrorKind::WriteZero, "short pwrite"));
+        }
+        done += n;
+    }
+    Ok(())
 }
 
 fn durability_flush(file: &File, mode: DiskFlush, sync: &dyn HostSync) -> io::Result<()> {

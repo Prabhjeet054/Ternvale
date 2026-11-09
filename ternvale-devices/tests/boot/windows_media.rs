@@ -274,6 +274,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     };
     vm.validate()
         .map_err(|err| format!("linux config: {err}"))?;

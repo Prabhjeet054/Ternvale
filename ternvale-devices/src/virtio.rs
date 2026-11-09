@@ -22,7 +22,8 @@ mod sound;
 mod vsock;
 
 pub use attach_disks::{
-    attach_blocks, attach_disks, attach_disks_pci, AttachedBlock, AttachedBlocks, BlkPlacement,
+    attach_blocks, attach_blocks_crypto, attach_disks, attach_disks_crypto, attach_disks_pci,
+    AttachedBlock, AttachedBlocks, BlkPlacement,
 };
 pub use balloon::{
     AttachedBalloon, BalloonConfig, BalloonError, BalloonHandle, BalloonSnapshot, VirtioBalloon,

@@ -5,6 +5,8 @@ use std::io::{self, ErrorKind};
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
+use ternvale_crypto::DiskXts;
+
 use crate::delta::DeltaLayer;
 use crate::manifest::StackManifest;
 use crate::SnapshotError;
@@ -17,6 +19,7 @@ pub struct ImageStack {
     virtual_size: u64,
     block_size: u32,
     read_only: bool,
+    xts: Option<DiskXts>,
 }
 
 impl ImageStack {
@@ -28,8 +31,17 @@ impl ImageStack {
         fields(path = %manifest_path.display(), read_only)
     )]
     pub fn open(manifest_path: &Path, read_only: bool) -> Result<Self, SnapshotError> {
+        Self::open_crypto(manifest_path, read_only, None)
+    }
+
+    /// [`open`] with optional AES-256-XTS on layer and base payloads (not headers).
+    pub fn open_crypto(
+        manifest_path: &Path,
+        read_only: bool,
+        xts: Option<DiskXts>,
+    ) -> Result<Self, SnapshotError> {
         let manifest = StackManifest::load(manifest_path)?;
-        Self::open_manifest(&manifest, read_only)
+        Self::open_manifest_crypto(&manifest, read_only, xts)
     }
 
     /// Open from a parsed manifest.
@@ -40,6 +52,15 @@ impl ImageStack {
         fields(read_only)
     )]
     pub fn open_manifest(manifest: &StackManifest, read_only: bool) -> Result<Self, SnapshotError> {
+        Self::open_manifest_crypto(manifest, read_only, None)
+    }
+
+    /// [`open_manifest`] with optional AES-256-XTS on payloads.
+    pub fn open_manifest_crypto(
+        manifest: &StackManifest,
+        read_only: bool,
+        xts: Option<DiskXts>,
+    ) -> Result<Self, SnapshotError> {
         let base = OpenOptions::new()
             .read(true)
             .write(false)
@@ -75,6 +96,7 @@ impl ImageStack {
             layers = layers.len(),
             virtual_size,
             read_only,
+            encrypted = xts.is_some(),
             "image stack ready"
         );
         Ok(Self {
@@ -84,6 +106,7 @@ impl ImageStack {
             virtual_size,
             block_size,
             read_only,
+            xts,
         })
     }
 
@@ -103,7 +126,7 @@ impl ImageStack {
             base: base.to_path_buf(),
             deltas: deltas.to_vec(),
         };
-        Self::open_manifest(&manifest, read_only)
+        Self::open_manifest_crypto(&manifest, read_only, None)
     }
 
     /// Logical size in bytes.
@@ -190,13 +213,13 @@ impl ImageStack {
                 buf.copy_from_slice(&data);
                 return Ok(());
             }
-            return self.read_base(buf, offset);
+            return self.read_base_plain(buf, offset);
         }
         let mut block = vec![0u8; self.block_bytes()];
         if let Some(data) = self.read_block_resolved(block_index).map_err(io_err)? {
             block.copy_from_slice(&data);
         } else {
-            self.read_base(&mut block, block_index * bs)?;
+            self.read_base_plain(&mut block, block_index * bs)?;
         }
         buf.copy_from_slice(&block[within..within + buf.len()]);
         Ok(())
@@ -210,6 +233,8 @@ impl ImageStack {
             .read_block_for_cow(layer_index, block_index)
             .map_err(io_err)?;
         block[within..within + buf.len()].copy_from_slice(buf);
+        self.xts_block(&mut block, block_index, true)
+            .map_err(io_err)?;
         let layer = self
             .layers
             .get_mut(layer_index)
@@ -226,13 +251,14 @@ impl ImageStack {
         let mut block = vec![0u8; self.block_bytes()];
         if self.layers[top_index].has_block(block_index) {
             self.layers[top_index].read_block(block_index, &mut block)?;
+            self.xts_block(&mut block, block_index, false)?;
             return Ok(block);
         }
         if let Some(data) = self.read_block_resolved_below(top_index, block_index)? {
             return Ok(data);
         }
         let bs = u64::from(self.block_size);
-        self.read_base(&mut block, block_index * bs)
+        self.read_base_plain(&mut block, block_index * bs)
             .map_err(|source| SnapshotError::Io {
                 path: self.base_path.clone(),
                 source,
@@ -254,16 +280,51 @@ impl ImageStack {
             if layer.has_block(block_index) {
                 let mut block = vec![0u8; self.block_bytes()];
                 layer.read_block(block_index, &mut block)?;
+                self.xts_block(&mut block, block_index, false)?;
                 return Ok(Some(block));
             }
         }
         Ok(None)
     }
 
-    fn read_base(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
+    fn xts_block(
+        &self,
+        buf: &mut [u8],
+        block_index: u64,
+        encrypt: bool,
+    ) -> Result<(), SnapshotError> {
+        let Some(xts) = &self.xts else {
+            return Ok(());
+        };
+        let offset = block_index * u64::from(self.block_size);
+        xts.crypt(buf, offset, encrypt)
+            .map_err(|error| SnapshotError::InvalidRequest {
+                detail: error.to_string(),
+            })
+    }
+
+    fn read_base_plain(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         if offset.saturating_add(buf.len() as u64) > self.virtual_size {
             return Err(io::Error::new(ErrorKind::InvalidInput, "read past end"));
         }
+        if self.xts.is_none() {
+            return self.read_base_raw(buf, offset);
+        }
+        let (cover_off, cover_len) = ternvale_crypto::covering_range(offset, buf.len());
+        if cover_off + cover_len as u64 > self.virtual_size {
+            return Err(io::Error::new(ErrorKind::InvalidInput, "read past end"));
+        }
+        let mut cover = vec![0u8; cover_len];
+        self.read_base_raw(&mut cover, cover_off)?;
+        let xts = self.xts.as_ref().expect("xts");
+        xts.crypt(&mut cover, cover_off, false)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        let skip = (offset - cover_off) as usize;
+        buf.copy_from_slice(&cover[skip..skip + buf.len()]);
+        Ok(())
+    }
+
+    fn read_base_raw(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
         let mut done = 0;
         while done < buf.len() {
             let n = self.base.read_at(&mut buf[done..], offset + done as u64)?;

@@ -139,3 +139,10 @@ path = "fuzz_targets/fuse.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "crypto"
+path = "fuzz_targets/crypto.rs"
+test = false
+doc = false
+bench = false

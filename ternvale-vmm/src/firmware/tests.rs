@@ -99,7 +99,8 @@ struct Guest {
 
 impl Guest {
     fn open(path: &std::path::Path, window: &Window) -> Self {
-        let flash = VarsFlash::with_size(path, Box::new(window.clone()), BANK).expect("open flash");
+        let flash =
+            VarsFlash::with_size(path, Box::new(window.clone()), BANK, None).expect("open flash");
         let mut bus = MmioBus::new();
         bus.register(FLASH_VARS_BASE, BANK, Box::new(flash))
             .expect("register");
@@ -262,7 +263,7 @@ fn rejects_oversized_nvram_and_failed_map() {
     let path = tmp.nvram();
     std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
     std::fs::write(&path, vec![0u8; BANK as usize + 1]).expect("big file");
-    let error = VarsFlash::with_size(&path, Box::new(Window::default()), BANK)
+    let error = VarsFlash::with_size(&path, Box::new(Window::default()), BANK, None)
         .err()
         .expect("too large");
     assert!(
@@ -274,7 +275,7 @@ fn rejects_oversized_nvram_and_failed_map() {
         fail: true,
         ..Window::default()
     };
-    let error = VarsFlash::with_size(&path, Box::new(failing), BANK)
+    let error = VarsFlash::with_size(&path, Box::new(failing), BANK, None)
         .err()
         .expect("map fails");
     assert!(matches!(error, FirmwareError::Window { .. }), "{error}");

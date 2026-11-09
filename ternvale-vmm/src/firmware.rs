@@ -73,6 +73,9 @@ pub enum FirmwareError {
         /// One flash bank.
         limit: u64,
     },
+    /// AES-256-GCM failed (wrong key or a tampered NVRAM file).
+    #[error("nvram crypto: {0}")]
+    Crypto(#[from] ternvale_crypto::CryptoError),
     /// Opening, reading, or writing the NVRAM file failed.
     #[error("nvram {what} {}: {source}", path.display())]
     Nvram {

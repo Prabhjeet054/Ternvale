@@ -10,6 +10,8 @@
 //! (requires `./scripts/make-net-initramfs.sh` assets under `test-assets/virtio-net/`).
 //! Set `TERNVALE_BOOT_SCENARIO=snapshot` for a two-boot layered disk test (needs
 //! `./scripts/make-snapshot-initramfs.sh` under `test-assets/snapshot-boot/`).
+//! Set `TERNVALE_BOOT_SCENARIO=encryption` for encrypted vs plaintext marker `grep -c`
+//! on COW deltas (same snapshot-boot assets, `ternvale.crypto=1`).
 //! Set `TERNVALE_BOOT_SCENARIO=clone` for three concurrent linked-clone boots on a shared
 //! ext4 base (needs `./scripts/make-rootfs.sh` and `./scripts/make-clone-initramfs.sh`);
 //! see `./scripts/clone-boot-check.sh`.
@@ -83,6 +85,7 @@ mod common;
 mod cpio;
 mod desktop;
 mod devices;
+mod encryption;
 mod fat;
 mod firmware;
 mod firmware_acpi;
@@ -136,6 +139,7 @@ fn run() -> Result<(), String> {
         "devices" => devices::run(),
         "audio" => audio::run(),
         "snapshot" => snapshot::run(),
+        "encryption" => encryption::run(),
         "clone" => clone::run(),
         "vm-snapshot" => vm_snapshot::run(),
         "usb" => usb::run(),
@@ -160,7 +164,7 @@ fn run() -> Result<(), String> {
         "windows-media" => windows_media::run(),
         "windows-installer" => windows_installer::run(),
         other => Err(format!(
-            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, snapshot, clone, vm-snapshot, usb, gpu, input, getty, desktop, agent, share-clipboard, virtiofs, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
+            "unknown TERNVALE_BOOT_SCENARIO={other:?} (expected initrd, rootfs, pci, net, devices, audio, snapshot, encryption, clone, vm-snapshot, usb, gpu, input, getty, desktop, agent, share-clipboard, virtiofs, smp, firmware, firmware-acpi, firmware-debug, firmware-tpm, uefi-linux, uefi-linux-acpi, uefi-lspci, uefi-linux-tpm, installer, windows-profile, windows-media, or windows-installer)"
         )),
     }
 }

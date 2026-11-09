@@ -18,6 +18,9 @@
 #                       see ./scripts/audio-boot-check.sh
 #   vm-snapshot       — full-VM snapshot rewind: serial counter must go backward after restore
 #                       (needs ./scripts/make-vm-snapshot-initramfs.sh); see vm-snapshot-restore-check.sh
+#   encryption        — plaintext vs AES-256-XTS COW deltas; guest writes
+#                       TERNVALE-PLAINTEXT-MARKER; host grep -c must be 0 on the
+#                       encrypted layer (needs ./scripts/make-snapshot-initramfs.sh)
 #   clone             — three concurrent linked-clone boots on a shared ext4 base, per-clone files,
 #                       unchanged base digest, delete two clones, verify survivor; see clone-boot-check.sh
 #   gpu               — Linux virtio-gpu + fbdev on virtio-mmio with a 1024x768 scanout:

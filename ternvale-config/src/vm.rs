@@ -91,6 +91,10 @@ pub struct VmConfig {
     /// Host sleep/wake, quit, and window-hidden policy.
     #[serde(default, skip_serializing_if = "PowerSection::is_default")]
     pub power: PowerSection,
+    /// AES-256-XTS disks/layers and AES-256-GCM NVRAM, TPM state, and memory
+    /// snapshots. The data key is never on the command line or in the environment.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub encryption: bool,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.

@@ -58,6 +58,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         audio: None,
         shares: Vec::new(),
         power: Default::default(),
+        encryption: false,
     }
 }
 

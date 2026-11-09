@@ -26,5 +26,7 @@ ternvale-tpm = { path = "../ternvale-tpm" }
 ternvale-net = { path = "../ternvale-net" }
 # Agent length-prefixed JSON decoder.
 ternvale-agent-proto = { path = "../ternvale-agent-proto" }
+# Wrapped-DEK and GCM envelope parsers (guest-hostile files on disk).
+ternvale-crypto = { path = "../ternvale-crypto" }
 # Public functions are instrumented (project logging rule).
 tracing = "0.1"

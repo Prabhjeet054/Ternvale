@@ -5,8 +5,11 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use ternvale_crypto::CryptoContext;
 use ternvale_hv::SysReg;
-use ternvale_snapshot::{new_meta, read_bundle, write_bundle, SnapshotError, VmSnapshotPayload};
+use ternvale_snapshot::{
+    new_meta, read_bundle_crypto, write_bundle_crypto, SnapshotError, VmSnapshotPayload,
+};
 
 use super::{ControlError, VmControl, VmState, KICK_EVERY};
 use crate::memory::GuestMemory;
@@ -110,6 +113,7 @@ impl SnapshotHost {
         dir: &Path,
         label: &str,
         vcpus: &[VcpuGuestState],
+        crypto: Option<&CryptoContext>,
     ) -> Result<(), SnapshotError> {
         let gic = self
             .gic
@@ -141,7 +145,7 @@ impl SnapshotHost {
             "virtio_queues": "not captured in v1",
         })
         .to_string();
-        write_bundle(
+        write_bundle_crypto(
             dir,
             &VmSnapshotPayload {
                 meta,
@@ -150,6 +154,7 @@ impl SnapshotHost {
                 vcpus_json,
                 devices_json,
             },
+            crypto.map(CryptoContext::gcm),
         )
     }
 
@@ -157,8 +162,9 @@ impl SnapshotHost {
     pub fn read_bundle(
         &self,
         dir: &Path,
+        crypto: Option<&CryptoContext>,
     ) -> Result<(VmSnapshotPayload, Vec<VcpuGuestState>), SnapshotError> {
-        let payload = read_bundle(dir)?;
+        let payload = read_bundle_crypto(dir, crypto.map(CryptoContext::gcm))?;
         let vcpus: Vec<VcpuGuestState> =
             serde_json::from_str(&payload.vcpus_json).map_err(|error| {
                 SnapshotError::InvalidManifest {
@@ -491,7 +497,9 @@ impl VmControl {
             .snapshot
             .wait_capture(self, VCPU_WAIT)
             .map_err(map_snap_str)?;
-        host.write_bundle(dir, label, &vcpus).map_err(map_snap)?;
+        let gcm = self.crypto();
+        host.write_bundle(dir, label, &vcpus, gcm.as_deref())
+            .map_err(map_snap)?;
         tracing::info!(
             target: "ternvale::snapshot",
             vm = %self.name,
@@ -506,7 +514,8 @@ impl VmControl {
         if self.state() != VmState::Paused {
             return Err(self.reject("snapshot restore", self.state()));
         }
-        let (payload, vcpus) = host.read_bundle(dir).map_err(map_snap)?;
+        let gcm = self.crypto();
+        let (payload, vcpus) = host.read_bundle(dir, gcm.as_deref()).map_err(map_snap)?;
         host.apply_bundle(&payload, &vcpus).map_err(map_snap)?;
         self.snapshot.begin_restore(vcpus).map_err(map_snap_str)?;
         self.changed.notify_all();

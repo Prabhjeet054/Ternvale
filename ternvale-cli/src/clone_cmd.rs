@@ -72,6 +72,10 @@ pub fn clone_vm(source: &str, new_name: &str) -> Result<ExitCode> {
     ensure_source_base_refs(source, &source_config)?;
     let snap_note = copy_latest_vm_snapshot(source, new_name)?;
     let config_path = paths::vm_config_path(new_name)?;
+    if source_config.encryption {
+        crate::crypto_cmd::clone_keys(source, new_name)
+            .with_context(|| format!("clone encryption keys {source} -> {new_name}"))?;
+    }
     let text = new_config.to_toml().context("serialize cloned VM config")?;
     fs::write(&config_path, text).with_context(|| format!("write {}", config_path.display()))?;
     println!("cloned {source} -> {new_name}");
@@ -144,7 +148,15 @@ fn copy_latest_vm_snapshot(source: &str, dest: &str) -> Result<Option<PathBuf>> 
     }
     let label = labels.last().expect("labels").clone();
     let src_bundle = paths::snapshot_bundle(source, &label)?;
-    read_bundle(&src_bundle).context("validate source vm snapshot bundle")?;
+    if ternvale_snapshot::bundle_encrypted(&src_bundle) {
+        tracing::info!(
+            target: "ternvale::cli",
+            path = %src_bundle.display(),
+            "copying GCM-protected snapshot bundle without decrypting"
+        );
+    } else {
+        read_bundle(&src_bundle).context("validate source vm snapshot bundle")?;
+    }
     let dest_root = root.join(dest);
     fs::create_dir_all(&dest_root).context("create clone snapshot directory")?;
     let dest_bundle = dest_root.join(&label);

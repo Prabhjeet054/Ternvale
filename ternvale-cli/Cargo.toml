@@ -48,6 +48,8 @@ ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
 # `query-stats` metrics payload and `ternvale stats` rendering.
 ternvale-metrics = { path = "../ternvale-metrics" }
 ternvale-snapshot = { path = "../ternvale-snapshot" }
+# Wrapped DEK, Keychain wrap, control-socket data-key delivery.
+ternvale-crypto = { path = "../ternvale-crypto" }
 # `acpi-dump`: walk a QEMU RAM image and diff table sets (DumpedTable, compare).
 ternvale-acpi = { path = "../ternvale-acpi" }
 # PL011 serial, virtio-blk/net/vsock attachment and the agent server for `run`.
