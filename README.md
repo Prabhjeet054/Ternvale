@@ -34,6 +34,10 @@ cargo test --workspace
 cargo clippy --workspace -- -D warnings
 ```
 
+Guest-facing parsers have libFuzzer targets in `ternvale-fuzz` (nightly +
+`cargo-fuzz`). `make fuzz-smoke` runs each target for 30 seconds;
+`make fuzz-long` is the long campaign (see [docs/FUZZING.md](docs/FUZZING.md)).
+
 ## Docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layering

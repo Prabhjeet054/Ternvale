@@ -18,6 +18,7 @@ mod xattr;
 
 pub use device::{AttachedFs, FsStats, VirtioFs, VIRTIO_FS_ID, VIRTIO_FS_TAG_LEN};
 pub use error::FsError;
+pub use fuse::{InHeader, IN_HEADER};
 pub use server::{Options, Server};
 
 #[cfg(test)]

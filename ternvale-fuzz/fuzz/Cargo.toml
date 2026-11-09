@@ -1,0 +1,141 @@
+[package]
+name = "ternvale-fuzz-targets"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ternvale-fuzz = { path = ".." }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "virtqueue"
+path = "fuzz_targets/virtqueue.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_blk"
+path = "fuzz_targets/virtio_blk.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_net"
+path = "fuzz_targets/virtio_net.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_rng"
+path = "fuzz_targets/virtio_rng.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_vsock"
+path = "fuzz_targets/virtio_vsock.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_gpu"
+path = "fuzz_targets/virtio_gpu.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_input"
+path = "fuzz_targets/virtio_input.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_balloon"
+path = "fuzz_targets/virtio_balloon.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_fs"
+path = "fuzz_targets/virtio_fs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_pci"
+path = "fuzz_targets/virtio_pci.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "xhci_trb"
+path = "fuzz_targets/xhci_trb.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tpm_crb"
+path = "fuzz_targets/tpm_crb.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vsock_packet"
+path = "fuzz_targets/vsock_packet.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "agent_proto"
+path = "fuzz_targets/agent_proto.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "esr"
+path = "fuzz_targets/esr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "psci"
+path = "fuzz_targets/psci.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "user_net"
+path = "fuzz_targets/user_net.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuse"
+path = "fuzz_targets/fuse.rs"
+test = false
+doc = false
+bench = false

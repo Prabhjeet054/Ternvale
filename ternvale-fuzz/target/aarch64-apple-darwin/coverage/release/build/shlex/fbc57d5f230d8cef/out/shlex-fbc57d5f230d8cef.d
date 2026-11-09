@@ -1,0 +1,8 @@
+/Users/prabhjeet/Documents/Projects/Ternvale/ternvale-fuzz/target/aarch64-apple-darwin/coverage/release/build/shlex/fbc57d5f230d8cef/out/shlex-fbc57d5f230d8cef.d: /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/lib.rs /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/bytes.rs
+
+/Users/prabhjeet/Documents/Projects/Ternvale/ternvale-fuzz/target/aarch64-apple-darwin/coverage/release/build/shlex/fbc57d5f230d8cef/out/libshlex-fbc57d5f230d8cef.rlib: /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/lib.rs /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/bytes.rs
+
+/Users/prabhjeet/Documents/Projects/Ternvale/ternvale-fuzz/target/aarch64-apple-darwin/coverage/release/build/shlex/fbc57d5f230d8cef/out/libshlex-fbc57d5f230d8cef.rmeta: /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/lib.rs /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/bytes.rs
+
+/Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/lib.rs:
+/Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/shlex-1.3.0/src/bytes.rs:

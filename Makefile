@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint sign clean guest-tests viewer bench bench-image bench-compare-test
+.PHONY: build test test-hv lint sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run
 
 build:
 	$(CARGO) build --workspace
@@ -62,6 +62,31 @@ bench-image:
 
 bench-compare-test:
 	cd scripts/bench && python3 test_compare.py
+
+# Step 79: libFuzzer smoke (30s per target). Needs nightly + `cargo install cargo-fuzz`.
+FUZZ_CRATE := ternvale-fuzz
+NIGHTLY ?= nightly
+FUZZ_TIME ?= 30
+FUZZ_TARGETS := virtqueue virtio_blk virtio_net virtio_rng virtio_vsock virtio_gpu \
+	virtio_input virtio_balloon virtio_fs virtio_pci xhci_trb tpm_crb vsock_packet \
+	agent_proto esr psci user_net fuse
+
+fuzz-smoke:
+	$(MAKE) fuzz-run FUZZ_TIME=30
+
+# Long campaign (default 1 hour per target). Override with `make fuzz-long FUZZ_TIME=600`.
+fuzz-long:
+	$(MAKE) fuzz-run FUZZ_TIME=3600
+
+fuzz-run:
+	@if ! $(CARGO) +$(NIGHTLY) fuzz --help >/dev/null 2>&1; then \
+		echo "fuzz-run: need rustup nightly and cargo-fuzz (\`cargo install cargo-fuzz\`)" >&2; \
+		exit 1; \
+	fi
+	@cd $(FUZZ_CRATE) && for t in $(FUZZ_TARGETS); do \
+		echo "==> fuzz $$t ($(FUZZ_TIME)s)"; \
+		$(CARGO) +$(NIGHTLY) fuzz run $$t -- -max_total_time=$(FUZZ_TIME) -timeout=5 || exit 1; \
+	done
 
 clean:
 	$(CARGO) clean

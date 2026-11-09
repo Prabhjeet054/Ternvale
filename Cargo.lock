@@ -99,6 +99,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arbitrary"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
+dependencies = [
+ "derive_arbitrary",
+]
+
+[[package]]
 name = "arboard"
 version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -413,6 +422,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
 dependencies = [
  "powerfmt",
+]
+
+[[package]]
+name = "derive_arbitrary"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1380,6 +1400,23 @@ dependencies = [
  "ternvale-virtiofs",
  "ternvale-vmm",
  "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
+name = "ternvale-fuzz"
+version = "0.1.0"
+dependencies = [
+ "arbitrary",
+ "ternvale-agent-proto",
+ "ternvale-devices",
+ "ternvale-gpu",
+ "ternvale-metrics",
+ "ternvale-net",
+ "ternvale-tpm",
+ "ternvale-usb",
+ "ternvale-virtiofs",
+ "ternvale-vmm",
  "tracing",
 ]
 

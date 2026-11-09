@@ -1,0 +1,30 @@
+[package]
+name = "ternvale-fuzz"
+description = "libFuzzer harnesses for guest-facing Ternvale parsers and devices."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Structure-aware fuzz inputs (descriptor chains, TRBs, CRB ops).
+arbitrary = { version = "1", features = ["derive"] }
+# Virtio devices, split queues, virtio-mmio / virtio-pci.
+ternvale-devices = { path = "../ternvale-devices", default-features = false }
+# GuestMemory, ESR, PSCI, PCI types, MmioDevice.
+ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
+# virtio-blk / virtio-net Metrics::new.
+ternvale-metrics = { path = "../ternvale-metrics" }
+# virtio-gpu control queue.
+ternvale-gpu = { path = "../ternvale-gpu", default-features = false }
+# virtio-fs FUSE server and device.
+ternvale-virtiofs = { path = "../ternvale-virtiofs", default-features = false }
+# xHCI TRB / MMIO.
+ternvale-usb = { path = "../ternvale-usb" }
+# TPM CRB + stub backend.
+ternvale-tpm = { path = "../ternvale-tpm" }
+# User-mode NAT packet path.
+ternvale-net = { path = "../ternvale-net" }
+# Agent length-prefixed JSON decoder.
+ternvale-agent-proto = { path = "../ternvale-agent-proto" }
+# Public functions are instrumented (project logging rule).
+tracing = "0.1"

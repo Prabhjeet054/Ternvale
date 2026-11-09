@@ -11,6 +11,12 @@ test-assets/
 ternvale-tools.iso
 **/*.iso.manifest.json
 bench-results/
+ternvale-fuzz/fuzz/target
+ternvale-fuzz/fuzz/artifacts
+ternvale-fuzz/fuzz/coverage
+ternvale-fuzz/fuzz/index.html
+ternvale-fuzz/fuzz/campaign/
+.fuzz-toolchain/
 ternvale-cursor-prompts.md
 ternvale-cursor-prompts-part2.md
 ternvale-cursor-prompts-part3.md
