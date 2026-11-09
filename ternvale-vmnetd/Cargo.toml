@@ -13,4 +13,7 @@ path = "src/main.rs"
 ternvale-hv = { path = "../ternvale-hv", features = ["vmnet"] }
 ternvale-net = { path = "../ternvale-net" }
 ternvale-log = { path = "../ternvale-log" }
+ternvale-sandbox = { path = "../ternvale-sandbox" }
+ternvale-usb = { path = "../ternvale-usb" }
+ternvale-usb-host = { path = "../ternvale-usb-host" }
 tracing = "0.1"

@@ -64,5 +64,18 @@ if ! codesign --sign "$identity" --force --entitlements "$entitlements" "$binary
     fail "codesign failed for ${binary}"
 fi
 
+if [[ -n "${TERNVALE_SEATBELT_PROFILE:-}" ]]; then
+    if [[ ! -f "${TERNVALE_SEATBELT_PROFILE}" ]]; then
+        fail "Seatbelt profile does not exist: ${TERNVALE_SEATBELT_PROFILE}"
+    fi
+    log "sandbox-exec -f ${TERNVALE_SEATBELT_PROFILE}"
+    if [[ "${TERNVALE_SANDBOX_PROBE:-}" == "1" ]]; then
+        # CLI `ternvale run` probe: already confined; do not nested-relaunch
+        # and do not spawn swtpm from this process.
+        export TERNVALE_SANDBOXED=1
+    fi
+    exec /usr/bin/sandbox-exec -f "${TERNVALE_SEATBELT_PROFILE}" "$binary" "$@"
+fi
+
 log "exec ${binary}"
 exec "$binary" "$@"

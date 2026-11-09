@@ -57,6 +57,13 @@ impl SwtpmBackend {
     /// check `state_file`, spawn swtpm on it, and start the TPM.
     #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(state = %state_file.display()))]
     pub fn start(binary: Option<&Path>, state_file: &Path) -> Result<Self, SwtpmError> {
+        if std::env::var("TERNVALE_SANDBOXED").is_ok_and(|v| v == "1") {
+            tracing::error!(
+                target: "ternvale::tpm",
+                "sandboxed VMM must attach to launcher-started swtpm sockets"
+            );
+            return Err(SwtpmError::SpawnDenied);
+        }
         let info = find_swtpm(binary)?;
         let state = check_state_file(state_file)?;
         let (process, ctrl, data) = SwtpmProcess::spawn(&info.path, state_file)?;
@@ -89,6 +96,26 @@ impl SwtpmBackend {
             "swtpm ready"
         );
         backend.info = Some(info);
+        Ok(backend)
+    }
+
+    /// Connect to sockets the launcher already started (`TERNVALE_SWTPM_*`).
+    #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(ctrl = %ctrl.display(), data = %data.display()))]
+    pub fn connect_paths(ctrl: &Path, data: &Path) -> Result<Self, SwtpmError> {
+        let ctrl_stream = UnixStream::connect(ctrl).map_err(|error| SwtpmError::Data {
+            reason: format!("connect control {}: {error}", ctrl.display()),
+        })?;
+        let data_stream = UnixStream::connect(data).map_err(|error| SwtpmError::Data {
+            reason: format!("connect data {}: {error}", data.display()),
+        })?;
+        tracing::info!(
+            target: "ternvale::tpm",
+            ctrl = %ctrl.display(),
+            data = %data.display(),
+            "attached to launcher-started swtpm"
+        );
+        let mut backend = Self::from_parts(Control::new(ctrl_stream)?, data_stream, None)?;
+        backend.initialize(DATA_BUFFER_SIZE as u32)?;
         Ok(backend)
     }
 

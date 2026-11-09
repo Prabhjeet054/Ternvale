@@ -1,0 +1,10 @@
+;; Seatbelt profile for HV boot/regression binaries (Step 80 test).
+;; Allow-by-default so Hypervisor.framework and dyld can run; explicitly deny
+;; the host paths/processes the VMM must not touch. Substitutions: __ROOT__,
+;; __HOME__, __TMPDIR__ (unused in this allow-default form, kept for the script).
+(version 1)
+(allow default)
+(allow ipc-posix*)
+(deny file-read* (literal "/etc/hosts") (literal "/private/etc/hosts"))
+(deny file-read* (regex #"/\.ssh(/|$)"))
+(deny process-exec (literal "/bin/sh") (literal "/bin/bash") (literal "/bin/zsh") (literal "/bin/dash"))

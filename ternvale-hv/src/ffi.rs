@@ -4,7 +4,7 @@
 //! nullable `hv_vm_config_t`; `hv_vm_destroy` takes no arguments). Return
 //! values are `hv_return_t` (`mach_error_t`, a 32-bit `int`).
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void};
 
 #[link(name = "Hypervisor", kind = "framework")]
 unsafe extern "C" {
@@ -55,6 +55,131 @@ unsafe extern "C" {
     /// `<mach/mach_time.h>`: convert `mach_absolute_time` ticks to nanoseconds
     /// (`ticks * numer / denom`).
     pub(crate) fn mach_timebase_info(info: *mut MachTimebaseInfo) -> i32;
+    pub(crate) fn getsockopt(
+        socket: i32,
+        level: i32,
+        name: i32,
+        value: *mut c_void,
+        len: *mut u32,
+    ) -> i32;
+    pub(crate) fn recv(socket: i32, buffer: *mut c_void, length: usize, flags: i32) -> isize;
+}
+
+/// Darwin `MSG_PEEK`.
+pub(crate) const MSG_PEEK: i32 = 0x02;
+
+#[repr(C)]
+pub(crate) struct CfDictionaryKeyCallBacks {
+    pub version: isize,
+    pub retain: *const c_void,
+    pub release: *const c_void,
+    pub copy_description: *const c_void,
+    pub equal: *const c_void,
+    pub hash: *const c_void,
+}
+
+#[repr(C)]
+pub(crate) struct CfDictionaryValueCallBacks {
+    pub version: isize,
+    pub retain: *const c_void,
+    pub release: *const c_void,
+    pub copy_description: *const c_void,
+    pub equal: *const c_void,
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    pub(crate) static kCFTypeDictionaryKeyCallBacks: CfDictionaryKeyCallBacks;
+    pub(crate) static kCFTypeDictionaryValueCallBacks: CfDictionaryValueCallBacks;
+    pub(crate) fn CFRelease(cf: *const c_void);
+    pub(crate) fn CFStringCreateWithCString(
+        alloc: *mut c_void,
+        c_str: *const c_char,
+        encoding: u32,
+    ) -> *mut c_void;
+    pub(crate) fn CFStringGetCStringPtr(the_string: *mut c_void, encoding: u32) -> *const c_char;
+    pub(crate) fn CFStringGetCString(
+        the_string: *mut c_void,
+        buffer: *mut c_char,
+        buffer_size: isize,
+        encoding: u32,
+    ) -> u8;
+    pub(crate) fn CFNumberCreate(
+        alloc: *mut c_void,
+        number_type: isize,
+        value: *const c_void,
+    ) -> *mut c_void;
+    pub(crate) fn CFDictionaryCreateMutable(
+        alloc: *mut c_void,
+        capacity: isize,
+        key_callbacks: *const CfDictionaryKeyCallBacks,
+        value_callbacks: *const CfDictionaryValueCallBacks,
+    ) -> *mut c_void;
+    pub(crate) fn CFDictionarySetValue(
+        the_dict: *mut c_void,
+        key: *const c_void,
+        value: *const c_void,
+    );
+    pub(crate) fn CFDataCreate(alloc: *mut c_void, bytes: *const u8, length: isize) -> *mut c_void;
+    pub(crate) fn CFDataGetLength(the_data: *mut c_void) -> isize;
+    pub(crate) fn CFDataGetBytePtr(the_data: *mut c_void) -> *const u8;
+    pub(crate) fn CFURLCreateWithFileSystemPath(
+        alloc: *mut c_void,
+        path: *mut c_void,
+        path_style: usize,
+        is_directory: u8,
+    ) -> *mut c_void;
+    pub(crate) fn CFURLCreateBookmarkData(
+        alloc: *mut c_void,
+        url: *mut c_void,
+        options: usize,
+        resource_properties: *mut c_void,
+        relative_to: *mut c_void,
+        error: *mut *mut c_void,
+    ) -> *mut c_void;
+    pub(crate) fn CFURLCreateByResolvingBookmarkData(
+        alloc: *mut c_void,
+        bookmark: *mut c_void,
+        options: usize,
+        relative_to: *mut c_void,
+        resource_properties: *mut c_void,
+        is_stale: *mut u8,
+        error: *mut *mut c_void,
+    ) -> *mut c_void;
+    pub(crate) fn CFURLStartAccessingSecurityScopedResource(url: *mut c_void) -> u8;
+    pub(crate) fn CFURLStopAccessingSecurityScopedResource(url: *mut c_void);
+    pub(crate) fn CFURLGetFileSystemRepresentation(
+        url: *mut c_void,
+        resolve_against_base: u8,
+        buffer: *mut u8,
+        max_buf_len: isize,
+    ) -> u8;
+    pub(crate) fn CFErrorCopyDescription(err: *mut c_void) -> *mut c_void;
+}
+
+#[link(name = "Security", kind = "framework")]
+unsafe extern "C" {
+    pub(crate) fn SecRequirementCreateWithString(
+        text: *mut c_void,
+        flags: u32,
+        requirement: *mut *mut c_void,
+    ) -> i32;
+    pub(crate) fn SecCodeCopyGuestWithAttributes(
+        host: *mut c_void,
+        attributes: *mut c_void,
+        flags: u32,
+        guest: *mut *mut c_void,
+    ) -> i32;
+    pub(crate) fn SecCodeCheckValidity(
+        code: *mut c_void,
+        flags: u32,
+        requirement: *mut c_void,
+    ) -> i32;
+}
+
+pub(crate) unsafe fn cf_release(obj: *mut c_void) {
+    // SAFETY: caller owns a +1 CFType reference.
+    unsafe { CFRelease(obj as *const c_void) };
 }
 
 /// `mach_timebase_info_data_t`.

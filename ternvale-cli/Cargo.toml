@@ -56,6 +56,8 @@ ternvale-devices = { path = "../ternvale-devices", default-features = false }
 ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 # `doctor`: macOS version, kern.hv_support, and a probe VM + GIC through the safe wrappers.
 ternvale-hv = { path = "../ternvale-hv" }
+# Seatbelt launch, bookmarks, helper requirement (Step 80).
+ternvale-sandbox = { path = "../ternvale-sandbox" }
 # `doctor` swtpm check: the same lookup and capability probe the VMM uses to start it
 # (workspace crate, already built through ternvale-vmm).
 ternvale-tpm = { path = "../ternvale-tpm" }

@@ -20,11 +20,17 @@ mod state;
 
 use std::path::PathBuf;
 
+/// Control socket path the launcher passes to a sandboxed VMM.
+pub const SWTPM_CTRL_ENV: &str = "TERNVALE_SWTPM_CTRL";
+/// Data socket path the launcher passes to a sandboxed VMM.
+pub const SWTPM_DATA_ENV: &str = "TERNVALE_SWTPM_DATA";
+
 pub use backend::SwtpmBackend;
 pub use locate::{
     find_swtpm, locate_swtpm, parse_swtpm_version, probe_swtpm, SwtpmInfo, REQUIRED_FEATURES,
     SWTPM_FALLBACK_DIRS, TESTED_SWTPM_VERSION,
 };
+pub use process::SwtpmDaemon;
 pub use state::{check_state_file, StateFile, STATE_MAGIC, STATE_VERSION};
 
 /// swtpm could not be found, started, or talked to.
@@ -86,6 +92,9 @@ pub enum SwtpmError {
         /// What went wrong, with swtpm's last stderr lines when it exited.
         reason: String,
     },
+    /// The sandboxed VMM tried to exec swtpm; only the launcher may.
+    #[error("sandboxed VMM cannot spawn swtpm; the launcher must start it")]
+    SpawnDenied,
     /// A control channel command failed.
     #[error("swtpm control {command}: {reason}")]
     Control {

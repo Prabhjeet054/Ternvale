@@ -6,5 +6,7 @@
 	<true/>
 	<key>com.apple.vm.networking</key>
 	<true/>
+	<key>com.apple.vm.device-access</key>
+	<true/>
 </dict>
 </plist>

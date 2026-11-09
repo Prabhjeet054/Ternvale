@@ -1360,6 +1360,7 @@ dependencies = [
  "ternvale-hv",
  "ternvale-log",
  "ternvale-metrics",
+ "ternvale-sandbox",
  "ternvale-snapshot",
  "ternvale-tpm",
  "ternvale-virtiofs",
@@ -1472,6 +1473,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ternvale-sandbox"
+version = "0.1.0"
+dependencies = [
+ "ternvale-config",
+ "ternvale-hv",
+ "ternvale-log",
+ "ternvale-net",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "ternvale-snapshot"
 version = "0.1.0"
 dependencies = [
@@ -1510,6 +1523,7 @@ dependencies = [
  "io-kit-sys",
  "mach2 0.4.3",
  "ternvale-config",
+ "ternvale-net",
  "ternvale-usb",
  "thiserror 2.0.21",
  "tracing",
@@ -1558,6 +1572,9 @@ dependencies = [
  "ternvale-hv",
  "ternvale-log",
  "ternvale-net",
+ "ternvale-sandbox",
+ "ternvale-usb",
+ "ternvale-usb-host",
  "tracing",
 ]
 

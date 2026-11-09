@@ -53,11 +53,20 @@ impl StdoutFile {
         if self.buf.is_empty() {
             return Ok(());
         }
-        let mut out = io::stdout().lock();
-        out.write_all(&self.buf)?;
-        out.flush()?;
+        // Serial log first so the boot feeder can see CSI queries even if
+        // stdout is a closed pipe under sandbox-exec.
         self.file.write_all(&self.buf)?;
         self.file.flush()?;
+        {
+            let mut out = io::stdout().lock();
+            if let Err(error) = out.write_all(&self.buf).and_then(|_| out.flush()) {
+                tracing::debug!(
+                    target: "ternvale::uart",
+                    error = %error,
+                    "stdout uart echo failed"
+                );
+            }
+        }
         self.buf.clear();
         Ok(())
     }
@@ -66,7 +75,9 @@ impl StdoutFile {
 impl ByteSink for StdoutFile {
     fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
         self.buf.extend_from_slice(bytes);
-        if self.buf.len() >= TX_BATCH || bytes.contains(&b'\n') {
+        // Flush on ESC so busybox `ESC[6n` cursor queries reach the serial
+        // file before the 256-byte batch fills (the boot harness replies on that).
+        if self.buf.len() >= TX_BATCH || bytes.contains(&b'\n') || bytes.contains(&0x1b) {
             self.flush_buf()?;
         }
         Ok(())
@@ -129,5 +140,31 @@ impl LineBuf {
         } else {
             Some(std::mem::take(&mut self.buf))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ByteSink, StdoutFile};
+    use std::io::Read;
+
+    #[test]
+    fn esc_flushes_serial_log_before_batch_fills() {
+        let dir = std::env::temp_dir().join(format!("tv-uart-esc-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("serial.log");
+        let mut sink = StdoutFile::create(&path).expect("serial log");
+        sink.write_all(b"~ # ").expect("prompt");
+        sink.write_all(b"\x1b[6n").expect("csi");
+        let mut text = String::new();
+        std::fs::File::open(&path)
+            .expect("open")
+            .read_to_string(&mut text)
+            .expect("read");
+        assert!(
+            text.contains("\u{1b}[6n"),
+            "CSI must be on disk for the boot feeder, got {text:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

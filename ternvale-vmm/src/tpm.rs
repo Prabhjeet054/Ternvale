@@ -11,10 +11,14 @@
 //! altogether. The CRB's command history goes to [`Diagnostics`] for the
 //! crash-report bundle.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use ternvale_config::{FirmwareTables, TpmBackendKind, VmConfig};
-use ternvale_tpm::{StubBackend, SwtpmBackend, TpmBackend, TpmCrb, TpmHistory, CRB_WINDOW_SIZE};
+use ternvale_tpm::{
+    StubBackend, SwtpmBackend, TpmBackend, TpmCrb, TpmHistory, CRB_WINDOW_SIZE, SWTPM_CTRL_ENV,
+    SWTPM_DATA_ENV,
+};
 
 use crate::acpi::BusDevice;
 use crate::diag::Diagnostics;
@@ -60,6 +64,17 @@ pub(crate) fn backend_for(config: &VmConfig) -> Result<Box<dyn TpmBackend>, Mach
             return Ok(Box::new(StubBackend::new()));
         }
     };
+    if let (Ok(ctrl), Ok(data)) = (std::env::var(SWTPM_CTRL_ENV), std::env::var(SWTPM_DATA_ENV)) {
+        tracing::info!(
+            target: "ternvale::tpm",
+            ctrl = %ctrl,
+            data = %data,
+            "using launcher-started swtpm sockets"
+        );
+        return SwtpmBackend::connect_paths(Path::new(&ctrl), Path::new(&data))
+            .map(|b| Box::new(b) as Box<dyn TpmBackend>)
+            .map_err(|error| MachineError::Attach(format!("tpm swtpm attach: {error}")));
+    }
     match SwtpmBackend::start(section.swtpm.as_deref(), &state) {
         Ok(backend) => Ok(Box::new(backend)),
         Err(error) if section.backend == TpmBackendKind::Auto && error.is_unavailable() => {

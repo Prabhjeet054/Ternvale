@@ -108,7 +108,10 @@ impl Harness {
 
     fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::new(&self.bin);
-        command.args(args).env("TERNVALE_RUN_DIR", &self.run_dir);
+        command
+            .args(args)
+            .env("TERNVALE_RUN_DIR", &self.run_dir)
+            .env("TERNVALE_SKIP_SANDBOX", "1");
         command
     }
 

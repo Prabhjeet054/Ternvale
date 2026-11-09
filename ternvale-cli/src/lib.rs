@@ -37,6 +37,7 @@ pub mod protocol;
 pub mod release_verify;
 pub mod report;
 pub mod run;
+pub mod sandbox_run;
 pub mod seamless;
 pub mod secret;
 pub mod server;

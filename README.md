@@ -19,6 +19,7 @@ implement the VMM yet.
 | `ternvale-devices` | Emulated and virtio devices |
 | `ternvale-config` | VM configuration and shared errors |
 | `ternvale-log` | Tracing setup, panic hook, and log files |
+| `ternvale-sandbox` | Seatbelt profile, security-scoped bookmarks, helper codesign |
 
 `ternvale-config` and `ternvale-log` are used across the stack. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

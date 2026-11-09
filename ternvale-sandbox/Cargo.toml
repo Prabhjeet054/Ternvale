@@ -1,0 +1,18 @@
+[package]
+name = "ternvale-sandbox"
+description = "Seatbelt profile, security-scoped bookmarks, and sandboxed VMM launch."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# VmConfig path inventory for the Seatbelt allow list.
+ternvale-config = { path = "../ternvale-config" }
+# Security.framework bookmarks and unix peek (raw FFI stays in ternvale-hv).
+ternvale-hv = { path = "../ternvale-hv" }
+# Default host log directory (same as the VMM).
+ternvale-log = { path = "../ternvale-log" }
+# Privileged helper socket path (allowed as a unix socket, not general FS).
+ternvale-net = { path = "../ternvale-net" }
+thiserror = "2"
+tracing = "0.1"

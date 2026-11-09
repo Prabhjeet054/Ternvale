@@ -38,6 +38,7 @@ We aim to acknowledge a report within 7 days and to share a fix-or-mitigation
 plan within 30 days. Please do not disclose publicly until a release containing
 the fix is out, or 90 days after the first report, whichever comes first.
 
-See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for trust boundaries and
-[docs/SECURITY_GAPS.md](docs/SECURITY_GAPS.md) for known coverage gaps
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for trust boundaries,
+[docs/SECURITY.md](docs/SECURITY.md) for the sandboxed VMM entitlement list,
+and [docs/SECURITY_GAPS.md](docs/SECURITY_GAPS.md) for known coverage gaps
 (backlog for Steps 79–82).

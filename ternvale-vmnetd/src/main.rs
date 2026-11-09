@@ -8,12 +8,19 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
+use std::os::fd::AsRawFd;
+use std::os::unix::net::UnixStream;
+
 use ternvale_hv::{
-    list_bridgeable, SharedInterface, StartSpec, VMNET_BRIDGED_MODE, VMNET_HOST_MODE,
+    list_bridgeable, unix_peek, SharedInterface, StartSpec, VMNET_BRIDGED_MODE, VMNET_HOST_MODE,
     VMNET_SHARED_MODE,
 };
 use ternvale_log::LogConfig;
 use ternvale_net::{serve_client, Open, Port, PortInfo, SYSTEM_SOCK};
+use ternvale_usb_host::CLAIM_MAGIC;
+
+mod auth;
+mod usb;
 
 struct HvPort {
     inner: SharedInterface,
@@ -71,17 +78,29 @@ fn main() -> ExitCode {
 }
 
 #[tracing::instrument(level = "debug", target = "ternvale::net::vmnet", skip_all)]
+fn handle_client(stream: UnixStream) -> std::io::Result<()> {
+    auth::authorize(&stream)?;
+    let mut magic = [0u8; 4];
+    let n = unix_peek(stream.as_raw_fd(), &mut magic)?;
+    if n >= 4 && magic == *CLAIM_MAGIC {
+        tracing::info!(target: "ternvale::usb", "privileged helper usb session");
+        return usb::serve_usb(stream);
+    }
+    serve_client(stream, start_port)
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::net::vmnet", skip_all)]
 fn run(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let listener = bind(path)?;
     tracing::info!(target: "ternvale::net::vmnet", "vmnet helper listening");
     loop {
         let (stream, _) = listener.accept()?;
         thread::spawn(move || {
-            if let Err(error) = serve_client(stream, start_port) {
+            if let Err(error) = handle_client(stream) {
                 tracing::warn!(
                     target: "ternvale::net::vmnet",
                     error = %error,
-                    "vmnet helper session ended"
+                    "privileged helper session ended"
                 );
             }
         });

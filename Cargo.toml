@@ -21,6 +21,7 @@ members = [
     "ternvale-virtiofs",
     "ternvale-vmnetd",
     "ternvale-fuzz",
+    "ternvale-sandbox",
 ]
 
 [workspace.package]

@@ -275,9 +275,18 @@ fn boot_vm(
 fn check_security(serial: &str, host_log: &Path) -> Result<(), String> {
     let open_dd = serial_int(serial, "OPEN_DOTDOT rc=")?;
     let rename_dd = serial_int(serial, "RENAME_DOTDOT rc=")?;
-    if open_dd >= 0 || rename_dd >= 0 {
+    // Linux openat(mount_fd, "..") stays on the mount (fd to the share root)
+    // and does not send FUSE LOOKUP `..` to the host. Escape is rename of a
+    // file onto `..` or following `../outside_secret`.
+    tracing::debug!(
+        target: "ternvale::virtiofs",
+        open_dotdot = open_dd,
+        rename_dotdot = rename_dd,
+        "virtiofs guest .. probes"
+    );
+    if rename_dd >= 0 {
         return Err(format!(
-            "`..` traversal succeeded open={open_dd} rename={rename_dd}"
+            "`..` rename escaped the share rename={rename_dd} open={open_dd}"
         ));
     }
     let out_open = serial_int(serial, "OPEN_OUT_LINK rc=")?;

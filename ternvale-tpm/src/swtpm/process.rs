@@ -94,6 +94,19 @@ impl SwtpmProcess {
         binary: &Path,
         state: &Path,
     ) -> Result<(Self, UnixStream, UnixStream), SwtpmError> {
+        let (mut process, ctrl_path, data_path) = Self::spawn_unconnected(binary, state)?;
+        let ctrl = process.connect(&ctrl_path)?;
+        let data = process.connect(&data_path)?;
+        tracing::debug!(target: "ternvale::tpm", pid = process.child.id(), runtime_dir = %process.runtime_dir.display(), "connected to swtpm");
+        Ok((process, ctrl, data))
+    }
+
+    /// Start swtpm and wait until its sockets exist, without connecting.
+    /// The sandboxed VMM is the only client; the launcher only reaps the process.
+    pub(super) fn spawn_unconnected(
+        binary: &Path,
+        state: &Path,
+    ) -> Result<(Self, PathBuf, PathBuf), SwtpmError> {
         let spawn_error = |reason: String| {
             tracing::error!(target: "ternvale::tpm", reason = %reason, "swtpm did not start");
             SwtpmError::Spawn { reason }
@@ -116,7 +129,7 @@ impl SwtpmProcess {
             spawn_error(format!("runtime dir {}: {error}", runtime_dir.display()))
         })?;
         let args = swtpm_args(&state_text, &data_text, &ctrl_text);
-        tracing::info!(target: "ternvale::tpm", binary = %binary.display(), args = %args.join(" "), "starting swtpm");
+        tracing::info!(target: "ternvale::tpm", binary = %binary.display(), args = %args.join(" "), "starting swtpm (launcher)");
         let mut child = match Command::new(binary)
             .args(&args)
             .stdin(Stdio::null())
@@ -150,10 +163,37 @@ impl SwtpmProcess {
             exiting: false,
             stopped: false,
         };
-        let ctrl = process.connect(&ctrl_path)?;
-        let data = process.connect(&data_path)?;
-        tracing::debug!(target: "ternvale::tpm", pid = process.child.id(), runtime_dir = %process.runtime_dir.display(), "connected to swtpm");
-        Ok((process, ctrl, data))
+        process.wait_for_socket(&ctrl_path)?;
+        process.wait_for_socket(&data_path)?;
+        process.running();
+        Ok((process, ctrl_path, data_path))
+    }
+
+    fn wait_for_socket(&mut self, path: &Path) -> Result<(), SwtpmError> {
+        let deadline = Instant::now() + CONNECT_TIMEOUT;
+        loop {
+            if path.exists() {
+                return Ok(());
+            }
+            if let Ok(Some(status)) = self.child.try_wait() {
+                let reason = format!(
+                    "swtpm exited with {status} before {} appeared: {}",
+                    path.display(),
+                    self.output_after_exit()
+                );
+                tracing::error!(target: "ternvale::tpm", reason = %reason, "swtpm did not start");
+                return Err(SwtpmError::Spawn { reason });
+            }
+            if Instant::now() >= deadline {
+                let reason = format!(
+                    "{} did not appear within {CONNECT_TIMEOUT:?}",
+                    path.display()
+                );
+                tracing::error!(target: "ternvale::tpm", reason = %reason, "swtpm did not start");
+                return Err(SwtpmError::Spawn { reason });
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     /// Start-up finished: from now on swtpm exiting is unexpected.
@@ -295,6 +335,38 @@ impl SwtpmProcess {
 impl Drop for SwtpmProcess {
     fn drop(&mut self) {
         self.halt();
+    }
+}
+
+/// Launcher-owned swtpm: sockets for the VMM, process reaped on drop.
+#[derive(Debug)]
+pub struct SwtpmDaemon {
+    _process: SwtpmProcess,
+    /// Control Unix socket.
+    pub ctrl_path: PathBuf,
+    /// Data Unix socket.
+    pub data_path: PathBuf,
+}
+
+impl SwtpmDaemon {
+    /// Spawn swtpm; the caller must not connect (the VMM will).
+    #[tracing::instrument(level = "debug", target = "ternvale::tpm", skip_all, fields(state = %state.display()))]
+    pub fn start(binary: Option<&Path>, state: &Path) -> Result<Self, SwtpmError> {
+        let info = super::locate::find_swtpm(binary)?;
+        let _ = super::state::check_state_file(state)?;
+        let (process, ctrl_path, data_path) = SwtpmProcess::spawn_unconnected(&info.path, state)?;
+        tracing::info!(
+            target: "ternvale::tpm",
+            pid = process.pid(),
+            ctrl = %ctrl_path.display(),
+            data = %data_path.display(),
+            "launcher started swtpm for the sandboxed VMM"
+        );
+        Ok(Self {
+            _process: process,
+            ctrl_path,
+            data_path,
+        })
     }
 }
 

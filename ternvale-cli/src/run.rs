@@ -44,6 +44,17 @@ const REAPER_POLL: Duration = Duration::from_millis(100);
 /// the `--display` / `--fps` flags.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %config_path.display(), display = %mode, fps))]
 pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
+    let hold = crate::sandbox_run::prepare(config_path, mode, fps)?;
+    if let Some(code) = hold.child_exit {
+        return Ok(code);
+    }
+    let _swtpm = hold.swtpm;
+    let _bookmarks = hold.bookmarks;
+    run_vm(config_path, mode, fps)
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %config_path.display(), display = %mode, fps))]
+fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     let load = || format!("load vm config {}", config_path.display());
     let text = std::fs::read_to_string(config_path).with_context(load)?;
     let mut config = VmConfig::parse(&text).with_context(load)?;
@@ -61,6 +72,7 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
     };
     let span = tracing::info_span!(target: "ternvale::cli", "vm", vm = %config.name);
     let _entered = span.enter();
+    crate::sandbox_run::run_sandbox_probe().context("sandbox debug probe")?;
     tracing::info!(
         target: "ternvale::cli",
         config = %config_path.display(),

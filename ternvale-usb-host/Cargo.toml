@@ -14,6 +14,8 @@ thiserror = "2"
 tracing = "0.1"
 ternvale-config = { path = "../ternvale-config" }
 ternvale-usb = { path = "../ternvale-usb" }
+# Privileged helper socket path for sandboxed USB claim.
+ternvale-net = { path = "../ternvale-net" }
 
 [build-dependencies]
 cc = "1"

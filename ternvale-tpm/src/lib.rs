@@ -39,8 +39,8 @@ pub use locality::Localities;
 pub use regs::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE, DATA_BUFFER, DATA_BUFFER_SIZE, LOCALITIES};
 pub use swtpm::{
     check_state_file, find_swtpm, locate_swtpm, parse_swtpm_version, probe_swtpm, StateFile,
-    SwtpmBackend, SwtpmError, SwtpmInfo, REQUIRED_FEATURES, STATE_MAGIC, STATE_VERSION,
-    SWTPM_FALLBACK_DIRS, TESTED_SWTPM_VERSION,
+    SwtpmBackend, SwtpmDaemon, SwtpmError, SwtpmInfo, REQUIRED_FEATURES, STATE_MAGIC,
+    STATE_VERSION, SWTPM_CTRL_ENV, SWTPM_DATA_ENV, SWTPM_FALLBACK_DIRS, TESTED_SWTPM_VERSION,
 };
 
 /// Building a CRB failed.
