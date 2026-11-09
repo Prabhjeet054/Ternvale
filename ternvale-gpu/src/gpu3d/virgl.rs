@@ -67,6 +67,7 @@ pub fn ensure_loaded() -> bool {
         return true;
     }
     let path = virgl_library_path();
+    // SAFETY: `libloading` dlopen of the virglrenderer dylib; failure is Err.
     let lib = match unsafe { Library::new(&path) } {
         Ok(lib) => lib,
         Err(error) => {
@@ -91,6 +92,7 @@ pub fn ensure_loaded() -> bool {
         | VIRGL_RENDERER_THREAD_SYNC
         | VIRGL_RENDERER_RENDER_SERVER;
     let callbacks = VirglCallbacks { version: 4 };
+    // SAFETY: init is the symbol from this Library; callbacks stay alive for the call.
     let rc = unsafe {
         (loaded.init)(
             std::ptr::null_mut(),
@@ -112,6 +114,7 @@ pub fn ensure_loaded() -> bool {
 }
 
 fn load_symbols(lib: Library) -> Result<VirglLib, String> {
+    // SAFETY: each `get` looks up a documented virglrenderer export; Library owns the dylib.
     unsafe {
         let init = *lib
             .get::<InitFn>(b"virgl_renderer_init\0")
@@ -186,6 +189,7 @@ pub fn fill_venus_capset(out: &mut [u8]) {
     let filled = with_virgl(|lib| {
         let mut max_ver = 0u32;
         let mut max_size = 0u32;
+        // SAFETY: symbols came from load_symbols; out-params are stack integers / `out`.
         unsafe {
             (lib.get_cap_set)(CAPSET_VENUS, &mut max_ver, &mut max_size);
             if max_size as usize <= out.len() && max_ver > 0 {
@@ -209,10 +213,12 @@ pub fn fill_venus_capset(out: &mut [u8]) {
 #[allow(dead_code)]
 impl VirglLib {
     fn create_blob(&self, args: &ResourceCreateBlobArgs) -> c_int {
+        // SAFETY: `args` is a virglrenderer blob-create struct; lib is loaded.
         unsafe { (self.resource_create_blob)(args) }
     }
 
     fn attach_resource(&self, ctx_id: u32, res: u32) {
+        // SAFETY: ctx/res are virgl ids from context_create / create_blob.
         unsafe { (self.ctx_attach)(ctx_id as c_int, res as c_int) };
     }
 }
@@ -222,6 +228,7 @@ impl VirglLib {
 pub fn context_create(ctx_id: u32, name: &str) -> bool {
     with_virgl(|lib| {
         let cname = CString::new(name).unwrap_or_else(|_| CString::new("ternvale").unwrap());
+        // SAFETY: `cname` is a live CString; virglrenderer copies the name.
         let rc = unsafe {
             (lib.context_create)(ctx_id, cname.as_bytes().len() as u32, cname.as_ptr())
         };
@@ -238,6 +245,7 @@ pub fn context_create(ctx_id: u32, name: &str) -> bool {
 
 #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all, fields(ctx_id))]
 pub fn context_destroy(ctx_id: u32) {
+    // SAFETY: ctx_id is a virgl context this process created, or virgl no-ops.
     let _ = with_virgl(|lib| unsafe { (lib.context_destroy)(ctx_id) });
 }
 
@@ -249,6 +257,7 @@ pub fn submit_3d(ctx_id: u32, payload: &[u8]) -> Result<(), i32> {
     }
     let ndw = (payload.len() / 4) as c_int;
     with_virgl(|lib| {
+        // SAFETY: payload length is a multiple of 4; virglrenderer reads `ndw` dwords.
         let rc = unsafe { (lib.submit)(payload.as_ptr() as *mut c_void, ctx_id as c_int, ndw) };
         if rc != 0 {
             tracing::warn!(target: "ternvale::gpu", ctx_id, rc, ndw, "virgl_renderer_submit_cmd failed");

@@ -28,3 +28,13 @@ members = [
 version = "0.1.0"
 edition = "2021"
 publish = false
+
+# Nightly sanitizer builds: `RUSTFLAGS=-Zsanitizer=address cargo +nightly build --profile asan`
+# (see scripts/sanitize-stress.sh). Debug info kept for ASan/TSan stacks.
+[profile.asan]
+inherits = "dev"
+debug = 1
+
+[profile.tsan]
+inherits = "dev"
+debug = 1

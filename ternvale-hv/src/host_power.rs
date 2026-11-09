@@ -186,15 +186,18 @@ fn sleep_thread(state: *mut SleepState, runloop: Arc<Mutex<usize>>) {
         tracing::warn!(target: "ternvale::hv", "IORegisterForSystemPower failed");
         return;
     }
+    // SAFETY: `state` is the Box allocated for this sleep thread.
     unsafe {
         (*state).root_port = root;
     }
     // SAFETY: `notify_port` is the IONotificationPort from registration.
     let source = unsafe { IONotificationPortGetRunLoopSource(notify_port) };
+    // SAFETY: this is the sleep thread; CFRunLoopGetCurrent is this thread's loop.
     let rl = unsafe { CFRunLoopGetCurrent() };
     if let Ok(mut slot) = runloop.lock() {
         *slot = rl as usize;
     }
+    // SAFETY: `notify_port` and `source` stay live until `CFRunLoopRun` returns.
     unsafe {
         CFRunLoopAddSource(rl, source, kCFRunLoopDefaultMode);
         CFRunLoopRun();
@@ -213,11 +216,13 @@ unsafe extern "C" fn sleep_cb(
         return;
     }
     let state = refcon.cast::<SleepState>();
+    // SAFETY: IOKit holds `refcon` until we deregister; it is our SleepState Box.
     let root = unsafe { (*state).root_port };
     match message_type {
         KIO_MESSAGE_CAN_SYSTEM_SLEEP | KIO_MESSAGE_SYSTEM_WILL_SLEEP => {
             if message_type == KIO_MESSAGE_SYSTEM_WILL_SLEEP {
                 tracing::info!(target: "ternvale::hv", "host will sleep");
+                // SAFETY: callback lives in SleepState until Drop after unregister.
                 (unsafe { &(*state).callback })(HostPowerEvent::WillSleep);
             }
             // SAFETY: IOPMLib requires IOAllowPowerChange with the token from
@@ -226,6 +231,7 @@ unsafe extern "C" fn sleep_cb(
         }
         KIO_MESSAGE_SYSTEM_HAS_POWERED_ON => {
             tracing::info!(target: "ternvale::hv", "host did wake");
+            // SAFETY: same SleepState as WillSleep; still registered.
             (unsafe { &(*state).callback })(HostPowerEvent::DidWake);
         }
         _ => {}
@@ -247,18 +253,22 @@ fn watch_signal(
         event,
         source: AtomicPtr::new(std::ptr::null_mut()),
     }));
+    // SAFETY: the global concurrent queue outlives this process; the source
+    // is owned by SignalWatch after a non-null return.
     let source = unsafe {
         let queue = dispatch_get_global_queue(0, 0);
         let kind = std::ptr::addr_of!(_dispatch_source_type_signal).cast::<c_void>();
         dispatch_source_create(kind, sig, 0, queue)
     };
     if source.is_null() {
+        // SAFETY: create failed; `ctx` is the Box we just allocated and never published.
         unsafe {
             drop(Box::from_raw(ctx));
         }
         tracing::warn!(target: "ternvale::hv", sig, "dispatch SIGNAL source was null");
         return None;
     }
+    // SAFETY: `ctx` is still uniquely ours; `source` is a live dispatch object.
     unsafe {
         (*ctx).source.store(source, Ordering::Release);
         dispatch_set_context(source, ctx.cast());
@@ -273,6 +283,7 @@ unsafe extern "C" fn signal_event(ctx: *mut c_void) {
         return;
     }
     let state = ctx.cast::<SignalState>();
+    // SAFETY: dispatch context is SignalState until we cancel the source in Drop.
     let event = unsafe { (*state).event };
     tracing::info!(target: "ternvale::hv", ?event, "host power signal");
     (unsafe { &(*state).callback })(event);
@@ -297,6 +308,7 @@ impl Drop for SleepWatch {
             let _ = thread.join();
         }
         if !self.state.is_null() {
+            // SAFETY: unique Box from watch start; Drop runs once after the thread joins.
             unsafe {
                 drop(Box::from_raw(self.state));
             }
@@ -308,6 +320,7 @@ impl Drop for SleepWatch {
 impl Drop for SignalWatch {
     fn drop(&mut self) {
         if !self.source.is_null() {
+            // SAFETY: `source` came from dispatch_source_create in watch_signal.
             unsafe {
                 dispatch_source_cancel(self.source);
                 dispatch_release(self.source);
@@ -315,6 +328,7 @@ impl Drop for SignalWatch {
             self.source = std::ptr::null_mut();
         }
         if !self.ctx.is_null() {
+            // SAFETY: unique Box; cancel already issued so the handler will not run.
             unsafe {
                 drop(Box::from_raw(self.ctx));
             }

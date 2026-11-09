@@ -295,6 +295,7 @@ fn cf_url_from_path(path: &Path) -> Result<*mut c_void, SecError> {
         .to_str()
         .ok_or_else(|| SecError::Bookmark("path is not UTF-8".into()))?;
     let c = CString::new(text).map_err(|_| SecError::Bookmark("path contains NUL".into()))?;
+    // SAFETY: `c` is a NUL-terminated UTF-8 path; allocator NULL is the default.
     let cf = unsafe { ffi::CFStringCreateWithCString(ptr::null_mut(), c.as_ptr(), STRING_UTF8) };
     if cf.is_null() {
         return Err(SecError::Bookmark("CFStringCreateWithCString".into()));
@@ -304,6 +305,7 @@ fn cf_url_from_path(path: &Path) -> Result<*mut c_void, SecError> {
     let url = unsafe {
         ffi::CFURLCreateWithFileSystemPath(ptr::null_mut(), cf, PATH_STYLE_POSIX, is_dir)
     };
+    // SAFETY: `cf` is the +1 string we just created.
     unsafe { cf_release(cf) };
     if url.is_null() {
         return Err(SecError::Bookmark("CFURLCreateWithFileSystemPath".into()));
@@ -327,6 +329,7 @@ fn cf_url_path(url: *mut c_void) -> Result<PathBuf, SecError> {
             "CFURLGetFileSystemRepresentation".into(),
         ));
     }
+    // SAFETY: CFURLGetFileSystemRepresentation wrote a NUL-terminated POSIX path.
     let cstr = unsafe { CStr::from_ptr(buf.as_ptr()) };
     Ok(PathBuf::from(cstr.to_string_lossy().into_owned()))
 }
@@ -355,6 +358,7 @@ fn cf_data_bytes(data: *mut c_void) -> Vec<u8> {
 }
 
 fn cf_string(text: &CStr) -> Result<*mut c_void, SecError> {
+    // SAFETY: `text` is a live CStr; default allocator.
     let cf = unsafe { ffi::CFStringCreateWithCString(ptr::null_mut(), text.as_ptr(), STRING_UTF8) };
     if cf.is_null() {
         Err(SecError::Bookmark("CFStringCreateWithCString".into()))
@@ -369,28 +373,34 @@ fn cf_error_text(err: *mut c_void) -> String {
     }
     // SAFETY: `err` is a CFError from the bookmark APIs.
     let desc = unsafe { ffi::CFErrorCopyDescription(err) };
+    // SAFETY: `err` is a +1 CFError from the bookmark APIs.
     unsafe { cf_release(err) };
     if desc.is_null() {
         return "CFError with no description".into();
     }
     let text = cf_string_text(desc);
+    // SAFETY: `desc` is the +1 copy from CFErrorCopyDescription.
     unsafe { cf_release(desc) };
     text
 }
 
 fn cf_string_text(s: *mut c_void) -> String {
+    // SAFETY: `s` is a live CFString.
     let ptr = unsafe { ffi::CFStringGetCStringPtr(s, STRING_UTF8) };
     if !ptr.is_null() {
+        // SAFETY: non-null internal UTF-8 pointer owned by the CFString.
         return unsafe { CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
     }
     let mut buf = [0i8; 512];
+    // SAFETY: out-buffer is 512 bytes; encoding is UTF-8.
     let ok =
         unsafe { ffi::CFStringGetCString(s, buf.as_mut_ptr(), buf.len() as isize, STRING_UTF8) };
     if ok == 0 {
         return "unreadable CFString".into();
     }
+    // SAFETY: CFStringGetCString wrote a NUL-terminated UTF-8 string.
     unsafe { CStr::from_ptr(buf.as_ptr()) }
         .to_string_lossy()
         .into_owned()
@@ -400,6 +410,7 @@ fn osstatus_text(status: i32) -> String {
     format!("OSStatus {status}")
 }
 
+/// SAFETY: `obj` is null or a +1 CFType this module owns.
 unsafe fn cf_release(obj: *mut c_void) {
     if !obj.is_null() {
         // SAFETY: `obj` is a +1 CFType.

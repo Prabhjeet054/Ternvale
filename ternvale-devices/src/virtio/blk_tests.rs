@@ -303,6 +303,7 @@ fn backend_rejects_writable_open_of_shared_clone_base() {
     let dir = std::env::temp_dir().join(format!("ternvale-blk-prot-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("dir");
+    // SAFETY: this test owns TERNVALE_REFS_DIR; run with --test-threads=1.
     unsafe { std::env::set_var("TERNVALE_REFS_DIR", dir.join("refs")) };
     let base = dir.join("base.img");
     std::fs::OpenOptions::new()

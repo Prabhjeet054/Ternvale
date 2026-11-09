@@ -146,6 +146,7 @@ unsafe extern "C" fn pressure_event(ctx: *mut c_void) {
         bits,
         "host memory pressure changed"
     );
+    // SAFETY: dispatch holds `ctx` until cancel; callback lives in WatchState.
     (unsafe { &(*state).callback })(level);
 }
 

@@ -24,10 +24,19 @@ pub enum MemAdvice {
 }
 
 impl MemAdvice {
+    #[cfg_attr(miri, allow(dead_code))]
     fn as_raw(self) -> i32 {
-        match self {
-            Self::FreeReusable => libc::MADV_FREE_REUSABLE,
-            Self::FreeReuse => libc::MADV_FREE_REUSE,
+        #[cfg(miri)]
+        {
+            let _ = self;
+            0
+        }
+        #[cfg(not(miri))]
+        {
+            match self {
+                Self::FreeReusable => libc::MADV_FREE_REUSABLE,
+                Self::FreeReuse => libc::MADV_FREE_REUSE,
+            }
         }
     }
 }
@@ -325,33 +334,41 @@ impl GuestMemory {
             return Ok(());
         }
         let ptr = self.host_ptr(gpa, len)?;
-        // SAFETY: `host_ptr` is inside a live anonymous mapping of at least
-        // `len` bytes. `madvise` does not unmap the range.
-        let rc = unsafe { libc::madvise(ptr.cast(), len, advice.as_raw()) };
-        if rc != 0 {
-            let source = std::io::Error::last_os_error();
-            tracing::warn!(
+        #[cfg(miri)]
+        {
+            let _ = (ptr, advice);
+            return Ok(());
+        }
+        #[cfg(not(miri))]
+        {
+            // SAFETY: `host_ptr` is inside a live anonymous mapping of at least
+            // `len` bytes. `madvise` does not unmap the range.
+            let rc = unsafe { libc::madvise(ptr.cast(), len, advice.as_raw()) };
+            if rc != 0 {
+                let source = std::io::Error::last_os_error();
+                tracing::warn!(
+                    target: "ternvale::mem",
+                    gpa = format!("{gpa:#x}"),
+                    size = len,
+                    advice = ?advice,
+                    error = %source,
+                    "madvise failed"
+                );
+                return Err(MemoryError::Advise {
+                    gpa,
+                    size: len,
+                    source,
+                });
+            }
+            tracing::debug!(
                 target: "ternvale::mem",
                 gpa = format!("{gpa:#x}"),
                 size = len,
                 advice = ?advice,
-                error = %source,
-                "madvise failed"
+                "madvise ok"
             );
-            return Err(MemoryError::Advise {
-                gpa,
-                size: len,
-                source,
-            });
+            Ok(())
         }
-        tracing::debug!(
-            target: "ternvale::mem",
-            gpa = format!("{gpa:#x}"),
-            size = len,
-            advice = ?advice,
-            "madvise ok"
-        );
-        Ok(())
     }
 
     /// Write `src` at `gpa`.

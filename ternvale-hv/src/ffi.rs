@@ -177,6 +177,7 @@ unsafe extern "C" {
     ) -> i32;
 }
 
+/// SAFETY: `obj` is a +1 CFType the caller no longer uses.
 pub(crate) unsafe fn cf_release(obj: *mut c_void) {
     // SAFETY: caller owns a +1 CFType reference.
     unsafe { CFRelease(obj as *const c_void) };

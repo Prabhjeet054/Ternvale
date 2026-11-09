@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run
+.PHONY: build test test-hv lint sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom
 
 build:
 	$(CARGO) build --workspace
@@ -27,6 +27,19 @@ lint:
 	$(CARGO) fmt --check
 	$(CARGO) clippy --workspace -- -D warnings
 	./scripts/acpi-check.sh
+	./scripts/audit-unsafe.sh
+
+audit-unsafe:
+	./scripts/audit-unsafe.sh
+
+miri:
+	./scripts/miri.sh
+
+sanitize-stress:
+	./scripts/sanitize-stress.sh
+
+loom:
+	./scripts/loom.sh
 
 # Ad-hoc sign Mach-O binaries already built under target/debug.
 sign:

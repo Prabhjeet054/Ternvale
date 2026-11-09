@@ -161,6 +161,7 @@ fn native_set(hub: &Hub, text: &str) -> Result<(), AgentError> {
     };
     result?;
     hub.ignore_seq
+        // SAFETY: sequence number is a process-wide DWORD; no pointer.
         .store(unsafe { GetClipboardSequenceNumber() }, Ordering::Release);
     if let Ok(mut last) = hub.last_set.lock() {
         *last = Some(text.to_string());
@@ -233,6 +234,7 @@ impl Hub {
         let wnd = WNDCLASSW {
             lpfnWndProc: Some(wndproc),
             lpszClassName: class.as_ptr(),
+            // SAFETY: WNDCLASSW is a Win32 POD; remaining fields may be zero.
             ..unsafe { std::mem::zeroed() }
         };
         // SAFETY: `wnd` points at a valid class; `HWND_MESSAGE` is a message-only
@@ -265,6 +267,7 @@ impl Hub {
             }
             return;
         }
+        // SAFETY: `hwnd` is our message-only window; USERDATA holds `self` for this thread.
         unsafe {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, self as *const Hub as isize);
             if AddClipboardFormatListener(hwnd) == 0 {
@@ -277,6 +280,7 @@ impl Hub {
             SetTimer(hwnd, 1, POLL_MS, None);
         }
         tracing::info!(target: "ternvale::agent", "AddClipboardFormatListener registered");
+        // SAFETY: MSG is a Win32 POD filled by GetMessageW before use.
         let mut msg = unsafe { std::mem::zeroed::<MSG>() };
         while !self.stop.load(Ordering::Acquire) {
             // SAFETY: `GetMessageW` writes `msg`; we dispatch until stop.
@@ -284,17 +288,20 @@ impl Hub {
             if got <= 0 {
                 break;
             }
+            // SAFETY: `msg` was filled by GetMessageW for this hwnd.
             unsafe {
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
         }
+        // SAFETY: timer id 1 was set on this hwnd in listen().
         unsafe {
             KillTimer(hwnd, 1);
         }
     }
 
     fn poll_sequence(&self) {
+        // SAFETY: clipboard sequence is a DWORD; no pointer.
         let seq = unsafe { GetClipboardSequenceNumber() };
         if seq == 0 || seq == self.ignore_seq.load(Ordering::Acquire) {
             return;
@@ -317,10 +324,13 @@ impl Hub {
 }
 
 #[cfg(windows)]
+/// SAFETY: USERDATA is the Hub pointer stored in `Hub::listen`, valid for this thread.
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_CLIPBOARDUPDATE || msg == WM_TIMER {
+        // SAFETY: we stored the Hub pointer with SetWindowLongPtrW.
         let ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
         if ptr != 0 {
+            // SAFETY: Hub outlives the window; listen() joins before Hub drop.
             let hub = unsafe { &*(ptr as *const Hub) };
             hub.poll_sequence();
         }
@@ -329,6 +339,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     if msg == WM_DESTROY {
         return 0;
     }
+    // SAFETY: default processing for an HWND we created.
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 

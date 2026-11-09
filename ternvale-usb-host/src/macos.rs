@@ -178,6 +178,7 @@ impl MacosHostUsb {
         let mut guard = self.handle.lock().expect("usb handle lock");
         *guard = CapturedDevice(handle);
         let mut ctx_guard = self.disconnect_ctx.lock().expect("disconnect ctx lock");
+        // SAFETY: `ctx_ptr` was Box::into_raw for this capture; IOKit no longer holds it.
         *ctx_guard = Some(unsafe { Box::from_raw(ctx_ptr) });
     }
 
@@ -337,6 +338,7 @@ impl HostUsbBackend for MacosHostUsb {
 }
 
 fn find_service(vendor_id: u16, product_id: u16) -> Result<io_service_t, MacosUsbError> {
+    // SAFETY: C string is a static class name; matching dict is +1 on success.
     let matching = unsafe { IOServiceMatching(c"IOUSBHostDevice".as_ptr()) };
     if matching.is_null() {
         return Err(MacosUsbError::Io {
@@ -345,6 +347,7 @@ fn find_service(vendor_id: u16, product_id: u16) -> Result<io_service_t, MacosUs
         });
     }
     let mut iter: io_iterator_t = 0;
+    // SAFETY: `matching` is consumed by this call; `iter` is an out-parameter.
     let kr = unsafe { IOServiceGetMatchingServices(kIOMasterPortDefault, matching, &mut iter) };
     if kr != KERN_SUCCESS {
         return Err(MacosUsbError::Io {
@@ -353,6 +356,7 @@ fn find_service(vendor_id: u16, product_id: u16) -> Result<io_service_t, MacosUs
         });
     }
     loop {
+        // SAFETY: `iter` is a live IOKit iterator from GetMatchingServices.
         let service = unsafe { IOIteratorNext(iter) };
         if service == 0 {
             break;
@@ -360,15 +364,18 @@ fn find_service(vendor_id: u16, product_id: u16) -> Result<io_service_t, MacosUs
         let vid = registry_u16(service, "idVendor");
         let pid = registry_u16(service, "idProduct");
         if vid == Some(vendor_id) && pid == Some(product_id) {
+            // SAFETY: we still own the iterator; the matched service is returned to the caller.
             unsafe {
                 IOObjectRelease(iter);
             }
             return Ok(service);
         }
+        // SAFETY: this service is not the match; release the iterator's +1.
         unsafe {
             IOObjectRelease(service);
         }
     }
+    // SAFETY: iterator still owned after a full scan with no match.
     unsafe {
         IOObjectRelease(iter);
     }
@@ -380,6 +387,7 @@ fn find_service(vendor_id: u16, product_id: u16) -> Result<io_service_t, MacosUs
 
 fn registry_u16(service: io_service_t, key: &str) -> Option<u16> {
     let key_cf = CFString::new(key);
+    // SAFETY: `service` is a live io_service_t; key is a CFString; +1 CFType on success.
     let value = unsafe {
         IORegistryEntryCreateCFProperty(
             service,
@@ -391,15 +399,18 @@ fn registry_u16(service: io_service_t, key: &str) -> Option<u16> {
     if value.is_null() {
         return None;
     }
+    // SAFETY: CreateCFProperty returns a +1 CFNumber we take ownership of.
     let num = unsafe { CFNumber::wrap_under_create_rule(value as _) };
     num.to_i32().and_then(|v| u16::try_from(v).ok())
 }
 
 fn registry_path(service: io_service_t) -> Option<String> {
+    // SAFETY: `service` is live; CopyPath returns a +1 CFString.
     let path = unsafe { IORegistryEntryCopyPath(service, kIOServicePlane) };
     if path.is_null() {
         return None;
     }
+    // SAFETY: +1 CFString from CopyPath.
     let s = unsafe { CFString::wrap_under_create_rule(path as _) };
     Some(s.to_string())
 }

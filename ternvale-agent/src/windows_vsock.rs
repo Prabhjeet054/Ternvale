@@ -157,6 +157,7 @@ fn wsa_once() -> io::Result<()> {
     use std::sync::OnceLock;
     static START: OnceLock<i32> = OnceLock::new();
     let rc = *START.get_or_init(|| {
+        // SAFETY: WSADATA is a WinSock POD written by WSAStartup.
         let mut data = unsafe { std::mem::zeroed::<WSADATA>() };
         // SAFETY: WSAStartup writes WSADATA; called once per process.
         unsafe { WSAStartup(0x0202, &mut data) }

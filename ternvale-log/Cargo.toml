@@ -16,3 +16,10 @@ tracing = "0.1"
 tracing-appender = "0.2"
 # Stderr and file layers, EnvFilter, timestamps, targets, thread ids, JSON.
 tracing-subscriber = { version = "0.3", features = ["ansi", "env-filter", "fmt", "json", "std"] }
+
+[target.'cfg(loom)'.dev-dependencies]
+# Permutation checker for the Step 25 lock-order model (scripts/loom.sh).
+loom = "0.7"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }

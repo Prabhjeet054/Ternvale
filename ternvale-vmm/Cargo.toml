@@ -49,3 +49,6 @@ ternvale-log = { path = "../ternvale-log" }
 # Scoped subscriber that captures TRACE lines (pci config access logs) in unit
 # tests without the process-wide logger. Already built for ternvale-log.
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(miri)'] }

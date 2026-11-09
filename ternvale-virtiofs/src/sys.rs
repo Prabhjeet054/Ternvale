@@ -252,6 +252,7 @@ pub fn fchmod(fd: RawFd, mode: u32) -> Result<(), io::Error> {
 /// `fstatfs`.
 #[tracing::instrument(level = "debug", target = "ternvale::virtiofs", skip_all)]
 pub fn fstatfs(fd: RawFd) -> Result<libc::statfs, io::Error> {
+    // SAFETY: `statfs` is a C POD; zeroed is a valid uninitialized out-buffer.
     let mut st = unsafe { std::mem::zeroed() };
     // SAFETY: `st` is a valid `statfs` out-parameter.
     let rc = unsafe { libc::fstatfs(fd, &mut st) };

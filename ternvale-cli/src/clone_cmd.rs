@@ -234,6 +234,7 @@ read_only = false
     #[test]
     fn clone_vm_shares_base_and_delete_drops_only_clone_hold() {
         let dir = scratch();
+        // SAFETY: this test owns the three env keys; run with --test-threads=1.
         unsafe {
             std::env::set_var(VMS_DIR_ENV, dir.join("vms"));
             std::env::set_var("TERNVALE_REFS_DIR", dir.join("refs"));
