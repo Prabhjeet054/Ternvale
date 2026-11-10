@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
-use ternvale_config::{IsoSection, NicMode, UsbPassthroughEntry, VmConfig};
+use ternvale_backend::{resolve, BackendCapabilities};
+use ternvale_config::{BackendKind, IsoSection, NicMode, UsbPassthroughEntry, VmConfig};
 
 use crate::client::{self, Reach};
 use crate::paths;
@@ -30,10 +31,40 @@ pub fn list_vms() -> Result<Vec<VmListEntry>> {
             continue;
         }
         let running = vm_is_running(name)?;
+        let (backend, capabilities) = match fs::read_to_string(&config) {
+            Ok(text) => match VmConfig::parse(&text) {
+                Ok(cfg) => {
+                    let selection = resolve(&cfg);
+                    let caps = (selection.resolved == BackendKind::Native)
+                        .then(BackendCapabilities::native);
+                    (Some(selection.resolved.to_string()), caps)
+                }
+                Err(error) => {
+                    tracing::debug!(
+                        target: "ternvale::api",
+                        vm = name,
+                        error = %error,
+                        "list: could not parse config for backend fields"
+                    );
+                    (None, None)
+                }
+            },
+            Err(error) => {
+                tracing::debug!(
+                    target: "ternvale::api",
+                    vm = name,
+                    error = %error,
+                    "list: could not read config for backend fields"
+                );
+                (None, None)
+            }
+        };
         vms.push(VmListEntry {
             name: name.to_string(),
             running,
             state: None,
+            backend,
+            capabilities,
         });
     }
     vms.sort_by(|a, b| a.name.cmp(&b.name));

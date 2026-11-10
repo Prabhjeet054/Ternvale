@@ -44,6 +44,13 @@ multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
 
+# Step 91: Virtualization.framework stays behind VmBackend. When ternvale-vz
+# exists, only ternvale-backend may depend on it (CLI/API/app use the trait).
+[[bans.deny]]
+name = "ternvale-vz"
+wrappers = ["ternvale-backend"]
+reason = "callers use ternvale-backend::VmBackend; do not depend on ternvale-vz directly"
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"

@@ -120,6 +120,7 @@ fn dummy_config(name: &str) -> VmConfig {
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     }
 }
 

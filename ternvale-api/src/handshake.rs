@@ -18,12 +18,18 @@ pub struct HandshakeParams {
 
 /// `handshake` result. Optional extra fields may be added later.
 /// Unknown JSON keys are ignored so an `api_version=1` client keeps working.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HandshakeResult {
     pub ok: bool,
     pub api_version: u32,
     pub min_api_version: u32,
     pub max_api_version: u32,
+    /// Resolved hypervisor backend (`native` / `vz`). Omitted by [`HandshakeResult::negotiate`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Capability flags for `backend`. Omitted by [`HandshakeResult::negotiate`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<serde_json::Value>,
 }
 
 impl HandshakeResult {
@@ -54,6 +60,8 @@ impl HandshakeResult {
             api_version: requested,
             min_api_version: MIN_API_VERSION,
             max_api_version: MAX_API_VERSION,
+            backend: None,
+            capabilities: None,
         })
     }
 }

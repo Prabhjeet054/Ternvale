@@ -178,6 +178,7 @@ mod tests {
             power: Default::default(),
             encryption: false,
             agent: Default::default(),
+            backend: Default::default(),
         };
         assert_eq!(ssh_host_port(&config), Some(2222));
         config.nics.clear();

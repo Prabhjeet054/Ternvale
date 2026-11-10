@@ -373,6 +373,7 @@ fn boot_once(
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     };
     tracing::info!(
         target: "ternvale::boot",

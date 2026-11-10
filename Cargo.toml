@@ -25,6 +25,7 @@ members = [
     "ternvale-sandbox",
     "ternvale-api",
     "ternvale-client",
+    "ternvale-backend",
 ]
 
 [workspace.package]

@@ -226,6 +226,12 @@ pub struct StatusJson {
     /// `agent_version` from the tools ISO manifest (optional).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools_iso_agent: Option<String>,
+    /// Resolved hypervisor backend (`native` / `vz`). Optional for older clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Capability flags for `backend`. Optional for older clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ternvale_backend::BackendCapabilities>,
 }
 
 /// Guest agent connection in `status`.
@@ -309,6 +315,12 @@ pub struct VmListEntry {
     pub running: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
+    /// Resolved backend name. Optional for older clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Capability flags. Optional for older clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ternvale_backend::BackendCapabilities>,
 }
 
 /// One response line.
@@ -571,6 +583,8 @@ impl From<&VmStatus> for StatusJson {
             agent: None,
             tools_outdated: None,
             tools_iso_agent: None,
+            backend: None,
+            capabilities: None,
         }
     }
 }

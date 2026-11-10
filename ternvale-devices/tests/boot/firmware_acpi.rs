@@ -76,6 +76,7 @@ pub fn run() -> Result<(), String> {
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     };
     if vm.effective_firmware_tables() != FirmwareTables::Acpi {
         return Err("a firmware boot without firmware_tables should default to acpi".into());

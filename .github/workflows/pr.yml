@@ -70,6 +70,8 @@ jobs:
         run: ./scripts/audit-unsafe.sh
       - name: cargo-deny
         run: cargo deny check licenses bans sources
+      - name: backend dependency lint
+        run: ./scripts/check-backend-deps.sh
       - name: cargo-audit
         run: cargo audit
       - name: ACPI tables

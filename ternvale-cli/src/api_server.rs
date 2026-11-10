@@ -217,7 +217,19 @@ fn dispatch_hub(line: &str, handshook: &mut bool) -> HubDispatch {
 fn handshake(params: Option<&Value>) -> Result<HandshakeResult, ApiError> {
     let params: HandshakeParams = serde_json::from_value(params.cloned().unwrap_or(Value::Null))
         .map_err(|e| ApiError::InvalidParams(e.to_string()))?;
-    HandshakeResult::negotiate(params.api_version)
+    let mut result = HandshakeResult::negotiate(params.api_version)?;
+    result.backend = Some("native".into());
+    result.capabilities = Some(
+        serde_json::to_value(ternvale_backend::BackendCapabilities::native()).map_err(|error| {
+            tracing::error!(
+                target: "ternvale::api",
+                error = %error,
+                "failed to encode backend capabilities"
+            );
+            ApiError::Application(error.to_string())
+        })?,
+    );
+    Ok(result)
 }
 
 fn stream_hub_events(writer: &mut UnixStream, kinds: &[EventKind]) {

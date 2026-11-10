@@ -29,6 +29,7 @@ lint:
 	$(CARGO) clippy --workspace -- -D warnings
 	./scripts/acpi-check.sh
 	./scripts/audit-unsafe.sh
+	./scripts/check-backend-deps.sh
 
 audit-unsafe:
 	./scripts/audit-unsafe.sh
@@ -39,6 +40,7 @@ ci-pr:
 	$(CARGO) clippy --workspace -- -D warnings
 	./scripts/audit-unsafe.sh
 	./scripts/acpi-check.sh
+	./scripts/check-backend-deps.sh
 	@if $(CARGO) deny --version >/dev/null 2>&1; then \
 		$(CARGO) deny check licenses bans sources; \
 		$(CARGO) deny check advisories || echo "ci-pr: cargo-deny advisories skipped (need deny >=0.20 for rustsec CVSS 4.0)"; \

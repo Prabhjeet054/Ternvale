@@ -1,4 +1,4 @@
-//! `profile`: a guest OS preset, `"linux"` (the default) or `"windows"`.
+//! `profile`: a guest OS preset, `"linux"` (the default), `"windows"`, or `"macos"`.
 //!
 //! `linux` changes nothing: every other field keeps its own default.
 //! `windows` selects what Windows 11 on Arm needs from the VM:
@@ -50,6 +50,9 @@ pub enum Profile {
     /// ACPI, TPM 2.0, virtio-pci, ISO first in the boot order, and the
     /// Windows 11 RAM and vCPU minimums.
     Windows,
+    /// UEFI firmware required. Auto backend selection maps this to `vz`
+    /// (Virtualization.framework; Step 92).
+    Macos,
 }
 
 impl fmt::Display for Profile {
@@ -57,6 +60,7 @@ impl fmt::Display for Profile {
         formatter.write_str(match self {
             Self::Linux => "linux",
             Self::Windows => "windows",
+            Self::Macos => "macos",
         })
     }
 }
@@ -90,7 +94,7 @@ impl Profile {
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(profile = %self))]
     pub fn default_cpus(self) -> Option<u32> {
         match self {
-            Self::Linux => None,
+            Self::Linux | Self::Macos => None,
             Self::Windows => Some(WINDOWS_MIN_CPUS),
         }
     }
@@ -99,7 +103,7 @@ impl Profile {
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(profile = %self))]
     pub fn default_ram_mib(self) -> Option<u64> {
         match self {
-            Self::Linux => None,
+            Self::Linux | Self::Macos => None,
             Self::Windows => Some(WINDOWS_MIN_RAM_MIB),
         }
     }
@@ -107,57 +111,86 @@ impl Profile {
     /// Reject settings the profile cannot run with.
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(profile = %self, name = %config.name))]
     pub(crate) fn validate(self, config: &VmConfig) -> Result<(), ConfigError> {
-        if self == Self::Linux {
-            tracing::debug!(target: "ternvale::config", "profile linux; no preset");
-            return Ok(());
+        match self {
+            Self::Linux => {
+                tracing::debug!(target: "ternvale::config", "profile linux; no preset");
+                Ok(())
+            }
+            Self::Macos => validate_macos(config),
+            Self::Windows => validate_windows(config),
         }
-        if config.firmware.is_none() {
-            tracing::error!(target: "ternvale::config", profile = %self, "profile needs firmware");
-            return Err(ConfigError::ProfileNeedsFirmware { profile: self });
-        }
-        if config.firmware_tables == Some(FirmwareTables::Fdt) {
-            return Err(conflict(
-                self,
-                "firmware_tables = \"fdt\"",
-                "Windows reads ACPI tables, not a device tree",
-            ));
-        }
-        if !config.tpm_enabled() {
-            return Err(conflict(
-                self,
-                "tpm.enabled = false",
-                "Windows 11 requires a TPM 2.0",
-            ));
-        }
-        at_least(
-            self,
-            "cpus",
-            u64::from(config.cpus),
-            u64::from(WINDOWS_MIN_CPUS),
-            "Windows 11 requires at least 2 virtual processors",
-        )?;
-        at_least(
-            self,
-            "ram_mib",
-            config.ram_mib,
-            WINDOWS_MIN_RAM_MIB,
-            "Windows 11 requires at least 4 GB of memory",
-        )?;
-        if config.tpm_section().backend == TpmBackendKind::Stub {
-            tracing::warn!(target: "ternvale::config", profile = %self, "tpm.backend = \"stub\" fails every TPM command; Windows 11 setup will report that the PC lacks a TPM 2.0");
-        }
-        warn_small_disks(self, config);
-        warn_missing_drivers(self, config);
-        tracing::debug!(
-            target: "ternvale::config",
-            profile = %self,
-            cpus = config.cpus,
-            ram_mib = config.ram_mib,
-            transport = %config.virtio_transport(),
-            "windows profile: acpi tables, tpm 2.0, virtio-pci disks, iso first in the uefi boot order"
-        );
-        Ok(())
     }
+}
+
+fn validate_macos(config: &VmConfig) -> Result<(), ConfigError> {
+    let profile = Profile::Macos;
+    if config.firmware.is_none() {
+        tracing::error!(target: "ternvale::config", profile = %profile, "profile needs firmware");
+        return Err(ConfigError::ProfileNeedsFirmware { profile });
+    }
+    if config.firmware_tables == Some(FirmwareTables::Fdt) {
+        return Err(conflict(
+            profile,
+            "firmware_tables = \"fdt\"",
+            "macOS guests boot UEFI firmware, not a device tree",
+        ));
+    }
+    tracing::debug!(
+        target: "ternvale::config",
+        profile = %profile,
+        "macos profile: firmware required; auto backend is vz"
+    );
+    Ok(())
+}
+
+fn validate_windows(config: &VmConfig) -> Result<(), ConfigError> {
+    let profile = Profile::Windows;
+    if config.firmware.is_none() {
+        tracing::error!(target: "ternvale::config", profile = %profile, "profile needs firmware");
+        return Err(ConfigError::ProfileNeedsFirmware { profile });
+    }
+    if config.firmware_tables == Some(FirmwareTables::Fdt) {
+        return Err(conflict(
+            profile,
+            "firmware_tables = \"fdt\"",
+            "Windows reads ACPI tables, not a device tree",
+        ));
+    }
+    if !config.tpm_enabled() {
+        return Err(conflict(
+            profile,
+            "tpm.enabled = false",
+            "Windows 11 requires a TPM 2.0",
+        ));
+    }
+    at_least(
+        profile,
+        "cpus",
+        u64::from(config.cpus),
+        u64::from(WINDOWS_MIN_CPUS),
+        "Windows 11 requires at least 2 virtual processors",
+    )?;
+    at_least(
+        profile,
+        "ram_mib",
+        config.ram_mib,
+        WINDOWS_MIN_RAM_MIB,
+        "Windows 11 requires at least 4 GB of memory",
+    )?;
+    if config.tpm_section().backend == TpmBackendKind::Stub {
+        tracing::warn!(target: "ternvale::config", profile = %profile, "tpm.backend = \"stub\" fails every TPM command; Windows 11 setup will report that the PC lacks a TPM 2.0");
+    }
+    warn_small_disks(profile, config);
+    warn_missing_drivers(profile, config);
+    tracing::debug!(
+        target: "ternvale::config",
+        profile = %profile,
+        cpus = config.cpus,
+        ram_mib = config.ram_mib,
+        transport = %config.virtio_transport(),
+        "windows profile: acpi tables, tpm 2.0, virtio-pci disks, iso first in the uefi boot order"
+    );
+    Ok(())
 }
 
 fn conflict(profile: Profile, field: &'static str, reason: &'static str) -> ConfigError {
@@ -234,7 +267,7 @@ impl VmConfig {
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name, profile = %self.profile))]
     pub fn virtio_transport(&self) -> VirtioTransport {
         match self.profile {
-            Profile::Linux => VirtioTransport::Mmio,
+            Profile::Linux | Profile::Macos => VirtioTransport::Mmio,
             Profile::Windows => VirtioTransport::Pci,
         }
     }

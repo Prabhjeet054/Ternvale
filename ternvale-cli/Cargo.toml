@@ -39,6 +39,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # JSON-RPC 2.0 method names, handshake, and events (Step 83).
 ternvale-api = { path = "../ternvale-api" }
+# VmBackend selection and NativeBackend capabilities (Step 91).
+ternvale-backend = { path = "../ternvale-backend" }
 # Required project-wide logging facade (target ternvale::cli).
 tracing = "0.1"
 # Log files, panic hook, and the stderr layer.

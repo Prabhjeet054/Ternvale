@@ -276,6 +276,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     };
     vm.validate()
         .map_err(|err| format!("linux config: {err}"))?;

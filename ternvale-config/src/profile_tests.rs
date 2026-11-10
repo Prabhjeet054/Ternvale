@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::*;
-use crate::TpmBackendKind;
+use crate::{BackendKind, TpmBackendKind};
 
 struct Dir(PathBuf);
 
@@ -113,6 +113,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     }
 }
 
@@ -240,9 +241,41 @@ fn linux_is_the_default_and_keeps_cpus_and_ram_required() {
         VmConfig::from_toml(&explicit).expect("explicit linux"),
         config
     );
-    let error =
-        VmConfig::parse(&text.replace("name", "profile = \"macos\"\nname")).expect_err("bad");
-    assert!(error.to_string().contains("macos"), "{error}");
+    let macos = VmConfig::parse(&format!(
+        "{text}cpus = 1\nram_mib = 256\nprofile = \"macos\"\n"
+    ))
+    .expect("macos parses");
+    assert_eq!(macos.profile, Profile::Macos);
+    assert_eq!(macos.virtio_transport(), VirtioTransport::Mmio);
+    macos
+        .validate()
+        .expect("windows template already has firmware");
+}
+
+#[test]
+fn backend_key_parses_native_vz_auto() {
+    let dir = Dir::new("backend");
+    let base = format!(
+        "name = \"t\"\ncpus = 1\nram_mib = 256\nfirmware = \"{}\"\nserial_log = \"{}\"\n",
+        dir.path("fw.fd"),
+        dir.path("serial.log"),
+    );
+    let config = VmConfig::from_toml(&base).expect("default auto");
+    assert_eq!(config.backend, BackendKind::Auto);
+    assert!(
+        !config
+            .to_toml()
+            .expect("ser")
+            .lines()
+            .any(|line| line.starts_with("backend ")),
+        "auto backend must be omitted from TOML"
+    );
+    let native = VmConfig::from_toml(&format!("{base}backend = \"native\"\n")).expect("native");
+    assert_eq!(native.backend, BackendKind::Native);
+    let vz = VmConfig::from_toml(&format!("{base}backend = \"vz\"\n")).expect("vz");
+    assert_eq!(vz.backend, BackendKind::Vz);
+    let error = VmConfig::parse(&format!("{base}backend = \"xen\"\n")).expect_err("bad");
+    assert!(error.to_string().contains("xen"), "{error}");
 }
 
 /// The Step 18 boot harness config (`tests/boot/initrd.rs`): a direct kernel
@@ -273,6 +306,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     }
 }
 
@@ -335,6 +369,7 @@ fn iso9660_is_detected_by_the_cd001_identifier_in_sector_16() {
 fn names_are_lowercase() {
     assert_eq!(Profile::Windows.to_string(), "windows");
     assert_eq!(Profile::Linux.to_string(), "linux");
+    assert_eq!(Profile::Macos.to_string(), "macos");
     assert_eq!(VirtioTransport::Pci.to_string(), "virtio-pci");
     assert_eq!(VirtioTransport::Mmio.to_string(), "virtio-mmio");
 }

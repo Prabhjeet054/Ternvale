@@ -188,6 +188,7 @@ fn boot_vm(
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     };
     let uart = Pl011::open(&serial_log).map_err(|e| e.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));

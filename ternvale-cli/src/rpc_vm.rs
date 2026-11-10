@@ -123,7 +123,24 @@ fn handshake_result(params: Option<&Value>) -> Result<HandshakeResult, ApiError>
             .map_err(|error| ApiError::InvalidParams(error.to_string()))?,
         None => return Err(ApiError::InvalidParams("api_version required".into())),
     };
-    HandshakeResult::negotiate(params.api_version)
+    attach_backend(HandshakeResult::negotiate(params.api_version)?)
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::api", skip_all)]
+fn attach_backend(mut result: HandshakeResult) -> Result<HandshakeResult, ApiError> {
+    result.backend = Some("native".into());
+    match serde_json::to_value(ternvale_backend::BackendCapabilities::native()) {
+        Ok(value) => result.capabilities = Some(value),
+        Err(error) => {
+            tracing::error!(
+                target: "ternvale::api",
+                error = %error,
+                "failed to encode backend capabilities"
+            );
+            return Err(ApiError::Application(error.to_string()));
+        }
+    }
+    Ok(result)
 }
 
 fn subscribe_kinds(params: Option<&Value>) -> Vec<EventKind> {

@@ -150,6 +150,8 @@ fn bumped_iso_agent_version_flags_the_guest_as_outdated() {
         }),
         tools_outdated: None,
         tools_iso_agent: None,
+        backend: None,
+        capabilities: None,
     };
     let dir = std::env::temp_dir().join(format!("ternvale-tools-outdated-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("dir");

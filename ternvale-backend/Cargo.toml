@@ -1,0 +1,25 @@
+[package]
+name = "ternvale-backend"
+description = "VmBackend trait, capabilities, NativeBackend, and conformance tests."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed BackendError.
+thiserror = "2"
+# Required project-wide logging (target ternvale::backend).
+tracing = "0.1"
+# Serialize BackendCapabilities for the control API.
+serde = { version = "1", features = ["derive"] }
+# VmConfig, Profile, BackendKind.
+ternvale-config = { path = "../ternvale-config" }
+# Existing orchestrator wrapped by NativeBackend (no behavior change).
+ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
+
+[dev-dependencies]
+# Block on async conformance tests without a tokio runtime.
+pollster = "0.4"
+
+[lints]
+workspace = true

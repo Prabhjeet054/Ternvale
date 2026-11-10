@@ -542,5 +542,7 @@ fn decorate_status(response: &mut Response, agent: Option<&AgentServer>, tools_i
             status.agent = Some(AgentJson::from(&agent.status()));
         }
         crate::tools::fill_tools_outdated(status, tools_iso);
+        status.backend = Some("native".into());
+        status.capabilities = Some(ternvale_backend::BackendCapabilities::native());
     }
 }

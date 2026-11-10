@@ -25,9 +25,12 @@ const MAX_CPUS: u32 = 16;
 pub struct VmConfig {
     /// Guest name. Also used in the host log file name.
     pub name: String,
-    /// `"linux"` (default) or `"windows"`. See [`Profile`].
+    /// `"linux"` (default), `"windows"`, or `"macos"`. See [`Profile`].
     #[serde(default, skip_serializing_if = "Profile::is_linux")]
     pub profile: Profile,
+    /// `"auto"` (default), `"native"`, or `"vz"`. Distinct from `[tpm].backend`.
+    #[serde(default, skip_serializing_if = "crate::BackendKind::is_auto")]
+    pub backend: crate::BackendKind,
     /// vCPU count, from 1 through 16. Required unless the profile has a default.
     pub cpus: u32,
     /// Guest RAM in MiB, a positive multiple of 16. Required unless the profile has a default.

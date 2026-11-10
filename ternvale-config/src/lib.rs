@@ -5,6 +5,7 @@
 
 mod agent;
 mod audio;
+mod backend;
 mod disk;
 mod error;
 mod firmware_tables;
@@ -21,6 +22,7 @@ mod vsock;
 
 pub use agent::AgentSection;
 pub use audio::AudioSection;
+pub use backend::BackendKind;
 pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEPTH};
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;

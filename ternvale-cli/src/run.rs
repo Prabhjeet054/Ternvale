@@ -90,6 +90,14 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     }
     warn_config_problems(&config);
 
+    let selection =
+        ternvale_backend::select(&config).map_err(|error| anyhow::anyhow!("{error}"))?;
+    if selection.resolved == ternvale_config::BackendKind::Vz {
+        anyhow::bail!(
+            "backend vz is not available yet (macOS guests need Virtualization.framework)"
+        );
+    }
+
     let socket = paths::socket_path(&config.name)?;
     let plan = match mode {
         DisplayMode::Window => Some(

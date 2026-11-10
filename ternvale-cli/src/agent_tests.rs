@@ -60,6 +60,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         power: Default::default(),
         encryption: false,
         agent: Default::default(),
+        backend: Default::default(),
     }
 }
 
