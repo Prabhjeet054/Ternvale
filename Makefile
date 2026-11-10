@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom compat compat-test
+.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom compat compat-test updates-test crash-ingest-test step89-test
 
 build:
 	$(CARGO) build --workspace
@@ -92,6 +92,17 @@ compat:
 
 compat-test:
 	cd scripts/compat && python3 -m unittest discover -p 'test_*.py' -v
+
+# Step 89: Sparkle appcast generator + crash ingest (no network).
+updates-test:
+	cd scripts/updates && python3 -m unittest discover -p 'test_*.py' -v
+
+step89-test:
+	cd scripts/updates && python3 -m unittest test_step89.py -v
+	cd scripts/crash-ingest && python3 -m unittest discover -p 'test_*.py' -q
+
+crash-ingest-test:
+	cd scripts/crash-ingest && python3 -m unittest discover -p 'test_*.py' -v
 
 # Step 79: libFuzzer smoke (30s per target). Needs nightly + `cargo install cargo-fuzz`.
 FUZZ_CRATE := ternvale-fuzz

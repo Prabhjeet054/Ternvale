@@ -47,6 +47,18 @@
 		B10000000000000000000027 /* NicConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000027 /* NicConfigTests.swift */; };
 		B10000000000000000000028 /* ToolsOutdatedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000028 /* ToolsOutdatedTests.swift */; };
 		B10000000000000000000029 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000029 /* KeychainStore.swift */; };
+		B1000000000000000000002A /* CrashRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002A /* CrashRedactor.swift */; };
+		B1000000000000000000002B /* CrashReportPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002B /* CrashReportPayload.swift */; };
+		B1000000000000000000002C /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002C /* CrashReporter.swift */; };
+		B1000000000000000000002D /* Appcast.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002D /* Appcast.swift */; };
+		B1000000000000000000002E /* SparkleUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002E /* SparkleUpdater.swift */; };
+		B1000000000000000000002F /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002F /* PreferencesView.swift */; };
+		B10000000000000000000030 /* CrashReportPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000030 /* CrashReportPreviewView.swift */; };
+		B10000000000000000000031 /* CrashHeartbeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000031 /* CrashHeartbeat.swift */; };
+		B10000000000000000000032 /* AppcastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000032 /* AppcastTests.swift */; };
+		B10000000000000000000033 /* CrashRedactorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000033 /* CrashRedactorTests.swift */; };
+		B10000000000000000000034 /* CrashReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000034 /* CrashReporterTests.swift */; };
+		B10000000000000000000035 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B71000000000000000000002 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -91,6 +103,17 @@
 		B20000000000000000000027 /* NicConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NicConfigTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000028 /* ToolsOutdatedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsOutdatedTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000029 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		B2000000000000000000002A /* CrashRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashRedactor.swift; sourceTree = "<group>"; };
+		B2000000000000000000002B /* CrashReportPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportPayload.swift; sourceTree = "<group>"; };
+		B2000000000000000000002C /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
+		B2000000000000000000002D /* Appcast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Appcast.swift; sourceTree = "<group>"; };
+		B2000000000000000000002E /* SparkleUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleUpdater.swift; sourceTree = "<group>"; };
+		B2000000000000000000002F /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		B20000000000000000000030 /* CrashReportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportPreviewView.swift; sourceTree = "<group>"; };
+		B20000000000000000000031 /* CrashHeartbeat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashHeartbeat.swift; sourceTree = "<group>"; };
+		B20000000000000000000032 /* AppcastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppcastTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000033 /* CrashRedactorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashRedactorTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000034 /* CrashReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporterTests.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -100,6 +123,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000035 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -149,6 +173,9 @@
 				B20000000000000000000023 /* FeedbackMailerTests.swift */,
 				B20000000000000000000027 /* NicConfigTests.swift */,
 				B20000000000000000000028 /* ToolsOutdatedTests.swift */,
+				B20000000000000000000032 /* AppcastTests.swift */,
+				B20000000000000000000033 /* CrashRedactorTests.swift */,
+				B20000000000000000000034 /* CrashReporterTests.swift */,
 			);
 			path = TernvaleTests;
 			sourceTree = "<group>";
@@ -164,6 +191,8 @@
 				B20000000000000000000019 /* VMDisplayPanel.swift */,
 				B20000000000000000000020 /* UpdateBannerView.swift */,
 				B20000000000000000000026 /* VMSettingsView.swift */,
+				B2000000000000000000002F /* PreferencesView.swift */,
+				B20000000000000000000030 /* CrashReportPreviewView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -201,6 +230,12 @@
 				B20000000000000000000022 /* FeedbackMailer.swift */,
 				B20000000000000000000025 /* VmnetHelperService.swift */,
 				B20000000000000000000029 /* KeychainStore.swift */,
+				B2000000000000000000002A /* CrashRedactor.swift */,
+				B2000000000000000000002B /* CrashReportPayload.swift */,
+				B2000000000000000000002C /* CrashReporter.swift */,
+				B2000000000000000000002D /* Appcast.swift */,
+				B2000000000000000000002E /* SparkleUpdater.swift */,
+				B20000000000000000000031 /* CrashHeartbeat.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -263,6 +298,9 @@
 			dependencies = (
 			);
 			name = Ternvale;
+			packageProductDependencies = (
+				B71000000000000000000002 /* Sparkle */,
+			);
 			productName = Ternvale;
 			productReference = B30000000000000000000001 /* Ternvale.app */;
 			productType = "com.apple.product-type.application";
@@ -307,6 +345,9 @@
 				Base,
 			);
 			mainGroup = B50000000000000000000001;
+			packageReferences = (
+				B71000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = B50000000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -371,6 +412,9 @@
 				B10000000000000000000023 /* FeedbackMailerTests.swift in Sources */,
 				B10000000000000000000027 /* NicConfigTests.swift in Sources */,
 				B10000000000000000000028 /* ToolsOutdatedTests.swift in Sources */,
+				B10000000000000000000032 /* AppcastTests.swift in Sources */,
+				B10000000000000000000033 /* CrashRedactorTests.swift in Sources */,
+				B10000000000000000000034 /* CrashReporterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -410,6 +454,14 @@
 				B10000000000000000000025 /* VmnetHelperService.swift in Sources */,
 				B10000000000000000000026 /* VMSettingsView.swift in Sources */,
 				B10000000000000000000029 /* KeychainStore.swift in Sources */,
+				B1000000000000000000002A /* CrashRedactor.swift in Sources */,
+				B1000000000000000000002B /* CrashReportPayload.swift in Sources */,
+				B1000000000000000000002C /* CrashReporter.swift in Sources */,
+				B1000000000000000000002D /* Appcast.swift in Sources */,
+				B1000000000000000000002E /* SparkleUpdater.swift in Sources */,
+				B1000000000000000000002F /* PreferencesView.swift in Sources */,
+				B10000000000000000000030 /* CrashReportPreviewView.swift in Sources */,
+				B10000000000000000000031 /* CrashHeartbeat.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -555,6 +607,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B71000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B71000000000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B71000000000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B80000000000000000000001 /* Project object */;
 }

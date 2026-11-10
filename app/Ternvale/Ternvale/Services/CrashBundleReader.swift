@@ -54,4 +54,23 @@ enum CrashBundleReader {
         log.info("crash summary for \(vmName, privacy: .public): \(headline, privacy: .public)")
         return Summary(headline: headline, detail: detail, hostLog: hostLog)
     }
+
+    /// Host-side files for the crash preview. Serial logs and guest disks are omitted.
+    static func previewFiles(vmName: String) -> [(name: String, bytes: Int, text: String?)] {
+        var out: [(name: String, bytes: Int, text: String?)] = []
+        guard let hostLog = TernvalePaths.newestHostLog(for: vmName) else { return out }
+        let candidates = [
+            hostLog,
+            sidecarPath(hostLog: hostLog, suffix: ".summary.txt"),
+            sidecarPath(hostLog: hostLog, suffix: ".run.json"),
+        ]
+        for url in candidates {
+            let name = url.lastPathComponent
+            if CrashRedactor.shouldExclude(filename: name) { continue }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let text = String(data: data, encoding: .utf8)
+            out.append((name: name, bytes: data.count, text: text))
+        }
+        return out
+    }
 }

@@ -47,3 +47,4 @@ Guest-facing parsers have libFuzzer targets in `ternvale-fuzz` (nightly +
 - [docs/IMPORT.md](docs/IMPORT.md) — `.tvm` export/import, templates, qcow2/vmdk/vhdx
 - [docs/CI.md](docs/CI.md) — GitHub Actions, hosted vs self-hosted HV, runner security
 - [docs/COMPAT.md](docs/COMPAT.md) — guest OS matrix (`make compat`)
+- [docs/PRIVACY.md](docs/PRIVACY.md) — updates, opt-in crash reports, retention

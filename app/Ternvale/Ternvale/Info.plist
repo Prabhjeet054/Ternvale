@@ -24,7 +24,17 @@
 	<string>Copyright © 2026 Ternvale.</string>
 	<key>TERNVALEUpdateFeedURL</key>
 	<string>https://updates.ternvale.dev/latest.json</string>
+	<key>TERNVALECrashURL</key>
+	<string>https://crash.ternvale.dev/v1/crash</string>
 	<key>TERNVALEFeedbackEmail</key>
 	<string>beta@ternvale.dev</string>
+	<key>SUFeedURL</key>
+	<string>https://updates.ternvale.dev/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</string>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 </dict>
 </plist>

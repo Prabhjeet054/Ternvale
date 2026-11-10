@@ -217,4 +217,20 @@ fi
 
 log "ternvale release-verify"
 "$helper" "${verify_flags[@]}"
+
+if [[ -n "${SPARKLE_ED_PRIVATE_KEY:-}" ]]; then
+    channel="stable"
+    if [[ "${GITHUB_REF_NAME:-}" == *beta* ]] || [[ "${TERNVALE_UPDATE_CHANNEL:-}" == "beta" ]]; then
+        channel="beta"
+    fi
+    log "sparkle appcast channel=${channel}"
+    python3 "${root}/scripts/updates/generate_appcast.py" \
+        --zip "$zip" \
+        --version "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" \
+        --build "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" \
+        --channel "$channel" \
+        --out "${out}/appcast.xml"
+else
+    log "skipping appcast (set SPARKLE_ED_PRIVATE_KEY to sign Sparkle 2 EdDSA appcast)"
+fi
 log "done"
