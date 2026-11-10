@@ -115,6 +115,8 @@ pub struct Facts {
     pub disk: Result<DiskFacts, String>,
     pub log_dir: Result<LogDirFacts, String>,
     pub swtpm: Result<ternvale_tpm::SwtpmInfo, ternvale_tpm::SwtpmError>,
+    /// `qemu-img` for qcow2/vmdk/vhdx import (optional).
+    pub qemu_img: Result<PathBuf, String>,
 }
 
 /// macOS 15 or newer (the in-kernel GICv3 needs it).
@@ -277,7 +279,23 @@ pub fn evaluate(facts: &Facts) -> Vec<Check> {
         check_disk(&facts.disk),
         check_log_dir(&facts.log_dir),
         tpm::check_swtpm(&facts.swtpm, tpm::Need::Optional),
+        check_qemu_img(&facts.qemu_img),
     ]
+}
+
+/// Optional `qemu-img` (qcow2/vmdk/vhdx/raw import). Missing is a warning.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn check_qemu_img(found: &Result<PathBuf, String>) -> Check {
+    const NAME: &str = "qemu-img";
+    match found {
+        Ok(path) => Check::new(NAME, Outcome::Pass, path.display().to_string()),
+        Err(error) => {
+            tracing::warn!(target: "ternvale::cli", error = %error, "qemu-img missing");
+            Check::new(NAME, Outcome::Warn, error.clone()).fix(
+                "Install QEMU for disk import: `brew install qemu` (ternvale import disk.qcow2).",
+            )
+        }
+    }
 }
 
 /// Aligned `PASS  name  detail` lines with `fix:` lines and a totals line.

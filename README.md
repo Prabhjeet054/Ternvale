@@ -44,3 +44,4 @@ Guest-facing parsers have libFuzzer targets in `ternvale-fuzz` (nightly +
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layering
 - [docs/DEBUGGING.md](docs/DEBUGGING.md) — triage headings (filled in as the VMM grows)
 - [docs/PROGRESS.md](docs/PROGRESS.md) — what each step changed and how to test it
+- [docs/IMPORT.md](docs/IMPORT.md) — `.tvm` export/import, templates, qcow2/vmdk/vhdx

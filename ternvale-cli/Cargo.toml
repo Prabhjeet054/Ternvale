@@ -82,6 +82,10 @@ zip = { version = "7.2", default-features = false, features = ["deflate-flate2-z
 arboard = { version = "3.4", default-features = false }
 # SHA-256 of tools-ISO files for MANIFEST.json (already in the workspace).
 sha2 = "0.10"
+# Optional zstd for `.tvm` disk/boot payloads (`ternvale export --zstd`).
+zstd = "0.13"
+# Serialize exported configs with relative paths (skip validate until import).
+toml = "0.8"
 
 [dev-dependencies]
 # Status tests connect the real agent loop to the agent server.

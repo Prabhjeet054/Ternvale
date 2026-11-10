@@ -41,6 +41,7 @@ fn healthy() -> Facts {
             version: "0.10.2".into(),
             features: ternvale_tpm::REQUIRED_FEATURES.map(String::from).to_vec(),
         }),
+        qemu_img: Ok(PathBuf::from("/opt/homebrew/bin/qemu-img")),
     }
 }
 
@@ -57,7 +58,7 @@ fn a_healthy_host_passes_everything() {
         "{text}"
     );
     assert!(
-        text.ends_with("7 passed, 0 warnings, 0 failed, 0 skipped"),
+        text.ends_with("8 passed, 0 warnings, 0 failed, 0 skipped"),
         "{text}"
     );
     assert!(!text.contains("fix:"));
@@ -74,6 +75,14 @@ fn old_macos_fails_with_an_update_fix() {
     );
     assert!(check.fix.expect("fix").contains("Software Update"));
     assert_eq!(check_macos(&Err("nope".into())).outcome, Outcome::Warn);
+}
+
+#[test]
+fn missing_qemu_img_is_a_warning() {
+    use super::check_qemu_img;
+    let check = check_qemu_img(&Err("qemu-img not found".into()));
+    assert_eq!(check.outcome, Outcome::Warn);
+    assert!(check.fix.expect("fix").contains("brew install qemu"));
 }
 
 #[test]
@@ -104,7 +113,7 @@ fn unsigned_binary_fails_hypervisor_and_entitlement_with_codesign_fix() {
         "{text}"
     );
     assert!(
-        text.ends_with("4 passed, 0 warnings, 2 failed, 1 skipped"),
+        text.ends_with("5 passed, 0 warnings, 2 failed, 1 skipped"),
         "{text}"
     );
 }

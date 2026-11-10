@@ -8,7 +8,8 @@
 //! `doctor` checks the host, `logs` reads host logs, and `report` zips a
 //! crash report (asking a running VM to `dump-diagnostics` first).
 //! `acpi-dump` reads the ACPI tables back from a probe VM and can diff them
-//! against QEMU's.
+//! against QEMU's. `export` / `import` move `.tvm` directory bundles; `template
+//! create` and `new --from-template` freeze a read-only base and linked-clone it.
 //!
 //! This is the only crate that uses `anyhow`; every error carries context
 //! naming the operation. User-facing output uses `println!`/`eprintln!`;
@@ -37,6 +38,8 @@ pub mod display_input;
 pub mod doctor;
 pub mod events_sub;
 pub mod exec_cmd;
+pub mod export_cmd;
+pub mod import_cmd;
 pub mod json_out;
 pub mod keychain;
 pub mod logfmt;
@@ -45,6 +48,7 @@ pub mod paths;
 pub mod peer;
 pub mod power;
 pub mod protocol;
+pub mod qemu_img;
 pub mod release_verify;
 pub mod report;
 pub mod rpc_vm;
@@ -57,12 +61,15 @@ pub mod snapshot_cmd;
 pub mod ssh_cmd;
 pub mod stats_cmd;
 pub mod summary;
+pub mod template_cmd;
 pub mod tools;
 pub mod tools_build;
 pub mod tools_hybrid;
 pub mod tools_manifest;
 pub mod tools_verify;
 pub mod tools_winfsp;
+pub mod tvm;
+pub mod tvm_io;
 pub mod unattend_iso;
 pub mod unattend_xml;
 pub mod update_check;
@@ -261,6 +268,28 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             cli::SnapshotCommand::Delete { vm, name } => snapshot_cmd::delete(&vm, &name, json),
         },
         Command::Clone { source, new_name } => clone_cmd::clone_vm(&source, &new_name),
+        Command::Export { vm, out, zstd } => export_cmd::export_vm(&vm, &out, zstd, json),
+        Command::Import {
+            source,
+            name,
+            layered,
+            kernel,
+            firmware,
+        } => import_cmd::import(
+            &source,
+            name.as_deref(),
+            layered,
+            kernel.as_deref(),
+            firmware.as_deref(),
+            json,
+        ),
+        Command::Template { action } => match action {
+            cli::TemplateCommand::Create { vm, name } => template_cmd::create(&vm, &name, json),
+        },
+        Command::New {
+            name,
+            from_template,
+        } => template_cmd::new_from_template(&name, &from_template, json),
         Command::Crypto { action } => match action {
             cli::CryptoCommand::Rotate { name } => {
                 crate::crypto_cmd::rotate(&name)?;

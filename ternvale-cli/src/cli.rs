@@ -183,6 +183,46 @@ pub enum Command {
         /// New VM name.
         new_name: String,
     },
+    /// Write a portable `.tvm` directory bundle (manifest, disks, NVRAM, TPM).
+    Export {
+        /// Library VM name.
+        vm: String,
+        /// Output directory (convention: `name.tvm`).
+        out: PathBuf,
+        /// zstd-compress disk and boot payloads.
+        #[arg(long)]
+        zstd: bool,
+    },
+    /// Import a `.tvm` bundle or a qcow2/vmdk/vhdx/raw disk (`qemu-img`).
+    Import {
+        /// `.tvm` directory or a disk image.
+        source: PathBuf,
+        /// Library VM name (required for disk images; default: bundle `source_vm`).
+        #[arg(long)]
+        name: Option<String>,
+        /// After `qemu-img convert`, wrap the raw image in a linked-clone stack.
+        #[arg(long)]
+        layered: bool,
+        /// Kernel for a foreign disk import (direct boot).
+        #[arg(long)]
+        kernel: Option<PathBuf>,
+        /// UEFI firmware for a foreign disk import.
+        #[arg(long)]
+        firmware: Option<PathBuf>,
+    },
+    /// Freeze a VM as a read-only template.
+    Template {
+        #[command(subcommand)]
+        action: TemplateCommand,
+    },
+    /// Create a VM from a template (linked clone).
+    New {
+        /// New VM name.
+        name: String,
+        /// Template name (`ternvale template create`).
+        #[arg(long)]
+        from_template: String,
+    },
     /// VM library maintenance.
     Vm {
         #[command(subcommand)]
@@ -293,6 +333,18 @@ pub enum Command {
         /// Fail if Gatekeeper (`spctl -a -vvv`) rejects the bundle (set after notarize + staple).
         #[arg(long)]
         expect_gatekeeper: bool,
+    },
+}
+
+/// `ternvale template …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum TemplateCommand {
+    /// Copy `vm` into the template library with read-only disks.
+    Create {
+        /// Source VM name.
+        vm: String,
+        /// Template name.
+        name: String,
     },
 }
 

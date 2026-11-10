@@ -300,6 +300,49 @@ fn parses_every_subcommand() {
             name: "win11".into()
         }
     );
+    assert_eq!(
+        parse(&["ternvale", "export", "lab", "lab.tvm", "--zstd"]),
+        Command::Export {
+            vm: "lab".into(),
+            out: "lab.tvm".into(),
+            zstd: true,
+        }
+    );
+    assert_eq!(
+        parse(&[
+            "ternvale",
+            "import",
+            "disk.qcow2",
+            "--name",
+            "lab",
+            "--layered",
+            "--kernel",
+            "Image"
+        ]),
+        Command::Import {
+            source: "disk.qcow2".into(),
+            name: Some("lab".into()),
+            layered: true,
+            kernel: Some("Image".into()),
+            firmware: None,
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "template", "create", "lab", "base"]),
+        Command::Template {
+            action: crate::cli::TemplateCommand::Create {
+                vm: "lab".into(),
+                name: "base".into(),
+            }
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "new", "clone", "--from-template", "base"]),
+        Command::New {
+            name: "clone".into(),
+            from_template: "base".into(),
+        }
+    );
     assert!(
         Cli::try_parse_from(["ternvale", "--json", "status", "a"])
             .expect("json")

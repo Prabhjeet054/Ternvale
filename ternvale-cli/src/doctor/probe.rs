@@ -38,6 +38,7 @@ pub fn gather() -> Facts {
         disk,
         log_dir: log_dir.and_then(|dir| log_dir_facts(&dir)),
         swtpm: ternvale_tpm::find_swtpm(None),
+        qemu_img: crate::qemu_img::find(),
     }
 }
 

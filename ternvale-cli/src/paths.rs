@@ -13,6 +13,8 @@ pub const RUN_DIR_ENV: &str = "TERNVALE_RUN_DIR";
 pub const SNAPSHOTS_DIR_ENV: &str = "TERNVALE_SNAPSHOTS_DIR";
 /// Overrides `~/Library/Application Support/Ternvale/vms`.
 pub const VMS_DIR_ENV: &str = "TERNVALE_VMS_DIR";
+/// Overrides `~/Library/Application Support/Ternvale/templates`.
+pub const TEMPLATES_DIR_ENV: &str = "TERNVALE_TEMPLATES_DIR";
 
 /// The directory holding every VM's control socket.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
@@ -149,6 +151,24 @@ pub fn vm_dir(name: &str) -> Result<PathBuf> {
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = name))]
 pub fn vm_config_path(name: &str) -> Result<PathBuf> {
     Ok(vm_dir(name)?.join("config.toml"))
+}
+
+/// Template library root.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn templates_root() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os(TEMPLATES_DIR_ENV) {
+        return Ok(PathBuf::from(dir));
+    }
+    let home =
+        std::env::var_os("HOME").context("HOME is not set; cannot find the templates directory")?;
+    Ok(PathBuf::from(home).join("Library/Application Support/Ternvale/templates"))
+}
+
+/// `templates_root/<name>/`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(name))]
+pub fn template_dir(name: &str) -> Result<PathBuf> {
+    socket_path(name)?;
+    Ok(templates_root()?.join(name))
 }
 
 /// Wrapped data-encryption key (`TVKW`) for VM `name`.

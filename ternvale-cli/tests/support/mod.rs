@@ -109,14 +109,16 @@ impl Harness {
     fn with_bin_and_out(test: &str, bin: PathBuf, out: PathBuf) -> Self {
         let log = ternvale_log::init(LogConfig::new(format!("itest-{test}"), out.clone()))
             .expect("init logging");
-        // A short private directory: sun_path is 104 bytes, and tests must not
-        // touch the user's real run directory.
+        // sun_path is 104 bytes; tests must not use the user's run directory.
         let run_dir = PathBuf::from(format!("/tmp/tvit-{}-{test}", std::process::id()));
         if run_dir.exists() {
             std::fs::remove_dir_all(&run_dir).expect("clear old run dir");
         }
         let name = format!("it-{test}-{}", std::process::id());
         tracing::info!(target: T, vm = %name, out = %out.display(), run_dir = %run_dir.display(), "integration test start");
+        for dir in ["vms", "templates", "refs"] {
+            std::fs::create_dir_all(out.join(dir)).expect("library dir");
+        }
         Self {
             name,
             bin,
@@ -136,6 +138,9 @@ impl Harness {
         command
             .args(args)
             .env("TERNVALE_RUN_DIR", &self.run_dir)
+            .env("TERNVALE_VMS_DIR", self.out.join("vms"))
+            .env("TERNVALE_TEMPLATES_DIR", self.out.join("templates"))
+            .env("TERNVALE_REFS_DIR", self.out.join("refs"))
             .env("TERNVALE_SKIP_SANDBOX", "1");
         command
     }
@@ -199,8 +204,13 @@ impl Harness {
 
     /// `ternvale run <config>` in the background, stdin on a pipe.
     pub fn spawn_run(&self, config: &Path) -> Vm {
-        let stdout = std::fs::File::create(self.out.join("run.stdout")).expect("run.stdout");
-        let stderr = std::fs::File::create(self.out.join("run.stderr")).expect("run.stderr");
+        self.spawn_run_tagged(config, "run", self.out.join("guest-serial.log"))
+    }
+
+    /// Same as [`Self::spawn_run`] with distinct stdout/stderr/serial files.
+    pub fn spawn_run_tagged(&self, config: &Path, tag: &str, serial: PathBuf) -> Vm {
+        let stdout = std::fs::File::create(self.out.join(format!("{tag}.stdout"))).expect("stdout");
+        let stderr = std::fs::File::create(self.out.join(format!("{tag}.stderr"))).expect("stderr");
         let mut child = self
             .command(&["run", &config.display().to_string()])
             .stdin(Stdio::piped())
@@ -209,11 +219,11 @@ impl Harness {
             .spawn()
             .expect("spawn ternvale run");
         let stdin = child.stdin.take().expect("stdin pipe");
-        tracing::info!(target: T, pid = child.id(), "ternvale run started in the background");
+        tracing::info!(target: T, pid = child.id(), tag, "ternvale run started in the background");
         Vm {
             child,
             stdin,
-            serial: self.out.join("guest-serial.log"),
+            serial,
         }
     }
 
