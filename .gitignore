@@ -1,4 +1,20 @@
-/target
+# Any crate-local `target/` (not only the workspace root). Coverage builds
+# under ternvale-fuzz/target were accidentally committed without this.
+target/
+
+# scripts/release.sh / make rc-zip output: signed .app, zip, dSYMs, Xcode
+# DerivedData (object files, module cache, Sparkle SPM checkout). Never push.
+/dist/
+
+# Xcode user state and local build products (also created under dist/).
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.dSYM/
+*.ipa
+*.hmap
+.build/
 guest-tests/*.elf
 guest-tests/*.o
 guest-tests/*.bin
@@ -13,11 +29,14 @@ test-assets/
 ternvale-tools.iso
 **/*.iso.manifest.json
 bench-results/
-ternvale-fuzz/fuzz/target
-ternvale-fuzz/fuzz/artifacts
-ternvale-fuzz/fuzz/coverage
+# cargo-fuzz / libFuzzer products (see also ternvale-fuzz/.gitignore)
+ternvale-fuzz/fuzz/target/
+ternvale-fuzz/fuzz/artifacts/
+ternvale-fuzz/fuzz/coverage/
 ternvale-fuzz/fuzz/index.html
 ternvale-fuzz/fuzz/campaign/
+# libFuzzer names new corpus units as 40-char lowercase hex; keep named seeds.
+ternvale-fuzz/fuzz/corpus/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]
 .fuzz-toolchain/
 ternvale-cursor-prompts.md
 ternvale-cursor-prompts-part2.md

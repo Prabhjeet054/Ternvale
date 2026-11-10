@@ -1,8 +1,0 @@
-/Users/prabhjeet/Documents/Projects/Ternvale/ternvale-fuzz/target/aarch64-apple-darwin/coverage/aarch64-apple-darwin/release/build/tracing-log/6a6f2c766704deec/out/tracing_log-6a6f2c766704deec.d: /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/lib.rs /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/log_tracer.rs
-
-/Users/prabhjeet/Documents/Projects/Ternvale/ternvale-fuzz/target/aarch64-apple-darwin/coverage/aarch64-apple-darwin/release/build/tracing-log/6a6f2c766704deec/out/libtracing_log-6a6f2c766704deec.rlib: /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/lib.rs /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/log_tracer.rs
-
-/Users/prabhjeet/Documents/Projects/Ternvale/ternvale-fuzz/target/aarch64-apple-darwin/coverage/aarch64-apple-darwin/release/build/tracing-log/6a6f2c766704deec/out/libtracing_log-6a6f2c766704deec.rmeta: /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/lib.rs /Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/log_tracer.rs
-
-/Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/lib.rs:
-/Users/prabhjeet/Documents/Projects/Ternvale/.fuzz-toolchain/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-log-0.2.0/src/log_tracer.rs:

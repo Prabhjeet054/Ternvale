@@ -1,0 +1,14 @@
+# Do not push cargo-fuzz / libFuzzer products.
+# Named seed files under fuzz/corpus/<target>/ (empty, ff, init, …) stay tracked.
+/target/
+fuzz/target/
+fuzz/artifacts/
+fuzz/coverage/
+fuzz/campaign/
+fuzz/index.html
+*.profraw
+*.profdata
+default.profraw
+
+# libFuzzer names new units as 40-character lowercase hex.
+fuzz/corpus/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]

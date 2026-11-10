@@ -1,3 +1,0 @@
-error: 'rustfmt' is not installed for the toolchain 'nightly-aarch64-apple-darwin'.
-help: run `rustup component add rustfmt` to install it
-Failed to run rustfmt: Internal rustfmt error (non-fatal, continuing)

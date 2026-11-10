@@ -102,6 +102,11 @@ export TERNVALE_BOOT_LOG_DIR="$log_dir"
 export TERNVALE_BOOT_SCENARIO="$scenario"
 
 printf 'boot-test: scenario %s logs %s\n' "$scenario" "$log_dir"
+# Unsigned unit-test / fuzz shells export this to /usr/bin/env, which skips
+# codesign. The boot binary then gets HV_DENIED (adhoc, no hypervisor entitlement).
+if [[ "${TERNVALE_KEEP_CARGO_RUNNER:-}" != "1" ]]; then
+    unset CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER
+fi
 set +e
 cargo test -p ternvale-devices --features boot-test --test boot -- --nocapture
 status=$?

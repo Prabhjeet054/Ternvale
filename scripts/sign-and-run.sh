@@ -1,7 +1,10 @@
 #!/bin/bash
-# Codesign a binary with the Ternvale hypervisor entitlement, then exec it.
+# Codesign a binary with the hypervisor entitlement, then exec it.
 # Cargo passes the test or run binary as the first argument and the rest unchanged.
-# Ad-hoc (`-`) is SIGKILL'd by AMFI on this OS; prefer a Keychain identity.
+#
+# Default entitlements are hypervisor-only. `com.apple.vm.device-access` in
+# entitlements/ternvale.entitlements SIGKILLs Apple Development CLI tools
+# (no provisioning profile). USB live checks must set TERNVALE_ENTITLEMENTS.
 set -euo pipefail
 
 log() {
@@ -13,27 +16,9 @@ fail() {
     exit 1
 }
 
-first_identity_matching() {
-    local needle=$1
-    security find-identity -v -p codesigning 2>/dev/null \
-        | sed -n 's/.*"\(.*\)"/\1/p' \
-        | grep -F -- "$needle" \
-        | head -n 1 || true
-}
-
-pick_identity() {
-    if [[ -n "${TERNVALE_CODESIGN_IDENTITY:-}" ]]; then
-        printf '%s\n' "$TERNVALE_CODESIGN_IDENTITY"
-        return
-    fi
-    local id
-    id=$(first_identity_matching "Apple Development:")
-    if [[ -n "$id" ]]; then
-        printf '%s\n' "$id"
-        return
-    fi
-    printf '%s\n' "-"
-}
+script_dir=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=lib-codesign.sh
+source "${script_dir}/lib-codesign.sh"
 
 if [[ $# -lt 1 ]]; then
     fail "usage: sign-and-run.sh <binary> [args...]"
@@ -42,8 +27,7 @@ fi
 binary=$1
 shift
 
-script_dir=$(cd "$(dirname "$0")" && pwd)
-entitlements="${TERNVALE_ENTITLEMENTS:-${script_dir}/../entitlements/ternvale.entitlements}"
+entitlements="${TERNVALE_ENTITLEMENTS:-${script_dir}/../entitlements/ternvale-hv-only.entitlements}"
 
 log "binary=${binary}"
 if [[ ! -f "$binary" ]]; then
@@ -58,9 +42,13 @@ if [[ ! -f "$entitlements" ]]; then
     fail "entitlements file does not exist: ${entitlements}"
 fi
 
-identity=$(pick_identity)
-log "codesign identity=${identity} (com.apple.security.hypervisor)"
-if ! codesign --sign "$identity" --force --entitlements "$entitlements" "$binary"; then
+identity=$(ternvale_pick_codesign_identity)
+log "codesign identity=${identity}"
+sign=(--sign "$identity" --force --entitlements "$entitlements")
+if [[ "$identity" != "-" ]]; then
+    sign+=(--timestamp --options runtime)
+fi
+if ! codesign "${sign[@]}" "$binary"; then
     fail "codesign failed for ${binary}"
 fi
 
@@ -70,12 +58,21 @@ if [[ -n "${TERNVALE_SEATBELT_PROFILE:-}" ]]; then
     fi
     log "sandbox-exec -f ${TERNVALE_SEATBELT_PROFILE}"
     if [[ "${TERNVALE_SANDBOX_PROBE:-}" == "1" ]]; then
-        # CLI `ternvale run` probe: already confined; do not nested-relaunch
-        # and do not spawn swtpm from this process.
         export TERNVALE_SANDBOXED=1
     fi
     exec /usr/bin/sandbox-exec -f "${TERNVALE_SEATBELT_PROFILE}" "$binary" "$@"
 fi
 
 log "exec ${binary}"
-exec "$binary" "$@"
+set +e
+"$binary" "$@"
+status=$?
+set -e
+if [[ "$status" -eq 137 || "$status" -eq 9 ]]; then
+    log "AMFI SIGKILL (exit ${status}). Usual causes:"
+    log "  1. entitlements include com.apple.vm.device-access without a profile"
+    log "     (default is entitlements/ternvale-hv-only.entitlements)"
+    log "  2. codesign identity is not this Mac's Apple Development / Developer ID"
+    log "  3. ad-hoc sign (-) on recent macOS"
+fi
+exit "$status"

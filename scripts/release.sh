@@ -9,7 +9,10 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-entitlements="${root}/entitlements/ternvale.entitlements"
+# Helper/app: hypervisor only. `vm.device-access` SIGKILLs Apple Development
+# processes without a USB profile (same as scripts/sign-and-run.sh).
+# Ship without get-task-allow / device-access. HV tests keep ternvale-hv-only.
+entitlements="${TERNVALE_ENTITLEMENTS:-${root}/entitlements/ternvale-release.entitlements}"
 proj="${root}/app/Ternvale/Ternvale.xcodeproj"
 target_triple="aarch64-apple-darwin"
 skip_notarize=0
@@ -40,33 +43,8 @@ fail() {
     exit 1
 }
 
-# First codesigning identity whose name contains $1 (substring of the quoted name).
-first_identity_matching() {
-    local needle=$1
-    security find-identity -v -p codesigning 2>/dev/null \
-        | sed -n 's/.*"\(.*\)"/\1/p' \
-        | grep -F -- "$needle" \
-        | head -n 1 || true
-}
-
-pick_identity() {
-    if [[ -n "${TERNVALE_CODESIGN_IDENTITY:-}" ]]; then
-        printf '%s\n' "$TERNVALE_CODESIGN_IDENTITY"
-        return
-    fi
-    local id
-    id=$(first_identity_matching "Developer ID Application:")
-    if [[ -n "$id" ]]; then
-        printf '%s\n' "$id"
-        return
-    fi
-    id=$(first_identity_matching "Apple Development:")
-    if [[ -n "$id" ]]; then
-        printf '%s\n' "$id"
-        return
-    fi
-    printf '%s\n' "-"
-}
+# shellcheck source=lib-codesign.sh
+source "${root}/scripts/lib-codesign.sh"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -79,7 +57,7 @@ done
 
 [[ -f "$entitlements" ]] || fail "missing entitlements at $entitlements"
 
-identity=$(pick_identity)
+identity=$(ternvale_pick_codesign_identity)
 team="${TERNVALE_TEAM_ID:-}"
 sign_args=(--force --options runtime --entitlements "$entitlements" --sign "$identity")
 if [[ "$identity" == "-" ]]; then
@@ -144,6 +122,8 @@ xcodebuild \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY="" \
     DEVELOPMENT_TEAM="" \
+    COPY_PHASE_STRIP=NO \
+    STRIP_INSTALLED_PRODUCT=NO \
     TERNVALE_HELPER_SRC="$helper" \
     build
 
@@ -155,8 +135,25 @@ export TERNVALE_HELPER_SRC="$helper"
 embedded="${app}/Contents/Helpers/ternvale"
 [[ -x "$embedded" ]] || fail "helper not embedded at $embedded"
 
+sparkle="${app}/Contents/Frameworks/Sparkle.framework"
+if [[ -d "$sparkle" ]]; then
+    # Xcode's embed step drops Sparkle Headers/Modules but leaves Sparkle's
+    # original CodeResources listing them. Re-seal the framework (not --deep:
+    # XPC/Updater keep Sparkle's nested signatures and entitlements).
+    log "re-sign Sparkle.framework (restore seal after embed stripped headers)"
+    sparkle_sign=(--force --sign "$identity" --options runtime)
+    if [[ "$identity" != "-" ]]; then
+        sparkle_sign+=(--timestamp)
+    fi
+    codesign "${sparkle_sign[@]}" "$sparkle"
+fi
 log "codesign helper (hardened runtime, hypervisor entitlement)"
 codesign "${sign_args[@]}" "$embedded"
+vmnetd="${app}/Contents/MacOS/ternvale-vmnetd"
+if [[ -x "$vmnetd" ]]; then
+    log "codesign ternvale-vmnetd"
+    codesign "${sign_args[@]}" "$vmnetd"
+fi
 log "codesign app bundle (hardened runtime, hypervisor entitlement)"
 codesign "${sign_args[@]}" "$app"
 

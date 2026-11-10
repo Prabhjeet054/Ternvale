@@ -373,7 +373,7 @@
 		B70000000000000000000005 /* Copy LaunchDaemons */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "Library/LaunchDaemons";
+			dstPath = "Contents/Library/LaunchDaemons";
 			dstSubfolderSpec = 1;
 			files = (
 				B10000000000000000000024 /* com.ternvale.vmnetd.plist in Copy LaunchDaemons */,

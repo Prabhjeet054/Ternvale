@@ -108,7 +108,7 @@ impl CommandRing {
                     events.post_command(mem, 0, CC_TRB_ERROR, cmd_ptr)?;
                 }
             }
-            ptr += 16;
+            ptr = ptr.saturating_add(16);
             index += 1;
         }
         self.dequeue = ptr;

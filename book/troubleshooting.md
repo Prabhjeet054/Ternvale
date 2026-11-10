@@ -2,18 +2,26 @@
 
 ## The VM dies immediately (exit 9 / SIGKILL)
 
-The helper was killed by **AMFI** because it is not signed with the hypervisor
-entitlement. Use Developer ID (shipping) or Apple Development (your Mac):
+The helper was killed by **AMFI**. Usual causes:
+
+1. Entitlements include `com.apple.vm.device-access` without a USB provisioning
+   profile. The cargo runner defaults to `entitlements/ternvale-hv-only.entitlements`.
+2. Codesign identity is another person’s Apple Development cert in the Keychain.
+   `sign-and-run.sh` uses `scripts/lib-codesign.sh`: Developer ID, then
+   `TERNVALE_TEAM_ID`, then `TERNVALE_CODESIGN_EMAIL` (default
+   `prabhjeetsingh054@gmail.com`).
+3. Ad-hoc `codesign -s -`.
 
 ```sh
 ./scripts/sign-and-run.sh target/release/ternvale run config.toml
 ```
 
-Ad-hoc `codesign -s -` is not enough on recent macOS. `codesign --verify
---deep --strict` can still pass on an Apple Development build while
-`spctl -a -vvv --type execute` **rejects** it. Gatekeeper needs Developer ID
-+ notarize + staple. `ternvale release-verify --app Ternvale.app` prints that
-difference; `--expect-gatekeeper` fails until staple.
+`codesign --verify --deep --strict` can still pass on an Apple Development
+build while `spctl -a -vvv --type execute` **rejects** it. Gatekeeper needs a
+**Developer ID Application** certificate (Apple Developer Program), then
+`notarytool` + staple. This Keychain has only Apple Development identities
+until you create that cert. `./scripts/require-developer-id.sh` checks.
+`ternvale release-verify --app Ternvale.app --expect-gatekeeper` after staple.
 
 ## “Control socket went stale”
 
