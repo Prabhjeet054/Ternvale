@@ -69,7 +69,7 @@ jobs:
       - name: unsafe audit
         run: ./scripts/audit-unsafe.sh
       - name: cargo-deny
-        run: cargo deny check
+        run: cargo deny check licenses bans sources
       - name: cargo-audit
         run: cargo audit
       - name: ACPI tables

@@ -1,0 +1,11 @@
+[book]
+title = "Ternvale"
+authors = ["Ternvale contributors"]
+language = "en"
+src = "book"
+
+[build]
+build-dir = "target/book"
+
+[output.html]
+git-repository-url = "https://github.com/Prabhjeet054/Ternvale"

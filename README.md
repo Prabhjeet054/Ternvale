@@ -6,8 +6,10 @@ Ternvale is a virtual machine monitor for Apple Silicon Macs. It runs ARM64 gues
 The name comes from a tern (a bird that carries itself between places) and a vale (a sheltered
 valley for the guest to run in).
 
-This repository is a Cargo workspace. The crates below are stubs: they compile, and they do not
-implement the VMM yet.
+This repository is a Cargo workspace: the VMM, CLI, and Mac app. User guide:
+`mdbook serve` (`book/`). Do not publish benchmark tables against other
+commercial hypervisors until you have read their licence terms; in-tree
+numbers are QEMU+HVF only (`docs/PERF_REPORT.md`).
 
 ## Crates
 
@@ -46,4 +48,11 @@ Guest-facing parsers have libFuzzer targets in `ternvale-fuzz` (nightly +
 - [docs/PROGRESS.md](docs/PROGRESS.md) — what each step changed and how to test it
 - [docs/IMPORT.md](docs/IMPORT.md) — `.tvm` export/import, templates, qcow2/vmdk/vhdx
 - [docs/CI.md](docs/CI.md) — GitHub Actions, hosted vs self-hosted HV, runner security
-- Docs-only CI path (Step 87 test): README and `docs/*.md` changes skip fmt/clippy/test/fuzz.
+- [docs/COMPAT.md](docs/COMPAT.md) — guest OS matrix (`make compat`)
+- [docs/PRIVACY.md](docs/PRIVACY.md) — updates, opt-in crash reports, retention
+- [docs/TERMS.md](docs/TERMS.md) — terms of use
+- [docs/WINDOWS_LICENSE.md](docs/WINDOWS_LICENSE.md) — Windows licences are yours
+- [docs/PERF_REPORT.md](docs/PERF_REPORT.md) — Step 62 vs QEMU+HVF
+- [docs/RELEASE.md](docs/RELEASE.md) — sign, notarize, RC checklist
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — crate + bundled licences
+- User guide (mdBook): `mdbook serve` (`book/`)

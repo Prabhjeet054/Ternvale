@@ -28,3 +28,6 @@ gpu3d = ["dep:libloading"]
 # Process-wide capture subscriber so tests can assert the DEBUG command and TRACE flush
 # lines (already built for ternvale-log and ternvale-tpm).
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[lints]
+workspace = true

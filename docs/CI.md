@@ -67,8 +67,8 @@ the hosted “skip fork PRs” notice.
   `3600` for `make fuzz-long`)
 - `make bench` and `scripts/bench/compare.py --threshold 5` against the previous
   JSON in `bench-results/`
-- `scripts/ci/compat-nightly.sh` → `make compat` when Step 88 adds it; until then
-  it logs an explicit skip
+- `scripts/ci/compat-nightly.sh` → `make compat` (guest matrix → `docs/COMPAT.md`;
+  missing images are skip, not fail)
 
 ## Release
 

@@ -25,3 +25,6 @@ tracing = "0.1"
 [dev-dependencies]
 # Capture log text so tests can prove key material is never printed.
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[lints]
+workspace = true

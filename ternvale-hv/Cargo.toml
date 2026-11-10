@@ -21,3 +21,6 @@ thiserror = "2"
 ternvale-log = { path = "../ternvale-log" }
 # Spans on the safe Vm API and the single-VM guard.
 tracing = "0.1"
+
+[lints]
+workspace = true

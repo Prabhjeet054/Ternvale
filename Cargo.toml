@@ -30,6 +30,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
 publish = false
 
 # Nightly sanitizer builds: `RUSTFLAGS=-Zsanitizer=address cargo +nightly build --profile asan`
@@ -41,3 +42,11 @@ debug = 1
 [profile.tsan]
 inherits = "dev"
 debug = 1
+
+[workspace.lints.clippy]
+# Clippy 0.1.99 (Homebrew rustc 1.87) flags `n % k == 0` as `is_multiple_of`.
+manual_is_multiple_of = "allow"
+chunks_exact_to_as_chunks = "allow"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(miri)'] }

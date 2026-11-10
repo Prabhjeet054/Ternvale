@@ -34,12 +34,14 @@ impl PageReclaim for LibcReclaim {
 }
 
 /// Counts `madvise` spans for unit tests.
+#[cfg(test)]
 #[derive(Clone, Default)]
 pub struct CountingReclaim {
     pub reusable: std::sync::Arc<std::sync::atomic::AtomicU64>,
     pub reuse: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
+#[cfg(test)]
 impl PageReclaim for CountingReclaim {
     fn reusable(&self, _mem: &GuestMemory, _gpa: u64, _len: usize) -> io::Result<()> {
         self.reusable

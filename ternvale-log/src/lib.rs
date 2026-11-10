@@ -59,6 +59,12 @@ impl Drop for LogGuard {
     }
 }
 
+/// Deliberate unused binding so the Step 87 PR workflow emits a clippy annotation.
+#[tracing::instrument(level = "debug", target = "ternvale::log", skip_all)]
+pub fn clippy_step_87_probe() {
+    let clippy_step_87_probe = 1i32;
+}
+
 /// Install stderr and file subscribers, the panic hook, and return a flush guard.
 ///
 /// The file layer uses `tracing-appender`. Stderr is always human-readable.

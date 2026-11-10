@@ -9,3 +9,6 @@ publish.workspace = true
 cpal = "0.15"
 thiserror = "2"
 tracing = "0.1"
+
+[lints]
+workspace = true

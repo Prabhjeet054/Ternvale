@@ -10,3 +10,6 @@ publish.workspace = true
 serde = { version = "1", features = ["derive"] }
 # Required project-wide logging facade (target ternvale::metrics).
 tracing = "0.1"
+
+[lints]
+workspace = true

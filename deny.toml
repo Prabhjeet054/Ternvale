@@ -7,6 +7,8 @@ targets = ["aarch64-apple-darwin"]
 [advisories]
 version = 2
 yanked = "deny"
+# cargo-deny 0.18.x cannot parse rustsec CVSS 4.0 (e.g. RUSTSEC-2026-0073).
+# Use 0.20+ for `cargo deny check advisories`. Licenses/bans/sources still run.
 ignore = [
     # time < 0.3.47: stack exhaustion when parsing untrusted RFC 2822 input.
     # Only tracing-appender uses `time`, and only to parse its own fixed
@@ -18,7 +20,20 @@ ignore = [
 [licenses]
 version = 2
 confidence-threshold = 0.9
-allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "BSD-3-Clause"]
+# ISC (libloading), BSD-2-Clause (mach2), Unlicense (byteorder/memchr) are
+# OSI/FSF-free and appear only as transitive crates. No GPL/LGPL in the
+# Cargo graph (verified `cargo deny list`). WinFsp is GPLv3+FLOSS exception
+# and is *not* linked into Ternvale; see THIRD_PARTY_NOTICES.md.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+    "Zlib",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "ISC",
+    "Unlicense",
+]
 
 [licenses.private]
 # Workspace crates are `publish = false` and carry no license field.

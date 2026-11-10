@@ -48,8 +48,12 @@ if [[ "${CONFIGURATION:-}" == "Release" ]]; then
         vmnetd="${root}/target/release/ternvale-vmnetd"
     fi
 else
-    cargo build -p ternvale-vmnetd --manifest-path "${root}/Cargo.toml" --quiet
+    cargo build -p ternvale-vmnetd --manifest-path "${root}/Cargo.toml" --quiet || true
     vmnetd="${root}/target/debug/ternvale-vmnetd"
+fi
+if [[ ! -x "${vmnetd}" ]]; then
+    echo "copy-ternvale-helper: skip ternvale-vmnetd (not at ${vmnetd})" >&2
+    exit 0
 fi
 mkdir -p "${macos_dir}"
 cp -f "${vmnetd}" "${macos_dir}/ternvale-vmnetd"

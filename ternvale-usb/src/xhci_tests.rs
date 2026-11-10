@@ -23,7 +23,7 @@ struct TestMem {
 impl TestMem {
     fn write_region(&mut self, gpa: u64, data: &[u8]) {
         for (index, byte) in data.iter().enumerate() {
-            self.bytes.insert(gpa + index as u64, *byte);
+            self.bytes.insert(gpa.saturating_add(index as u64), *byte);
         }
     }
 }
@@ -31,7 +31,11 @@ impl TestMem {
 impl GuestMemoryAccess for TestMem {
     fn read_bytes(&self, gpa: u64, buf: &mut [u8]) -> Result<(), MemError> {
         for (index, slot) in buf.iter_mut().enumerate() {
-            *slot = self.bytes.get(&(gpa + index as u64)).copied().unwrap_or(0);
+            *slot = self
+                .bytes
+                .get(&gpa.saturating_add(index as u64))
+                .copied()
+                .unwrap_or(0);
         }
         Ok(())
     }
@@ -191,4 +195,25 @@ fn get_descriptor_control_transfer_posts_transfer_events() {
         &dev,
         "GET_DESCRIPTOR data stage payload"
     );
+}
+
+/// Guest CRCR near u64::MAX must not panic (libFuzzer deadly signal).
+#[test]
+fn command_ring_near_u64_max_does_not_overflow() {
+    let (raw, dynmem) = mem_pair();
+    let mut xhci = Xhci::new(0x091c_0000, dynmem).expect("xhci");
+    let cmd_ring = u64::MAX - 15;
+    let event_ring = 0x4000_2000u64;
+    configure_rings(&mut xhci, cmd_ring, event_ring);
+    {
+        let mut inner = raw.lock().expect("mem");
+        post_command_trb(&mut inner, cmd_ring, TRB_TYPE_ENABLE_SLOT, true);
+        post_command_trb(
+            &mut inner,
+            cmd_ring.saturating_add(16),
+            TRB_TYPE_ENABLE_SLOT,
+            true,
+        );
+    }
+    xhci.write(doorbell(0), 4, 0);
 }

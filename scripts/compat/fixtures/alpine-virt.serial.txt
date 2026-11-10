@@ -1,0 +1,13 @@
+[    0.200000] Linux version 6.6.0-virt (alpine)
+vda ready
+ternvale root ready
+PING 10.0.2.2 (10.0.2.2): 56 data bytes
+64 bytes from 10.0.2.2: seq=0
+virtio-gpu at 0
+fb0: 1024x768
+/dev/input/event0
+virtio_snd
+ternvale agent started pid=2
+virtiofs mounted at /share
+Power down
+SYSTEM_OFF

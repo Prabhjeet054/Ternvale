@@ -3,6 +3,7 @@
 use std::fs::File;
 use std::io;
 use std::os::fd::AsRawFd;
+#[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Durability operations on an open image fd.
@@ -43,6 +44,7 @@ impl HostSync for LibcSync {
 }
 
 /// Counts durability calls; used by unit tests instead of real `fcntl`.
+#[cfg(test)]
 #[derive(Default)]
 pub struct CountingSync {
     /// `F_FULLFSYNC` invocations.
@@ -51,6 +53,7 @@ pub struct CountingSync {
     pub fsync: AtomicU64,
 }
 
+#[cfg(test)]
 impl HostSync for CountingSync {
     fn full_fsync(&self, _file: &File) -> io::Result<()> {
         self.full_fsync.fetch_add(1, Ordering::SeqCst);

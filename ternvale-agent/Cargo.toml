@@ -38,3 +38,6 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Memory",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[lints]
+workspace = true

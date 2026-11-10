@@ -30,3 +30,6 @@ ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 ternvale-crypto = { path = "../ternvale-crypto" }
 # Public functions are instrumented (project logging rule).
 tracing = "0.1"
+
+[lints]
+workspace = true
