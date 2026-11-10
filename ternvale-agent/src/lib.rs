@@ -10,7 +10,9 @@
 mod actions;
 mod backoff;
 mod clip;
+mod copy;
 mod error;
+mod exec;
 mod os;
 #[cfg(windows)]
 pub mod service;

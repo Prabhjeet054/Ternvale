@@ -10,12 +10,13 @@
 mod service;
 mod session;
 mod status;
+mod xfer;
 
 use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -94,6 +95,18 @@ pub enum AgentServerError {
         /// Wait duration in milliseconds.
         timeout_ms: u64,
     },
+    /// The agent did not finish `Exec` in time.
+    #[error("exec timed out after {timeout_ms} ms")]
+    ExecTimeout {
+        /// Wait duration in milliseconds.
+        timeout_ms: u64,
+    },
+    /// The agent did not finish a copy request in time.
+    #[error("copy timed out after {timeout_ms} ms")]
+    CopyTimeout {
+        /// Wait duration in milliseconds.
+        timeout_ms: u64,
+    },
     /// Only host request types may be sent with [`AgentServer::send`].
     #[error("{kind} is not a host request")]
     NotARequest {
@@ -120,6 +133,8 @@ pub(crate) struct Shared {
     shares: Vec<(String, String)>,
     /// Host pasteboard update when the guest pushes `ClipboardSet`.
     clipboard_sink: Mutex<Option<ClipboardSink>>,
+    /// Next `Exec` / copy correlation id.
+    next_id: AtomicU64,
 }
 
 impl Shared {
@@ -183,6 +198,7 @@ impl AgentServer {
             book: Mutex::new(Book::default()),
             shares,
             clipboard_sink: Mutex::new(None),
+            next_id: AtomicU64::new(0),
         });
         let service = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
@@ -253,6 +269,10 @@ impl AgentServer {
                 | Message::WindowListGet
                 | Message::Shutdown
                 | Message::TimeSync { .. }
+                | Message::Exec { .. }
+                | Message::CopyPut { .. }
+                | Message::CopyGet { .. }
+                | Message::CopyHash { .. }
         ) {
             return Err(AgentServerError::NotARequest {
                 kind: message.kind(),

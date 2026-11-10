@@ -55,6 +55,7 @@ pub fn run() -> Result<(), String> {
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        agent: Default::default(),
     };
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));

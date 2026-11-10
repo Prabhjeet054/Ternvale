@@ -59,6 +59,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        agent: Default::default(),
     }
 }
 

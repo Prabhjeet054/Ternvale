@@ -42,7 +42,19 @@ pub fn connect(path: &Path) -> Result<std::result::Result<UnixStream, Reach>> {
 /// Send one request on `stream` and read its response.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(cmd = request.name()))]
 pub fn exchange(stream: UnixStream, request: &Request) -> Result<Response> {
-    let wait = Duration::from_millis(MAX_PAUSE_MS + 10_000);
+    let wait = match request {
+        Request::Copy { .. } => Duration::from_secs(180),
+        Request::Exec { timeout_ms, .. } => {
+            Duration::from_millis(timeout_ms.unwrap_or(60_000).saturating_add(10_000))
+        }
+        _ => Duration::from_millis(MAX_PAUSE_MS + 10_000),
+    };
+    tracing::debug!(
+        target: "ternvale::cli",
+        cmd = request.name(),
+        wait_ms = wait.as_millis() as u64,
+        "control exchange timeout"
+    );
     stream
         .set_read_timeout(Some(wait))
         .context("set control read timeout")?;

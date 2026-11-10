@@ -54,6 +54,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        agent: Default::default(),
     };
     let uart = Pl011::open(&serial_log).expect("uart");
     let base = slot_base(0).expect("slot 0");

@@ -23,7 +23,7 @@ const STOP_POLL: Duration = Duration::from_millis(100);
 
 /// `ternvale validate <config>`.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %path.display()))]
-pub fn validate(path: &Path) -> Result<ExitCode> {
+pub fn validate(path: &Path, json: bool) -> Result<ExitCode> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("validate vm config {}", path.display()))?;
     let mut config =
@@ -34,7 +34,11 @@ pub fn validate(path: &Path) -> Result<ExitCode> {
         .with_context(|| format!("validate vm config {}", path.display()))?;
     let socket = paths::socket_path(&config.name)
         .with_context(|| format!("vm name {:?} cannot name a control socket", config.name))?;
-    print!("{}", describe(path, &config, &socket));
+    crate::json_out::emit(
+        json,
+        serde_json::json!({"ok": true, "name": config.name, "socket": socket.display().to_string()}),
+        || print!("{}", describe(path, &config, &socket)),
+    )?;
     tracing::info!(target: "ternvale::cli", vm = %config.name, "config valid");
     Ok(ExitCode::SUCCESS)
 }
@@ -132,6 +136,9 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
             dir.display()
         ));
     }
+    if config.allow_exec() {
+        line("  agent       allow_exec".into());
+    }
     line(format!("  serial log  {}", config.serial_log.display()));
     line(format!("  socket      {}", socket.display()));
     out
@@ -139,14 +146,20 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
 
 /// `ternvale create-disk <path> <size>`.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(path = %path.display(), size))]
-pub fn create_disk(path: &Path, size: &str) -> Result<ExitCode> {
+pub fn create_disk(path: &Path, size: &str, json: bool) -> Result<ExitCode> {
     let bytes = disk::parse_size(size).with_context(|| format!("parse disk size {size:?}"))?;
     disk::create_disk(path, bytes)?;
-    println!(
-        "created {} ({}, sparse)",
-        path.display(),
-        disk::human_size(bytes)
-    );
+    crate::json_out::emit(
+        json,
+        serde_json::json!({"ok": true, "path": path.display().to_string(), "bytes": bytes}),
+        || {
+            println!(
+                "created {} ({}, sparse)",
+                path.display(),
+                disk::human_size(bytes)
+            );
+        },
+    )?;
     Ok(ExitCode::SUCCESS)
 }
 

@@ -154,6 +154,20 @@ impl Stream {
     pub fn close(&self) {
         Transport::close(self);
     }
+
+    /// Duplex clone for writing `ExecOutput` off the session thread.
+    #[tracing::instrument(level = "trace", target = "ternvale::agent", skip_all)]
+    pub fn try_clone(&self) -> std::io::Result<Self> {
+        match self {
+            #[cfg(unix)]
+            Self::Unix(stream) => Ok(Self::Unix(stream.try_clone()?)),
+            #[cfg(target_os = "linux")]
+            Self::Vsock(stream) => Ok(Self::Vsock(stream.try_clone()?)),
+            #[cfg(windows)]
+            Self::Vsock(_) => Err(std::io::Error::other("vsock clone is not supported")),
+            Self::Serial(file) => Ok(Self::Serial(file.try_clone()?)),
+        }
+    }
 }
 
 impl Read for Stream {

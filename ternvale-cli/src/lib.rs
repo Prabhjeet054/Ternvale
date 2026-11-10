@@ -25,6 +25,8 @@ pub mod client;
 pub mod clipboard;
 pub mod clone_cmd;
 pub mod commands;
+pub mod control_agent;
+pub mod cp_cmd;
 pub mod create_cmd;
 pub mod create_progress;
 pub mod crypto_cmd;
@@ -34,6 +36,8 @@ pub mod display;
 pub mod display_input;
 pub mod doctor;
 pub mod events_sub;
+pub mod exec_cmd;
+pub mod json_out;
 pub mod keychain;
 pub mod logfmt;
 pub mod logs;
@@ -50,6 +54,7 @@ pub mod seamless;
 pub mod secret;
 pub mod server;
 pub mod snapshot_cmd;
+pub mod ssh_cmd;
 pub mod stats_cmd;
 pub mod summary;
 pub mod tools;
@@ -62,6 +67,7 @@ pub mod unattend_iso;
 pub mod unattend_xml;
 pub mod update_check;
 pub mod vsock;
+pub mod wait_cmd;
 
 use std::process::ExitCode;
 
@@ -77,7 +83,7 @@ pub const CLI_LOG_NAME: &str = "cli";
 /// Parse arguments, run the command, and turn errors into exit status 1.
 pub fn main() -> ExitCode {
     let cli = Cli::parse();
-    match dispatch(cli.command) {
+    match dispatch(cli) {
         Ok(code) => code,
         Err(error) => {
             let message = error_chain(&error);
@@ -108,14 +114,23 @@ pub fn error_chain(error: &anyhow::Error) -> String {
 /// config names the VM; the rest log at `warn` (or `TERNVALE_LOG`) to the
 /// `cli` log file.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
-pub fn dispatch(command: Command) -> Result<ExitCode> {
-    match command {
+pub fn dispatch(cli: Cli) -> Result<ExitCode> {
+    let json = cli.json;
+    match cli.command {
         Command::Run {
             config,
             display,
             fps,
-        } => run::run(&config, display, fps),
-        Command::Doctor { json, config } => {
+            headless,
+        } => {
+            let mode = if headless {
+                crate::display::DisplayMode::None
+            } else {
+                display
+            };
+            run::run(&config, mode, fps)
+        }
+        Command::Doctor { config } => {
             // The log directory is one of the things doctor checks, so a
             // broken one must not stop it.
             let _guard = match cli_log() {
@@ -130,7 +145,7 @@ pub fn dispatch(command: Command) -> Result<ExitCode> {
         other => {
             let _guard = cli_log()?;
             tracing::debug!(target: "ternvale::cli", command = ?other, "dispatch");
-            non_run(other)
+            non_run(other, json)
         }
     }
 }
@@ -144,11 +159,15 @@ fn cli_log() -> Result<ternvale_log::LogGuard> {
     ternvale_log::init(log).context("initialize logging")
 }
 
-fn non_run(command: Command) -> Result<ExitCode> {
+fn non_run(command: Command, json: bool) -> Result<ExitCode> {
     match command {
         Command::Serve => {
             let server = crate::api_server::ApiServer::start()?;
-            println!("listening {}", server.path().display());
+            json_out::emit(
+                json,
+                serde_json::json!({"ok": true, "socket": server.path().display().to_string()}),
+                || println!("listening {}", server.path().display()),
+            )?;
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(3600));
             }
@@ -157,8 +176,24 @@ fn non_run(command: Command) -> Result<ExitCode> {
             config,
             display,
             fps,
-        } => run::run(&config, display, fps),
-        Command::Validate { config } => commands::validate(&config),
+            headless,
+        } => {
+            let mode = if headless {
+                crate::display::DisplayMode::None
+            } else {
+                display
+            };
+            run::run(&config, mode, fps)
+        }
+        Command::Validate { config } => commands::validate(&config, json),
+        Command::Exec {
+            name,
+            timeout,
+            argv,
+        } => exec_cmd::exec(&name, timeout, &argv, json),
+        Command::Cp { src, dst } => cp_cmd::cp(&src, &dst, json),
+        Command::WaitReady { name, timeout } => wait_cmd::wait_ready(&name, timeout, json),
+        Command::Ssh { name } => ssh_cmd::ssh(&name, json),
         Command::Create {
             name,
             windows,
@@ -199,44 +234,31 @@ fn non_run(command: Command) -> Result<ExitCode> {
                 timeout_secs,
             })
         }
-        Command::CreateDisk { path, size } => commands::create_disk(&path, &size),
-        Command::Status { name, stats, json } => commands::status(&name, stats, json),
+        Command::CreateDisk { path, size } => commands::create_disk(&path, &size, json),
+        Command::Status { name, stats } => commands::status(&name, stats, json),
         Command::Stats {
             name,
             watch,
             interval_ms,
-            json,
         } => stats_cmd::stats(&name, watch, interval_ms, json),
         Command::Balloon {
             name,
             target_mib,
             auto,
-            json,
         } => balloon_cmd::balloon(&name, target_mib, auto, json),
-        Command::Pause {
-            name,
-            timeout_ms,
-            json,
-        } => commands::pause(&name, timeout_ms, json),
-        Command::Resume { name, json } => commands::resume(&name, json),
+        Command::Pause { name, timeout_ms } => commands::pause(&name, timeout_ms, json),
+        Command::Resume { name } => commands::resume(&name, json),
         Command::Stop {
             name,
             force,
             graceful,
             no_wait,
-            json,
         } => commands::stop(&name, force, graceful, no_wait, json),
         Command::Snapshot { action } => match action {
-            cli::SnapshotCommand::Create { vm, name, json } => {
-                snapshot_cmd::create(&vm, &name, json)
-            }
-            cli::SnapshotCommand::Restore { vm, name, json } => {
-                snapshot_cmd::restore(&vm, &name, json)
-            }
-            cli::SnapshotCommand::List { vm, json } => snapshot_cmd::list(&vm, json),
-            cli::SnapshotCommand::Delete { vm, name, json } => {
-                snapshot_cmd::delete(&vm, &name, json)
-            }
+            cli::SnapshotCommand::Create { vm, name } => snapshot_cmd::create(&vm, &name, json),
+            cli::SnapshotCommand::Restore { vm, name } => snapshot_cmd::restore(&vm, &name, json),
+            cli::SnapshotCommand::List { vm } => snapshot_cmd::list(&vm, json),
+            cli::SnapshotCommand::Delete { vm, name } => snapshot_cmd::delete(&vm, &name, json),
         },
         Command::Clone { source, new_name } => clone_cmd::clone_vm(&source, &new_name),
         Command::Crypto { action } => match action {
@@ -248,7 +270,7 @@ fn non_run(command: Command) -> Result<ExitCode> {
         Command::Vm { action } => match action {
             cli::VmCommand::Delete { name } => clone_cmd::delete_vm(&name),
         },
-        Command::Doctor { json, config } => doctor::doctor(json, config.as_deref()),
+        Command::Doctor { config } => doctor::doctor(json, config.as_deref()),
         Command::Logs {
             name,
             follow,

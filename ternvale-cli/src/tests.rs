@@ -76,6 +76,7 @@ fn parses_every_subcommand() {
             config: "vm.toml".into(),
             display: DisplayMode::None,
             fps: ternvale_gpu::DEFAULT_FPS,
+            headless: false,
         }
     );
     assert_eq!(parse(&["ternvale", "serve"]), Command::Serve);
@@ -93,6 +94,7 @@ fn parses_every_subcommand() {
             config: "vm.toml".into(),
             display: DisplayMode::Window,
             fps: 60,
+            headless: false,
         }
     );
     assert_eq!(
@@ -143,8 +145,7 @@ fn parses_every_subcommand() {
         parse(&["ternvale", "status", "a", "--stats"]),
         Command::Status {
             name: "a".into(),
-            stats: true,
-            json: false
+            stats: true
         }
     );
     assert_eq!(
@@ -152,8 +153,7 @@ fn parses_every_subcommand() {
         Command::Balloon {
             name: "a".into(),
             target_mib: Some(1024),
-            auto: false,
-            json: true
+            auto: false
         }
     );
     assert_eq!(
@@ -161,8 +161,7 @@ fn parses_every_subcommand() {
         Command::Balloon {
             name: "a".into(),
             target_mib: None,
-            auto: true,
-            json: false
+            auto: true
         }
     );
     assert_eq!(
@@ -170,8 +169,7 @@ fn parses_every_subcommand() {
         Command::Stats {
             name: "a".into(),
             watch: true,
-            interval_ms: 1000,
-            json: true
+            interval_ms: 1000
         }
     );
     assert_eq!(
@@ -179,24 +177,19 @@ fn parses_every_subcommand() {
         Command::Stats {
             name: "a".into(),
             watch: true,
-            interval_ms: 250,
-            json: false
+            interval_ms: 250
         }
     );
     assert_eq!(
         parse(&["ternvale", "pause", "a", "--timeout-ms", "250", "--json"]),
         Command::Pause {
             name: "a".into(),
-            timeout_ms: 250,
-            json: true
+            timeout_ms: 250
         }
     );
     assert_eq!(
         parse(&["ternvale", "resume", "a"]),
-        Command::Resume {
-            name: "a".into(),
-            json: false
-        }
+        Command::Resume { name: "a".into() }
     );
     assert_eq!(
         parse(&["ternvale", "stop", "a", "--force", "--no-wait"]),
@@ -204,8 +197,7 @@ fn parses_every_subcommand() {
             name: "a".into(),
             force: true,
             graceful: false,
-            no_wait: true,
-            json: false
+            no_wait: true
         }
     );
     assert_eq!(
@@ -214,8 +206,7 @@ fn parses_every_subcommand() {
             name: "a".into(),
             force: false,
             graceful: true,
-            no_wait: false,
-            json: false
+            no_wait: false
         }
     );
     assert!(Cli::try_parse_from(["ternvale", "stop"]).is_err());
@@ -263,6 +254,80 @@ fn parses_every_subcommand() {
                 name: "win11".into()
             }
         }
+    );
+    assert_eq!(
+        parse(&["ternvale", "run", "vm.toml", "--headless"]),
+        Command::Run {
+            config: "vm.toml".into(),
+            display: DisplayMode::None,
+            fps: ternvale_gpu::DEFAULT_FPS,
+            headless: true,
+        }
+    );
+    assert_eq!(
+        parse(&[
+            "ternvale",
+            "exec",
+            "win11",
+            "--timeout",
+            "5",
+            "--",
+            "/bin/true"
+        ]),
+        Command::Exec {
+            name: "win11".into(),
+            timeout: Some(5),
+            argv: vec!["/bin/true".into()],
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "cp", "a.txt", "win11:/tmp/a.txt"]),
+        Command::Cp {
+            src: "a.txt".into(),
+            dst: "win11:/tmp/a.txt".into(),
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "wait-ready", "win11", "--timeout", "30"]),
+        Command::WaitReady {
+            name: "win11".into(),
+            timeout: 30,
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "ssh", "win11"]),
+        Command::Ssh {
+            name: "win11".into()
+        }
+    );
+    assert!(
+        Cli::try_parse_from(["ternvale", "--json", "status", "a"])
+            .expect("json")
+            .json
+    );
+}
+
+#[test]
+fn exec_on_the_control_socket_requires_allow_exec() {
+    let dir = TempDir::new();
+    let path = dir.socket();
+    let control = Arc::new(VmControl::new("vm", 1));
+    let _server = ControlServer::start(&path, Arc::clone(&control)).expect("start");
+    let response = ask(
+        &path,
+        Request::Exec {
+            argv: vec!["/bin/true".into()],
+            timeout_ms: Some(1000),
+        },
+    );
+    assert!(!response.ok);
+    assert!(
+        response
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("allow_exec"),
+        "{response:?}"
     );
 }
 

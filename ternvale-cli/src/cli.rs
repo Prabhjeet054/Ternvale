@@ -11,6 +11,9 @@ use crate::logfmt::Level;
 #[derive(Debug, Parser)]
 #[command(name = "ternvale", version, about)]
 pub struct Cli {
+    /// Print machine-readable JSON on stdout (every command).
+    #[arg(long, global = true)]
+    pub json: bool,
     /// What to do.
     #[command(subcommand)]
     pub command: Command,
@@ -34,6 +37,40 @@ pub enum Command {
         #[arg(long, default_value_t = ternvale_gpu::DEFAULT_FPS,
             value_parser = clap::value_parser!(u32).range(1..=i64::from(ternvale_gpu::MAX_FPS)))]
         fps: u32,
+        /// No virtio-gpu / viewer (same as `--display none`).
+        #[arg(long)]
+        headless: bool,
+    },
+    /// Run a command in the guest via the agent (`agent.allow_exec`).
+    Exec {
+        /// VM name.
+        name: String,
+        /// Kill the guest process after this many seconds.
+        #[arg(long)]
+        timeout: Option<u64>,
+        /// Program and arguments (put them after `--`).
+        #[arg(last = true, required = true)]
+        argv: Vec<String>,
+    },
+    /// Copy a file between host and guest (`host /path` and `vm:/path`).
+    Cp {
+        /// Source (`path` or `vm:/path`).
+        src: String,
+        /// Destination (`path` or `vm:/path`).
+        dst: String,
+    },
+    /// Wait until the guest agent is connected.
+    WaitReady {
+        /// VM name.
+        name: String,
+        /// Give up after this many seconds.
+        #[arg(long, default_value_t = 120)]
+        timeout: u64,
+    },
+    /// Open an SSH session (port forward + identity in the VM library dir).
+    Ssh {
+        /// VM name.
+        name: String,
     },
     /// Parse and check a VM config without starting anything.
     Validate {
@@ -106,9 +143,6 @@ pub enum Command {
         /// Follow host memory pressure again.
         #[arg(long)]
         auto: bool,
-        /// Print the raw JSON response.
-        #[arg(long)]
-        json: bool,
     },
     /// Show lock-free VM metrics (`query-stats`).
     Stats {
@@ -120,9 +154,6 @@ pub enum Command {
         /// `--watch` poll period in milliseconds (default 1000).
         #[arg(long, default_value_t = 1000)]
         interval_ms: u64,
-        /// Print the raw JSON response.
-        #[arg(long)]
-        json: bool,
     },
     /// Show a running VM's state.
     Status {
@@ -131,9 +162,6 @@ pub enum Command {
         /// Also show per-vCPU counters (`query-stats`).
         #[arg(long)]
         stats: bool,
-        /// Print the raw JSON response.
-        #[arg(long)]
-        json: bool,
     },
     /// Stop every vCPU of a running VM; guest time stands still until resume.
     Pause {
@@ -142,9 +170,6 @@ pub enum Command {
         /// Give up if the vCPUs have not all stopped after this many milliseconds.
         #[arg(long, default_value_t = 5000)]
         timeout_ms: u64,
-        /// Print the raw JSON response.
-        #[arg(long)]
-        json: bool,
     },
     /// Full-VM snapshots (guest RAM, GIC, vCPU registers).
     Snapshot {
@@ -167,9 +192,6 @@ pub enum Command {
     Resume {
         /// VM name.
         name: String,
-        /// Print the raw JSON response.
-        #[arg(long)]
-        json: bool,
     },
     /// Stop a VM: orderly host-side shutdown, or `--force` to stop at once.
     Stop {
@@ -184,16 +206,10 @@ pub enum Command {
         /// Return once the request is accepted instead of waiting for the VM to exit.
         #[arg(long)]
         no_wait: bool,
-        /// Print the raw JSON response.
-        #[arg(long)]
-        json: bool,
     },
     /// Check this Mac can run VMs: macOS version, hypervisor, entitlement,
     /// GIC, disk space, and the log directory. Exits 1 if a check fails.
     Doctor {
-        /// Print the checks as JSON.
-        #[arg(long)]
-        json: bool,
         /// Also check this VM config: kernel, initrd, disks, and cmdline.
         #[arg(long)]
         config: Option<PathBuf>,
@@ -309,8 +325,6 @@ pub enum SnapshotCommand {
         vm: String,
         /// Snapshot label.
         name: String,
-        #[arg(long)]
-        json: bool,
     },
     /// Restore a bundle into a running (paused) VM.
     Restore {
@@ -318,15 +332,11 @@ pub enum SnapshotCommand {
         vm: String,
         /// Snapshot label.
         name: String,
-        #[arg(long)]
-        json: bool,
     },
     /// List snapshot labels for a VM.
     List {
         /// VM name.
         vm: String,
-        #[arg(long)]
-        json: bool,
     },
     /// Delete a snapshot bundle.
     Delete {
@@ -334,8 +344,6 @@ pub enum SnapshotCommand {
         vm: String,
         /// Snapshot label.
         name: String,
-        #[arg(long)]
-        json: bool,
     },
 }
 

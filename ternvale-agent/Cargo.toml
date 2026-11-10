@@ -14,6 +14,8 @@ ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 # Typed AgentError (library code; no anyhow outside ternvale-cli).
 thiserror = "2"
 tracing = "0.1"
+# SHA-256 of guest files for copy checksums (already in the workspace).
+sha2 = "0.10"
 # stderr log output for the binary, level from TERNVALE_AGENT_LOG.
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
 

@@ -23,7 +23,7 @@ impl std::fmt::Debug for DataKeyHex {
 }
 
 /// Longest request line accepted, in bytes.
-pub const MAX_LINE: usize = 4096;
+pub const MAX_LINE: usize = 64 * 1024;
 /// Default and largest `pause` wait.
 pub const DEFAULT_PAUSE_MS: u64 = 5_000;
 /// Upper bound on a client-supplied `timeout_ms`.
@@ -104,6 +104,29 @@ pub enum Request {
         /// Lowercase hex of the 32-byte DEK.
         key_hex: DataKeyHex,
     },
+    /// Run `argv` in the guest (`agent.allow_exec`).
+    Exec {
+        /// Program and arguments (not a shell).
+        argv: Vec<String>,
+        /// Kill after this many milliseconds.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
+    },
+    /// Copy a file between host and guest (`agent.allow_exec`).
+    Copy {
+        /// Absolute guest path.
+        guest_path: String,
+        /// Host path (must exist for host→guest).
+        host_path: String,
+        /// True: host file → guest. False: guest → host.
+        to_guest: bool,
+        /// Resume from this byte offset.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        offset: Option<u64>,
+        /// Copy at most this many bytes from `offset` (CLI slices so a kill can resume).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u64>,
+    },
 }
 
 impl Request {
@@ -128,6 +151,8 @@ impl Request {
             Self::ClipboardSet { .. } => "clipboard-set",
             Self::BalloonSet { .. } => "balloon-set",
             Self::SetDataKey { .. } => "set-data-key",
+            Self::Exec { .. } => "exec",
+            Self::Copy { .. } => "copy",
         }
     }
 
@@ -151,6 +176,8 @@ impl Request {
             Self::ClipboardSet { .. } => "clipboard set for",
             Self::BalloonSet { .. } => "set balloon for",
             Self::SetDataKey { .. } => "set data key for",
+            Self::Exec { .. } => "exec on",
+            Self::Copy { .. } => "copy for",
         }
     }
 }
@@ -297,6 +324,24 @@ pub struct Response {
     /// `subscribe` acknowledgement.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subscribed: Option<Vec<String>>,
+    /// `exec` stream name (`stdout` / `stderr`) on a streaming line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<String>,
+    /// `exec` chunk as UTF-8 (lossy) on a streaming line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    /// Guest process exit code (`exec`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// Bytes transferred (`copy`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u64>,
+    /// SHA-256 hex of the copied file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    /// True when `copy` resumed from a non-zero offset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resumed: Option<bool>,
 }
 
 impl Response {
@@ -315,6 +360,12 @@ impl Response {
             max_api_version: None,
             vms: None,
             subscribed: None,
+            stream: None,
+            data: None,
+            exit_code: None,
+            bytes: None,
+            sha256: None,
+            resumed: None,
         }
     }
 
@@ -408,6 +459,46 @@ impl Response {
             snapshots: Some(names),
             snapshot_path: path,
             ..Self::status(status)
+        }
+    }
+
+    /// One `exec` stdout/stderr line.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn exec_chunk(stream: &str, data: String) -> Self {
+        Self {
+            stream: Some(stream.to_string()),
+            data: Some(data),
+            ..Self::blank(true)
+        }
+    }
+
+    /// Final `exec` line with the guest exit code.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn exec_exit(code: i32) -> Self {
+        Self {
+            exit_code: Some(code),
+            ..Self::blank(true)
+        }
+    }
+
+    /// `copy` finished.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn copy_done(bytes: u64, sha256: String, resumed: bool) -> Self {
+        Self {
+            bytes: Some(bytes),
+            sha256: Some(sha256),
+            resumed: Some(resumed),
+            ..Self::blank(true)
+        }
+    }
+
+    /// `copy` wrote a slice; `sha256` is omitted until the whole file is hashed.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn copy_progress(bytes: u64, resumed: bool) -> Self {
+        Self {
+            bytes: Some(bytes),
+            resumed: Some(resumed),
+            ..Self::blank(true)
         }
     }
 

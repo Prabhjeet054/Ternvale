@@ -95,6 +95,9 @@ pub struct VmConfig {
     /// snapshots. The data key is never on the command line or in the environment.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub encryption: bool,
+    /// Guest agent policy (`allow_exec`). Omitted: every flag off.
+    #[serde(default, skip_serializing_if = "crate::AgentSection::is_default")]
+    pub agent: crate::AgentSection,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -287,6 +290,12 @@ impl VmConfig {
     #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
     pub fn balloon_floor_mib(&self) -> u64 {
         self.ram_min_mib.unwrap_or(self.ram_mib)
+    }
+
+    /// `agent.allow_exec` (default false).
+    #[tracing::instrument(level = "debug", target = "ternvale::config", skip_all, fields(name = %self.name))]
+    pub fn allow_exec(&self) -> bool {
+        self.agent.allow_exec
     }
 
     /// The hardware description the OS gets: `firmware_tables`, else `acpi`

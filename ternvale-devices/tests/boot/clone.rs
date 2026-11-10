@@ -372,6 +372,7 @@ fn boot_once(
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        agent: Default::default(),
     };
     tracing::info!(
         target: "ternvale::boot",

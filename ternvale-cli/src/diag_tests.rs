@@ -159,6 +159,7 @@ fn control_socket_dump_returns_the_files() {
         Some(&sink),
         None,
         None,
+        false,
     );
     assert!(response.ok, "{response:?}");
     let files = response.files.expect("files");
@@ -190,6 +191,7 @@ fn dump_failure_is_a_response_error() {
         Some(&sink),
         None,
         None,
+        false,
     );
     assert!(!response.ok);
     let error = response.error.expect("error");

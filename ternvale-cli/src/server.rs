@@ -45,6 +45,17 @@ impl ControlServer {
         control: Arc<VmControl>,
         agent: Option<Arc<AgentServer>>,
     ) -> Result<Self> {
+        Self::with_agent_exec(path, control, agent, false)
+    }
+
+    /// [`Self::with_agent`] with `agent.allow_exec` (exec/copy on the control socket).
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(path = %path.display(), vm = control.name(), agent = agent.is_some(), allow_exec))]
+    pub fn with_agent_exec(
+        path: &Path,
+        control: Arc<VmControl>,
+        agent: Option<Arc<AgentServer>>,
+        allow_exec: bool,
+    ) -> Result<Self> {
         Self::serve_vm(
             path,
             Served {
@@ -53,6 +64,7 @@ impl ControlServer {
                 diag: None,
                 tools_iso: None,
                 power: None,
+                allow_exec,
             },
         )
     }
@@ -66,6 +78,7 @@ impl ControlServer {
         diag: Arc<DiagSink>,
         tools_iso: Option<PathBuf>,
         power: Option<Arc<crate::power::PowerState>>,
+        allow_exec: bool,
     ) -> Result<Self> {
         Self::serve_vm(
             path,
@@ -75,6 +88,7 @@ impl ControlServer {
                 diag: Some(diag),
                 tools_iso,
                 power,
+                allow_exec,
             },
         )
     }
@@ -159,6 +173,7 @@ struct Served {
     diag: Option<Arc<DiagSink>>,
     tools_iso: Option<PathBuf>,
     power: Option<Arc<crate::power::PowerState>>,
+    allow_exec: bool,
 }
 
 fn accept_loop(listener: &UnixListener, served: &Served, stop: &AtomicBool) {
@@ -237,13 +252,22 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
                 .context("write control response")?;
             return Ok(());
         }
+        let trimmed = line.trim_end();
+        if !ternvale_api::is_jsonrpc_line(trimmed) {
+            if let Ok(Request::Exec { argv, timeout_ms }) = serde_json::from_str::<Request>(trimmed)
+            {
+                stream_exec(&mut writer, served, &argv, timeout_ms)?;
+                continue;
+            }
+        }
         match crate::rpc_vm::dispatch_vm_line(
-            line.trim_end(),
+            trimmed,
             &served.control,
             served.agent.as_deref(),
             served.diag.as_deref(),
             served.tools_iso.as_deref(),
             served.power.as_deref(),
+            served.allow_exec,
             &mut handshook,
         ) {
             crate::rpc_vm::Dispatch::Reply(out) => {
@@ -270,11 +294,41 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
     }
 }
 
+fn stream_exec(
+    writer: &mut UnixStream,
+    served: &Served,
+    argv: &[String],
+    timeout_ms: Option<u64>,
+) -> Result<()> {
+    let mut write_line = |response: &Response| -> Result<()> {
+        let mut out = serde_json::to_string(response).context("encode exec line")?;
+        out.push('\n');
+        writer
+            .write_all(out.as_bytes())
+            .context("write exec line")?;
+        Ok(())
+    };
+    let final_response = crate::control_agent::exec(
+        served.allow_exec,
+        served.agent.as_deref(),
+        argv,
+        timeout_ms,
+        |stream, data| {
+            let chunk =
+                Response::exec_chunk(stream.as_str(), String::from_utf8_lossy(data).into_owned());
+            if let Err(error) = write_line(&chunk) {
+                tracing::warn!(target: "ternvale::cli", error = %format!("{error:#}"), "exec stream write failed");
+            }
+        },
+    );
+    write_line(&final_response)
+}
+
 /// Parse one request line and apply it to `control`; a status in the
 /// response includes `agent`'s connection.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name()))]
 pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>) -> Response {
-    handle_line_with(line, control, agent, None, None, None)
+    handle_line_with(line, control, agent, None, None, None, false)
 }
 
 /// [`handle_line`], with `diag` answering `dump-diagnostics` (an error without it).
@@ -286,6 +340,7 @@ pub fn handle_line_with(
     diag: Option<&DiagSink>,
     tools_iso: Option<&Path>,
     power: Option<&crate::power::PowerState>,
+    allow_exec: bool,
 ) -> Response {
     let request: Request = match serde_json::from_str(line) {
         Ok(request) => request,
@@ -295,6 +350,9 @@ pub fn handle_line_with(
         }
     };
     tracing::info!(target: "ternvale::cli", cmd = request.name(), "control request");
+    if let Some(response) = crate::control_agent::gated(allow_exec, agent, &request) {
+        return response;
+    }
     if let Some(handled) = crate::power::handle(&request, control, agent, power) {
         return match handled {
             Ok(mut response) => {
@@ -420,6 +478,9 @@ pub fn handle_line_with(
             let mut response = Response::status(&control.status());
             decorate_status(&mut response, Some(agent), tools_iso);
             return response;
+        }
+        Request::Exec { .. } | Request::Copy { .. } => {
+            return Response::error("internal: exec/copy not gated");
         }
         Request::SetDataKey { key_hex } => {
             match crate::crypto_cmd::apply_data_key(control, &key_hex.0) {

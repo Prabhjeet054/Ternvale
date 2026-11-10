@@ -3,6 +3,7 @@
 //! The on-disk format is TOML, parsed with serde. [`VmConfig::from_toml`] rejects
 //! unknown fields and runs validation before returning.
 
+mod agent;
 mod audio;
 mod disk;
 mod error;
@@ -18,6 +19,7 @@ mod usb;
 mod vm;
 mod vsock;
 
+pub use agent::AgentSection;
 pub use audio::AudioSection;
 pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEPTH};
 pub use error::{ConfigError, TernvaleError};
@@ -465,5 +467,18 @@ firmware = "{firmware}"
         assert!(error.to_string().contains("cpus"), "{error}");
         let wrapped = TernvaleError::subsystem("hv", "HV_UNSUPPORTED");
         assert_eq!(wrapped.to_string(), "hv: HV_UNSUPPORTED");
+    }
+
+    #[test]
+    fn agent_allow_exec_defaults_false() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&sample(&fix)).expect("no agent");
+        assert!(!config.allow_exec());
+        assert!(config.agent.is_default());
+        let text = format!("{}\n[agent]\nallow_exec = true\n", sample(&fix));
+        let config = VmConfig::from_toml(&text).expect("agent");
+        assert!(config.allow_exec());
+        let again = VmConfig::from_toml(&config.to_toml().expect("serialize")).expect("reparse");
+        assert_eq!(again, config);
     }
 }

@@ -187,6 +187,7 @@ fn boot_vm(
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        agent: Default::default(),
     };
     let uart = Pl011::open(&serial_log).map_err(|e| e.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));

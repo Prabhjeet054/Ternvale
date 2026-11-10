@@ -148,6 +148,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
         Arc::clone(&diag),
         tools_iso,
         Some(Arc::clone(&power)),
+        config.allow_exec(),
     )
     .with_context(|| format!("start the control socket for vm {}", config.name))?;
     crate::crypto_cmd::deliver_over_control(&config, &socket)

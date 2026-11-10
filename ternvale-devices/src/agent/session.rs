@@ -30,6 +30,16 @@ pub(super) fn record_end(book: &mut Book, conn: Conn, why: &str) {
     if let Some(wait) = book.window_wait.take() {
         let _ = wait.send(Err(why.to_string()));
     }
+    if let Some((_, wait)) = book.exec_wait.take() {
+        let _ = wait.send(super::xfer::ExecEvent::Failed {
+            reason: why.to_string(),
+        });
+    }
+    if let Some((_, wait)) = book.copy_wait.take() {
+        let _ = wait.send(super::xfer::CopyEvent::Failed {
+            reason: why.to_string(),
+        });
+    }
     let reason = conn.failure.unwrap_or_else(|| why.to_string());
     let connected_ms = millis(conn.since.elapsed());
     if conn.hello.is_some() {
@@ -141,9 +151,57 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
                     tracing::debug!(target: "ternvale::agent", count = windows.len(), "window_list_ok without a waiter");
                 }
             }
+            Some(Message::ExecOutput { id, stream, data }) => {
+                let book = shared.book();
+                if let Some((want, wait)) = book.exec_wait.as_ref() {
+                    if *want == id {
+                        let _ = wait.send(super::xfer::ExecEvent::Output {
+                            stream,
+                            data: data.0,
+                        });
+                    }
+                }
+            }
+            Some(Message::ExecExit { id, code }) => {
+                let mut book = shared.book();
+                if let Some((want, wait)) = book.exec_wait.take() {
+                    if want == id {
+                        let _ = wait.send(super::xfer::ExecEvent::Exit { code });
+                    } else {
+                        book.exec_wait = Some((want, wait));
+                    }
+                }
+            }
+            Some(Message::CopyPutOk { id, written }) => {
+                deliver_copy(shared, id, super::xfer::CopyEvent::PutOk { written });
+            }
+            Some(Message::CopyGetOk { id, data, eof }) => {
+                deliver_copy(
+                    shared,
+                    id,
+                    super::xfer::CopyEvent::GetOk { data: data.0, eof },
+                );
+            }
+            Some(Message::CopyHashOk { id, size, sha256 }) => {
+                deliver_copy(shared, id, super::xfer::CopyEvent::HashOk { size, sha256 });
+            }
+            Some(Message::CopyErr { id, reason }) => {
+                deliver_copy(shared, id, super::xfer::CopyEvent::Failed { reason });
+            }
             Some(other) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from agent ignored");
             }
+        }
+    }
+}
+
+fn deliver_copy(shared: &Shared, id: u64, event: super::xfer::CopyEvent) {
+    let mut book = shared.book();
+    if let Some((want, wait)) = book.copy_wait.take() {
+        if want == id {
+            let _ = wait.send(event);
+        } else {
+            book.copy_wait = Some((want, wait));
         }
     }
 }

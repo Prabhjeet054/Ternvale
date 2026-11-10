@@ -27,6 +27,7 @@ pub enum Dispatch {
 
 /// Parse a legacy `cmd` line or a JSON-RPC request.
 #[tracing::instrument(level = "debug", target = "ternvale::api", skip_all, fields(vm = control.name()))]
+#[allow(clippy::too_many_arguments)]
 pub fn dispatch_vm_line(
     line: &str,
     control: &VmControl,
@@ -34,10 +35,11 @@ pub fn dispatch_vm_line(
     diag: Option<&DiagSink>,
     tools_iso: Option<&Path>,
     power: Option<&crate::power::PowerState>,
+    allow_exec: bool,
     handshook: &mut bool,
 ) -> Dispatch {
     if !is_jsonrpc_line(line) {
-        let response = handle_line_with(line, control, agent, diag, tools_iso, power);
+        let response = handle_line_with(line, control, agent, diag, tools_iso, power, allow_exec);
         return encode_legacy(&response);
     }
     let request = match parse_request(line) {
@@ -105,7 +107,8 @@ pub fn dispatch_vm_line(
                     ));
                 }
             };
-            let response = handle_line_with(&line, control, agent, diag, tools_iso, power);
+            let response =
+                handle_line_with(&line, control, agent, diag, tools_iso, power, allow_exec);
             encode_rpc(JsonRpcResponse::result(
                 id,
                 serde_json::to_value(&response).unwrap_or(Value::Null),

@@ -75,12 +75,38 @@ pub struct Harness {
 impl Harness {
     /// `test` becomes part of the VM name, so it must be `[a-z0-9-]` and short.
     pub fn new(test: &str) -> Self {
+        Self::with_bin(test, signed_binary())
+    }
+
+    /// Same as [`Self::new`], but a copy of the CLI with the hypervisor
+    /// signature stripped (avoids AMFI SIGKILL when no VM is started).
+    pub fn new_unsigned(test: &str) -> Self {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_secs();
         let out = root().join(format!("target/control-logs/{stamp}-{test}"));
         std::fs::create_dir_all(&out).expect("artifact dir");
+        let src = PathBuf::from(env!("CARGO_BIN_EXE_ternvale"));
+        let bin = out.join("ternvale");
+        std::fs::copy(&src, &bin).expect("copy ternvale");
+        // Keep cargo's linker-signed ad-hoc signature. `codesign --sign -`
+        // (with or without the hypervisor entitlement) is SIGKILL'd by AMFI;
+        // `--remove-signature` leaves the copy unsigned, which is also killed.
+        Self::with_bin_and_out(test, bin, out)
+    }
+
+    fn with_bin(test: &str, bin: PathBuf) -> Self {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_secs();
+        let out = root().join(format!("target/control-logs/{stamp}-{test}"));
+        std::fs::create_dir_all(&out).expect("artifact dir");
+        Self::with_bin_and_out(test, bin, out)
+    }
+
+    fn with_bin_and_out(test: &str, bin: PathBuf, out: PathBuf) -> Self {
         let log = ternvale_log::init(LogConfig::new(format!("itest-{test}"), out.clone()))
             .expect("init logging");
         // A short private directory: sun_path is 104 bytes, and tests must not
@@ -90,7 +116,6 @@ impl Harness {
             std::fs::remove_dir_all(&run_dir).expect("clear old run dir");
         }
         let name = format!("it-{test}-{}", std::process::id());
-        let bin = signed_binary();
         tracing::info!(target: T, vm = %name, out = %out.display(), run_dir = %run_dir.display(), "integration test start");
         Self {
             name,

@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use ternvale_agent_proto::{ClipboardText, GuestWindow};
 
+use super::xfer::{CopyEvent, ExecEvent};
+
 /// Where the agent connection is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentState {
@@ -116,6 +118,10 @@ pub(super) struct Book {
     pub clipboard_wait: Option<Sender<Result<ClipboardText, String>>>,
     /// Delivers `WindowListOk` to a waiting [`super::AgentServer::window_list_get`].
     pub window_wait: Option<Sender<Result<Vec<GuestWindow>, String>>>,
+    /// Delivers exec output/exit to a waiting [`super::AgentServer::exec`].
+    pub exec_wait: Option<(u64, Sender<ExecEvent>)>,
+    /// Delivers one copy reply to a waiting copy helper.
+    pub copy_wait: Option<(u64, Sender<CopyEvent>)>,
 }
 
 impl Book {

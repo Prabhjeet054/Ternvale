@@ -26,6 +26,26 @@ fn all_messages() -> Vec<Message> {
         },
         Message::Shutdown,
         Message::TimeSync { unix_secs: 1 },
+        Message::Exec {
+            id: 1,
+            argv: vec!["/bin/echo".into(), "hi".into()],
+            timeout_ms: Some(5_000),
+        },
+        Message::ExecOutput {
+            id: 1,
+            stream: ExecStream::Stdout,
+            data: HexBytes(b"hi\n".to_vec()),
+        },
+        Message::ExecExit { id: 1, code: 0 },
+        Message::CopyHash {
+            id: 2,
+            path: "/tmp/a".into(),
+        },
+        Message::CopyHashOk {
+            id: 2,
+            size: 3,
+            sha256: "a".repeat(64),
+        },
     ]
 }
 

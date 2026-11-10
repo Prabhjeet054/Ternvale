@@ -12,12 +12,14 @@
 //! a version bump; changing or removing a message does.
 
 mod frame;
+mod hex;
 mod message;
 mod reader;
 mod window;
 
 pub use frame::{encode, read_message, write_message, FrameError};
-pub use message::{ClipboardText, Message};
+pub use hex::{decode as decode_hex, encode as encode_hex, HexBytes};
+pub use message::{is_guest_file_path, ClipboardText, ExecStream, Message};
 pub use reader::FrameReader;
 pub use window::{
     validate_windows, GuestWindow, MAX_WINDOWS, MAX_WINDOW_DIMENSION, MAX_WINDOW_TITLE,
@@ -44,6 +46,14 @@ pub const MAX_DIMENSION: u32 = 16_384;
 pub const MAX_TAG_LEN: usize = 36;
 /// Longest guest mount path in `ShareMount`.
 pub const MAX_MOUNT_PATH: usize = 256;
+/// Longest guest file path in copy messages.
+pub const MAX_COPY_PATH: usize = 512;
+/// Max argv entries in `Exec`.
+pub const MAX_EXEC_ARGV: usize = 32;
+/// Longest single `Exec` argument.
+pub const MAX_EXEC_ARG: usize = 4096;
+/// Largest binary chunk in `ExecOutput` / `CopyPut` / `CopyGetOk` (before hex).
+pub const MAX_BIN_CHUNK: usize = 24 * 1024;
 
 /// The peer's protocol version is outside what this build supports.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

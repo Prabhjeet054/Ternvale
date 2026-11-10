@@ -1,6 +1,7 @@
 //! One connection: handshake, then answer host messages until it ends.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ternvale_agent_proto::{
@@ -118,6 +119,10 @@ fn serve_requests(
     actions: &mut dyn Actions,
     stop: &AtomicBool,
 ) -> Result<SessionEnd, AgentError> {
+    let writer = stream
+        .try_clone()
+        .ok()
+        .map(|clone| Arc::new(Mutex::new(clone)));
     let mut idle_deadline = Instant::now() + config.idle_timeout;
     loop {
         let message = match next(stream, reader, stop, idle_deadline, "read request")? {
@@ -138,51 +143,74 @@ fn serve_requests(
             }
         };
         let result = match message {
-            Message::Ping { seq } => {
-                write_message(stream, &Message::Pong { seq }, "host").map_err(|source| {
-                    AgentError::Frame {
-                        op: "send pong",
-                        source,
-                    }
-                })
-            }
+            Message::Ping { seq } => send_host(stream, writer.as_ref(), &Message::Pong { seq }),
             Message::SetResolution { width, height } => actions.set_resolution(width, height),
             Message::ClipboardSet { text } => actions.clipboard_set(&text.0),
             Message::ClipboardGet => {
                 let text = actions.clipboard_get()?;
-                write_message(
+                send_host(
                     stream,
+                    writer.as_ref(),
                     &Message::ClipboardGetOk {
                         text: ternvale_agent_proto::ClipboardText(text),
                     },
-                    "host",
                 )
-                .map_err(|source| AgentError::Frame {
-                    op: "send clipboard_get_ok",
-                    source,
-                })
             }
             Message::ShareMount { tag, mount_point } => actions.mount_share(&tag, &mount_point),
             Message::WindowListGet => {
                 let windows = actions.list_windows()?;
-                write_message(stream, &Message::WindowListOk { windows }, "host").map_err(
-                    |source| AgentError::Frame {
-                        op: "send window_list_ok",
-                        source,
-                    },
-                )
+                send_host(stream, writer.as_ref(), &Message::WindowListOk { windows })
             }
             Message::Shutdown => {
                 actions.shutdown()?;
                 return Ok(SessionEnd::Shutdown);
             }
             Message::TimeSync { unix_secs } => actions.time_sync(unix_secs),
+            Message::Exec {
+                id,
+                argv,
+                timeout_ms,
+            } => {
+                if let Some(writer) = writer.clone() {
+                    std::thread::spawn(move || crate::exec::run(writer, id, argv, timeout_ms));
+                    Ok(())
+                } else {
+                    tracing::warn!(target: "ternvale::agent", id, "exec needs a cloned stream");
+                    Ok(())
+                }
+            }
+            copy @ (Message::CopyPut { .. } | Message::CopyGet { .. }) => {
+                if let Some(lock) = writer.as_ref() {
+                    let mut guard = match lock.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    crate::copy::handle(&mut guard, &copy)
+                } else {
+                    crate::copy::handle(stream, &copy)
+                }
+            }
+            Message::CopyHash { id, path } => {
+                // Hashing a large file must not hold the writer lock (heartbeats).
+                if let Some(lock) = writer.clone() {
+                    std::thread::spawn(move || crate::copy::hash_reply(&lock, id, path));
+                    Ok(())
+                } else {
+                    crate::copy::handle(stream, &Message::CopyHash { id, path })
+                }
+            }
             other @ (Message::Hello { .. }
             | Message::Welcome { .. }
             | Message::Reject { .. }
             | Message::Pong { .. }
             | Message::ClipboardGetOk { .. }
-            | Message::WindowListOk { .. }) => {
+            | Message::WindowListOk { .. }
+            | Message::ExecOutput { .. }
+            | Message::ExecExit { .. }
+            | Message::CopyPutOk { .. }
+            | Message::CopyGetOk { .. }
+            | Message::CopyHashOk { .. }
+            | Message::CopyErr { .. }) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from host ignored");
                 Ok(())
             }
@@ -254,4 +282,24 @@ fn next(
 
 fn millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+fn send_host(
+    stream: &mut Stream,
+    writer: Option<&Arc<Mutex<Stream>>>,
+    message: &Message,
+) -> Result<(), AgentError> {
+    if let Some(lock) = writer {
+        let mut guard = match lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        write_message(&mut *guard, message, "host")
+    } else {
+        write_message(stream, message, "host")
+    }
+    .map_err(|source| AgentError::Frame {
+        op: "send to host",
+        source,
+    })
 }

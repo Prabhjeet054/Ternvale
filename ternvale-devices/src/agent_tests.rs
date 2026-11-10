@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ternvale_agent::{run, Actions, AgentConfig, AgentError, Backoff, Exit, Target};
-use ternvale_agent_proto::{read_message, write_message, ClipboardText, Message};
+use ternvale_agent_proto::{read_message, write_message, ClipboardText, ExecStream, Message};
 
 use super::*;
 
@@ -362,4 +362,40 @@ fn stale_sockets_are_replaced_and_live_or_foreign_paths_refused() {
         .expect("regular file");
     assert!(error.to_string().contains("not a socket"), "{error}");
     std::fs::remove_file(&path).expect("cleanup");
+}
+
+#[test]
+fn exec_runs_echo_through_the_connected_agent() {
+    let path = socket("exec");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
+    let stop = Arc::new(AtomicBool::new(false));
+    let recorder = Recorder::default();
+    let config = AgentConfig {
+        backoff: Backoff::new(Duration::from_millis(20), Duration::from_millis(200)),
+        poll: Duration::from_millis(10),
+        idle_timeout: Duration::from_secs(2),
+        ..AgentConfig::new(Target::Unix(path.clone()))
+    };
+    let (flag, mut actions) = (Arc::clone(&stop), recorder);
+    let agent = std::thread::spawn(move || run(&config, &mut actions, &flag));
+    server
+        .wait_for(WAIT, |s| s.state == AgentState::Connected && s.pongs >= 1)
+        .expect("connected");
+    let mut stdout = Vec::new();
+    let code = server
+        .exec(
+            &["/bin/echo".into(), "hi-from-agent".into()],
+            Duration::from_secs(5),
+            |stream, data| {
+                if stream == ExecStream::Stdout {
+                    stdout.extend_from_slice(data);
+                }
+            },
+        )
+        .expect("exec");
+    assert_eq!(code, 0);
+    assert_eq!(String::from_utf8_lossy(&stdout).trim(), "hi-from-agent");
+    stop.store(true, Ordering::Release);
+    drop(server);
+    let _ = agent.join();
 }
