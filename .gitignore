@@ -41,6 +41,7 @@ ternvale-fuzz/fuzz/corpus/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9
 ternvale-cursor-prompts.md
 ternvale-cursor-prompts-part2.md
 ternvale-cursor-prompts-part3.md
+ternvale-cursor-prompts-part4.md
 # Leftover HTML if mdbook is run without book.toml build-dir
 /book/*.html
 /book/*.js
