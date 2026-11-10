@@ -5,6 +5,7 @@ use std::io::{self, ErrorKind};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use libc::F_NOCACHE;
@@ -131,12 +132,71 @@ impl BlkBackend {
             Self::Stack(stack) => ternvale_vmm::lockwatch::lock(stack, "blk-stack").flush(),
         }
     }
+
+    /// Discard or optionally unmap `[offset, offset+len)`.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip_all,
+        fields(offset, len, unmap)
+    )]
+    pub fn discard(&self, offset: u64, len: u64, unmap: bool) -> io::Result<()> {
+        match self {
+            Self::File(file) => file.discard(offset, len, unmap),
+            Self::Stack(stack) => {
+                ternvale_vmm::lockwatch::lock(stack, "blk-stack").discard(offset, len, unmap)
+            }
+        }
+    }
+
+    pub fn allocated_bytes(&self) -> io::Result<u64> {
+        match self {
+            Self::File(file) => file.allocated_bytes(),
+            Self::Stack(stack) => ternvale_vmm::lockwatch::lock(stack, "blk-stack")
+                .allocated_bytes()
+                .map_err(|error| io::Error::other(error.to_string())),
+        }
+    }
+
+    pub fn in_use_bytes(&self) -> io::Result<u64> {
+        match self {
+            Self::File(file) => file.in_use_bytes(),
+            Self::Stack(stack) => {
+                Ok(ternvale_vmm::lockwatch::lock(stack, "blk-stack").in_use_bytes())
+            }
+        }
+    }
+
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip_all,
+        fields(bytes)
+    )]
+    pub fn resize(&self, bytes: u64) -> io::Result<()> {
+        match self {
+            Self::File(file) => file.resize(bytes),
+            Self::Stack(stack) => ternvale_vmm::lockwatch::lock(stack, "blk-stack")
+                .resize(bytes)
+                .map_err(|error| io::Error::other(error.to_string())),
+        }
+    }
+
+    #[tracing::instrument(level = "debug", target = "ternvale::virtio::blk", skip_all)]
+    pub fn compact(&self) -> io::Result<(u64, u64)> {
+        match self {
+            Self::File(file) => file.compact(),
+            Self::Stack(stack) => ternvale_vmm::lockwatch::lock(stack, "blk-stack")
+                .compact_layers()
+                .map_err(|error| io::Error::other(error.to_string())),
+        }
+    }
 }
 
 /// Plain raw disk image.
 pub struct FileBackend {
     file: File,
-    bytes: u64,
+    bytes: AtomicU64,
     read_only: bool,
     cache: DiskCache,
     flush: DiskFlush,
@@ -227,7 +287,7 @@ impl FileBackend {
         );
         Ok(Self {
             file,
-            bytes,
+            bytes: AtomicU64::new(bytes),
             read_only,
             cache: options.cache,
             flush: options.flush,
@@ -236,8 +296,12 @@ impl FileBackend {
         })
     }
 
+    fn len(&self) -> u64 {
+        self.bytes.load(Ordering::Acquire)
+    }
+
     pub fn capacity(&self) -> u64 {
-        self.bytes / SECTOR
+        self.len() / SECTOR
     }
 
     pub fn read_only(&self) -> bool {
@@ -246,7 +310,7 @@ impl FileBackend {
 
     #[allow(dead_code)]
     pub fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<()> {
-        if offset.saturating_add(buf.len() as u64) > self.bytes {
+        if offset.saturating_add(buf.len() as u64) > self.len() {
             return Err(io::Error::new(ErrorKind::InvalidInput, "read past end"));
         }
         if self.xts.is_none() {
@@ -287,7 +351,7 @@ impl FileBackend {
 
     pub fn read_guest(&self, mem: &GuestMemory, bufs: &[Buffer], offset: u64) -> io::Result<()> {
         let total = bufs.iter().map(|b| u64::from(b.len)).sum::<u64>();
-        if offset.saturating_add(total) > self.bytes {
+        if offset.saturating_add(total) > self.len() {
             return Err(io::Error::new(ErrorKind::InvalidInput, "read past end"));
         }
         if self.xts.is_some() {
@@ -358,10 +422,78 @@ impl FileBackend {
         if self.read_only {
             return Err(io::Error::new(ErrorKind::PermissionDenied, "read-only"));
         }
-        if offset.saturating_add(len) > self.bytes {
+        if offset.saturating_add(len) > self.len() {
             return Err(io::Error::new(ErrorKind::InvalidInput, "write past end"));
         }
         Ok(())
+    }
+
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip_all,
+        fields(offset, len, unmap)
+    )]
+    pub fn discard(&self, offset: u64, len: u64, unmap: bool) -> io::Result<()> {
+        self.check_write(offset, len)?;
+        if self.xts.is_some() || !unmap {
+            return self.write_zeros(offset, len);
+        }
+        super::punch::punch_hole(&self.file, offset, len)?;
+        self.after_write()
+    }
+
+    fn write_zeros(&self, offset: u64, len: u64) -> io::Result<()> {
+        const CHUNK: usize = 64 * 1024;
+        let zeros = vec![0u8; CHUNK];
+        let mut done = 0u64;
+        while done < len {
+            let n = ((len - done) as usize).min(CHUNK);
+            self.write_at(&zeros[..n], offset + done)?;
+            done += n as u64;
+        }
+        Ok(())
+    }
+
+    pub fn allocated_bytes(&self) -> io::Result<u64> {
+        super::punch::allocated_bytes(&self.file)
+    }
+
+    pub fn in_use_bytes(&self) -> io::Result<u64> {
+        super::punch::in_use_bytes(&self.file, self.len())
+    }
+
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::virtio::blk",
+        skip_all,
+        fields(bytes)
+    )]
+    pub fn resize(&self, bytes: u64) -> io::Result<()> {
+        if self.read_only {
+            return Err(io::Error::new(ErrorKind::PermissionDenied, "read-only"));
+        }
+        let aligned = bytes - (bytes % SECTOR);
+        self.file.set_len(aligned)?;
+        self.bytes.store(aligned, Ordering::Release);
+        tracing::info!(
+            target: "ternvale::virtio::blk",
+            bytes = aligned,
+            "raw disk resized"
+        );
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", target = "ternvale::virtio::blk", skip_all)]
+    pub fn compact(&self) -> io::Result<(u64, u64)> {
+        let n = self.allocated_bytes()?;
+        tracing::info!(
+            target: "ternvale::virtio::blk",
+            before = n,
+            after = n,
+            "raw disk compact is a no-op (holes already punched)"
+        );
+        Ok((n, n))
     }
 
     fn after_write(&self) -> io::Result<()> {

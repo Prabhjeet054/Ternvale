@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use ternvale_devices::{
-    AgentServer, BalloonHandle, BalloonSnapshot, BlkStats, NetStats, VsockStats,
+    AgentServer, BalloonHandle, BalloonSnapshot, BlkStats, DiskHandle, NetStats, VsockStats,
 };
 use ternvale_vmm::{lockwatch, VmControl};
 
@@ -28,7 +28,7 @@ pub const TPM_SUFFIX: &str = ".tpm.txt";
 /// Device counters gathered while devices are attached.
 #[derive(Default)]
 pub struct DeviceStats {
-    pub disks: Vec<(PathBuf, Arc<BlkStats>)>,
+    pub disks: Vec<(PathBuf, Arc<BlkStats>, Arc<DiskHandle>)>,
     pub nics: Vec<(String, Arc<NetStats>)>,
     pub vsock: Option<Arc<VsockStats>>,
     pub balloon: Option<Arc<BalloonHandle>>,
@@ -116,7 +116,7 @@ impl DiagSink {
             disks: devices
                 .disks
                 .iter()
-                .map(|(path, stats)| {
+                .map(|(path, stats, _handle)| {
                     let (reqs, bytes, errors) = stats.snapshot();
                     DiskSummary {
                         path: path.clone(),
@@ -168,6 +168,31 @@ impl DiagSink {
         };
         tracing::info!(target: "ternvale::cli", target_mib = mib, "balloon-set");
         Ok(handle.set_target_mib(mib))
+    }
+
+    /// Online virtio-blk grow (config-change interrupt).
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn resize_disk(
+        &self,
+        disk: Option<u32>,
+        bytes: u64,
+        force: bool,
+    ) -> Result<(u64, u64, u64)> {
+        let devices = lockwatch::lock(&self.devices, "device-stats");
+        let index = disk.unwrap_or(0) as usize;
+        let Some((_, _, handle)) = devices.disks.get(index) else {
+            anyhow::bail!("no disk at index {index}");
+        };
+        tracing::info!(
+            target: "ternvale::cli",
+            index,
+            bytes,
+            force,
+            "disk-resize"
+        );
+        handle
+            .resize(bytes, force)
+            .with_context(|| format!("resize disk {index}"))
     }
 
     /// Write `.dtb` (once the machine built one), `.mmio.txt`, `.tpm.txt`

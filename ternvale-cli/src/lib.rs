@@ -33,6 +33,7 @@ pub mod create_progress;
 pub mod crypto_cmd;
 pub mod diag;
 pub mod disk;
+pub mod disk_cmd;
 pub mod display;
 pub mod display_input;
 pub mod doctor;
@@ -242,6 +243,15 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             })
         }
         Command::CreateDisk { path, size } => commands::create_disk(&path, &size, json),
+        Command::Disk { action } => match action {
+            cli::DiskCommand::Compact { vm, disk } => disk_cmd::compact(&vm, disk, json),
+            cli::DiskCommand::Resize {
+                vm,
+                size,
+                force,
+                disk,
+            } => disk_cmd::resize(&vm, &size, force, disk, json),
+        },
         Command::Status { name, stats } => commands::status(&name, stats, json),
         Command::Stats {
             name,

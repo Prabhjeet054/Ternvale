@@ -193,6 +193,162 @@ impl ImageStack {
         Ok(())
     }
 
+    /// Discard or zero `len` bytes at `offset`. Full COW blocks with `unmap`
+    /// are marked unmapped/zero in the top delta; partial ranges are written
+    /// as zeros.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::snapshot",
+        skip_all,
+        fields(offset, len, unmap)
+    )]
+    pub fn discard(&mut self, offset: u64, len: u64, unmap: bool) -> io::Result<()> {
+        if self.read_only {
+            return Err(io::Error::new(
+                ErrorKind::PermissionDenied,
+                "read-only stack",
+            ));
+        }
+        if offset.saturating_add(len) > self.virtual_size {
+            return Err(io::Error::new(ErrorKind::InvalidInput, "discard past end"));
+        }
+        if self.layers.is_empty() {
+            return Err(io::Error::new(
+                ErrorKind::PermissionDenied,
+                "stack has no writable delta layer",
+            ));
+        }
+        let bs = u64::from(self.block_size);
+        let mut pos = offset;
+        let end = offset + len;
+        while pos < end {
+            let block_index = pos / bs;
+            let block_start = block_index * bs;
+            let block_end = (block_start + bs).min(self.virtual_size);
+            let span_end = end.min(block_end);
+            if unmap && pos == block_start && span_end == block_end {
+                let top = self.layers.len() - 1;
+                self.layers[top].unmap_block(block_index).map_err(io_err)?;
+                pos = span_end;
+                continue;
+            }
+            let zeros = vec![0u8; (span_end - pos) as usize];
+            self.write_at(&zeros, pos)?;
+            pos = span_end;
+        }
+        Ok(())
+    }
+
+    /// Enlarge the guest-visible size (new space reads as zeros).
+    pub fn grow(&mut self, bytes: u64) -> Result<(), SnapshotError> {
+        if self.read_only {
+            return Err(SnapshotError::ReadOnly {
+                path: self.base_path.clone(),
+            });
+        }
+        let aligned = bytes - (bytes % u64::from(self.block_size));
+        if aligned < self.virtual_size {
+            return Err(SnapshotError::InvalidRequest {
+                detail: "stack grow cannot shrink".into(),
+            });
+        }
+        if let Some(top) = self.layers.last_mut() {
+            top.grow(aligned)?;
+        }
+        self.virtual_size = aligned;
+        tracing::info!(
+            target = "ternvale::snapshot",
+            bytes = aligned,
+            "layered disk grown"
+        );
+        Ok(())
+    }
+
+    /// Rewrite the top delta, dropping unmapped packed blocks.
+    pub fn compact_top(&mut self) -> Result<(u64, u64), SnapshotError> {
+        let Some(top) = self.layers.last_mut() else {
+            return Err(SnapshotError::InvalidRequest {
+                detail: "stack has no delta to compact".into(),
+            });
+        };
+        top.compact()
+    }
+
+    /// Compact every delta layer, dropping unmapped packed blocks.
+    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all)]
+    pub fn compact_layers(&mut self) -> Result<(u64, u64), SnapshotError> {
+        let before = self.allocated_bytes()?;
+        for layer in &mut self.layers {
+            layer.compact()?;
+        }
+        let after = self.allocated_bytes()?;
+        tracing::info!(
+            target = "ternvale::snapshot",
+            before,
+            after,
+            "layered disk compacted"
+        );
+        Ok((before, after))
+    }
+
+    /// Grow or shrink the guest-visible size.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::snapshot",
+        skip_all,
+        fields(bytes)
+    )]
+    pub fn resize(&mut self, bytes: u64) -> Result<(), SnapshotError> {
+        let aligned = bytes - (bytes % u64::from(self.block_size));
+        if aligned >= self.virtual_size {
+            return self.grow(aligned);
+        }
+        if let Some(top) = self.layers.last_mut() {
+            top.shrink(aligned)?;
+        }
+        self.virtual_size = aligned;
+        tracing::info!(
+            target = "ternvale::snapshot",
+            bytes = aligned,
+            "layered disk shrunk"
+        );
+        Ok(())
+    }
+
+    /// Host allocated bytes across base and deltas (`st_blocks` * 512).
+    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all)]
+    pub fn allocated_bytes(&self) -> Result<u64, SnapshotError> {
+        let mut total = crate::delta::allocated_bytes(&self.base_path)?;
+        for layer in &self.layers {
+            total += crate::delta::allocated_bytes(layer.path())?;
+        }
+        Ok(total)
+    }
+
+    /// Highest byte that holds guest data (allocated, non-unmapped).
+    pub fn in_use_bytes(&self) -> u64 {
+        let mut max = 0u64;
+        let bs = u64::from(self.block_size);
+        let blocks = self.virtual_size.div_ceil(bs);
+        for index in 0..blocks {
+            let mut used = false;
+            for layer in self.layers.iter().rev() {
+                if layer.has_zero(index) {
+                    used = false;
+                    break;
+                }
+                if layer.has_block(index) {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                max = (index + 1) * bs;
+            }
+        }
+        max.min(self.virtual_size)
+    }
+
     fn chunk_until_block_end(&self, offset: u64) -> usize {
         let bs = u64::from(self.block_size);
         let block_start = (offset / bs) * bs;
@@ -277,6 +433,9 @@ impl ImageStack {
     ) -> Result<Option<Vec<u8>>, SnapshotError> {
         let end = below.min(self.layers.len());
         for layer in self.layers[..end].iter().rev() {
+            if layer.has_zero(block_index) {
+                return Ok(Some(vec![0u8; self.block_bytes()]));
+            }
             if layer.has_block(block_index) {
                 let mut block = vec![0u8; self.block_bytes()];
                 layer.read_block(block_index, &mut block)?;

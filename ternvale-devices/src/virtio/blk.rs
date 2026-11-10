@@ -1,10 +1,12 @@
 //! virtio-blk device: request queues, file backend, and I/O workers.
 
 mod backend;
+mod handle;
 mod host_sync;
 mod media;
 mod options;
 mod pool;
+mod punch;
 mod request;
 mod vectored;
 
@@ -19,6 +21,7 @@ use ternvale_vmm::{DeviceAttach, GuestMemory, MachineError};
 use super::irq::{IrqHook, VirtioIrq};
 use super::{QueueNotify, VirtioDevice, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 use backend::BlkBackend;
+pub use handle::DiskHandle;
 pub use media::{
     BlkMedia, OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_SEG_MAX,
 };
@@ -31,17 +34,25 @@ pub const VIRTIO_BLK_ID: u32 = 2;
 pub const VIRTIO_BLK_F_RO: u64 = 1 << 5;
 /// Cache flush feature bit.
 pub const VIRTIO_BLK_F_FLUSH: u64 = 1 << 9;
+/// Discard (TRIM) feature bit (virtio 1.2 §5.2.3).
+pub const VIRTIO_BLK_F_DISCARD: u64 = 1 << 13;
+/// Write zeroes feature bit (virtio 1.2 §5.2.3).
+pub const VIRTIO_BLK_F_WRITE_ZEROES: u64 = 1 << 14;
 
 pub(super) const VIRTIO_BLK_T_IN: u32 = 0;
 pub(super) const VIRTIO_BLK_T_OUT: u32 = 1;
 pub(super) const VIRTIO_BLK_T_FLUSH: u32 = 4;
 pub(super) const VIRTIO_BLK_T_GET_ID: u32 = 8;
+pub(super) const VIRTIO_BLK_T_DISCARD: u32 = 11;
+pub(super) const VIRTIO_BLK_T_WRITE_ZEROES: u32 = 13;
+pub(super) const VIRTIO_BLK_DISCARD_UNMAP: u32 = 1;
 pub(super) const VIRTIO_BLK_S_OK: u8 = 0;
 pub(super) const VIRTIO_BLK_S_IOERR: u8 = 1;
 pub(super) const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 pub(super) const SECTOR: u64 = 512;
 pub(super) const ID_BYTES: usize = 20;
 pub(super) const INT_VRING: u32 = 1;
+pub(super) const INT_CONFIG: u32 = 2;
 
 pub(super) use super::queue::Buffer;
 
@@ -65,7 +76,13 @@ pub enum VirtioBlkError {
 }
 
 /// Base, size, MMIO device, and live stats from [`VirtioBlk::attach`].
-pub type AttachedBlk = (u64, u64, Box<dyn ternvale_vmm::MmioDevice>, Arc<BlkStats>);
+pub type AttachedBlk = (
+    u64,
+    u64,
+    Box<dyn ternvale_vmm::MmioDevice>,
+    Arc<BlkStats>,
+    Arc<DiskHandle>,
+);
 
 /// Counters for one virtio-blk device.
 #[derive(Debug, Default)]
@@ -127,7 +144,7 @@ pub fn try_open_disk_for_write(path: &Path) -> Result<(), VirtioBlkError> {
 pub struct VirtioBlk {
     media: BlkMedia,
     options: BlkOptions,
-    config: [u8; 36],
+    handle: Arc<DiskHandle>,
     stats: Arc<BlkStats>,
     pool: Option<Pool>,
 }
@@ -219,6 +236,7 @@ impl VirtioBlk {
         serial[..n].copy_from_slice(&bytes[..n]);
         let stats = Arc::new(BlkStats::default());
         let disk_id = metrics.register_blk_disk(name);
+        let handle = DiskHandle::new(backend.clone(), media, options.num_queues, Arc::clone(&irq));
         let pool = Pool::spawn(
             options,
             backend,
@@ -236,7 +254,7 @@ impl VirtioBlk {
         Ok(Self {
             media,
             options,
-            config: media.config_space(capacity, options.num_queues),
+            handle,
             stats,
             pool: Some(pool),
         })
@@ -313,6 +331,7 @@ impl VirtioBlk {
         let blk =
             Self::open_media_crypto(path, media, options, memory, Arc::clone(&irq), metrics, xts)?;
         let stats = Arc::clone(&blk.stats);
+        let handle = Arc::clone(&blk.handle);
         let base = crate::virtio::slot_base(slot).ok_or_else(|| VirtioBlkError::Open {
             path: path.to_path_buf(),
             source: std::io::Error::new(std::io::ErrorKind::InvalidInput, "bad virtio slot"),
@@ -323,6 +342,7 @@ impl VirtioBlk {
             ternvale_vmm::VIRTIO_MMIO_SLOT_SIZE,
             Box::new(transport),
             stats,
+            handle,
         ))
     }
 
@@ -337,7 +357,7 @@ impl VirtioBlk {
         attach: &DeviceAttach,
         path: &Path,
         read_only: bool,
-    ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
+    ) -> Result<(Bdf, Arc<BlkStats>, Arc<DiskHandle>), MachineError> {
         Self::attach_pci_media(
             attach,
             path,
@@ -358,7 +378,7 @@ impl VirtioBlk {
         path: &Path,
         media: BlkMedia,
         options: BlkOptions,
-    ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
+    ) -> Result<(Bdf, Arc<BlkStats>, Arc<DiskHandle>), MachineError> {
         Self::attach_pci_media_crypto(attach, path, media, options, None)
     }
 
@@ -369,7 +389,7 @@ impl VirtioBlk {
         media: BlkMedia,
         options: BlkOptions,
         xts: Option<ternvale_crypto::DiskXts>,
-    ) -> Result<(Bdf, Arc<BlkStats>), MachineError> {
+    ) -> Result<(Bdf, Arc<BlkStats>, Arc<DiskHandle>), MachineError> {
         let irq = VirtioIrq::new();
         let blk = Self::open_media_crypto(
             path,
@@ -382,13 +402,19 @@ impl VirtioBlk {
         )
         .map_err(|error| MachineError::Attach(error.to_string()))?;
         let stats = Arc::clone(&blk.stats);
+        let handle = Arc::clone(&blk.handle);
         let bdf = super::pci::attach_pci(attach, Box::new(blk), irq)?;
-        Ok((bdf, stats))
+        Ok((bdf, stats, handle))
     }
 
     /// Per-device request counters.
     pub fn stats(&self) -> &BlkStats {
         &self.stats
+    }
+
+    /// Online resize / config-change handle.
+    pub fn disk_handle(&self) -> Arc<DiskHandle> {
+        Arc::clone(&self.handle)
     }
 
     fn send(&self, kick: Kick) {
@@ -432,7 +458,11 @@ impl VirtioDevice for VirtioBlk {
     }
 
     fn read_config(&self, offset: u64, size: u8) -> u64 {
-        media::read_le(&self.config, offset, size)
+        self.handle.read_config(offset, size)
+    }
+
+    fn config_generation(&self) -> u32 {
+        self.handle.generation()
     }
 
     fn notify(&self, queue: QueueNotify) {

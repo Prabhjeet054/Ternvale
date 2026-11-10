@@ -37,8 +37,14 @@ pub const OPTICAL_BLOCK_SIZE: u32 = 2048;
 /// Max descriptors per request advertised in `seg_max` (virtio 1.2 §5.2.4).
 pub const SEG_MAX: u32 = 64;
 
-/// Bytes through `num_queues` (le16 at offset 34). virtio 1.2 §5.2.4.
-const CONFIG_BYTES: usize = 36;
+/// Bytes through `write_zeroes_may_unmap` (virtio 1.2 §5.2.4).
+pub(super) const CONFIG_BYTES: usize = 60;
+/// Max discard / write-zeroes size advertised to the guest (16 MiB).
+const MAX_DISCARD_SECTORS: u32 = 32_768;
+/// Max discard segments in one request.
+const MAX_DISCARD_SEG: u32 = 32;
+/// Discard alignment in 512-byte sectors (APFS 4096-byte blocks).
+const DISCARD_ALIGN_SECTORS: u32 = 8;
 const SEG_MAX_OFFSET: usize = 12;
 const BLK_SIZE_OFFSET: usize = 20;
 const NUM_QUEUES_OFFSET: usize = 34;
@@ -88,7 +94,11 @@ impl BlkMedia {
     #[tracing::instrument(level = "trace", target = "ternvale::virtio::blk", skip_all)]
     pub fn features(self) -> u64 {
         match self {
-            Self::Disk { read_only: false } => super::VIRTIO_BLK_F_FLUSH,
+            Self::Disk { read_only: false } => {
+                super::VIRTIO_BLK_F_FLUSH
+                    | super::VIRTIO_BLK_F_DISCARD
+                    | super::VIRTIO_BLK_F_WRITE_ZEROES
+            }
             Self::Disk { read_only: true } => super::VIRTIO_BLK_F_FLUSH | super::VIRTIO_BLK_F_RO,
             Self::Optical => super::VIRTIO_BLK_F_RO | VIRTIO_BLK_F_BLK_SIZE,
         }
@@ -103,6 +113,14 @@ impl BlkMedia {
             bytes[BLK_SIZE_OFFSET..BLK_SIZE_OFFSET + 4].copy_from_slice(&size.to_le_bytes());
         }
         bytes[NUM_QUEUES_OFFSET..NUM_QUEUES_OFFSET + 2].copy_from_slice(&num_queues.to_le_bytes());
+        if matches!(self, Self::Disk { read_only: false }) {
+            bytes[36..40].copy_from_slice(&MAX_DISCARD_SECTORS.to_le_bytes());
+            bytes[40..44].copy_from_slice(&MAX_DISCARD_SEG.to_le_bytes());
+            bytes[44..48].copy_from_slice(&DISCARD_ALIGN_SECTORS.to_le_bytes());
+            bytes[48..52].copy_from_slice(&MAX_DISCARD_SECTORS.to_le_bytes());
+            bytes[52..56].copy_from_slice(&MAX_DISCARD_SEG.to_le_bytes());
+            bytes[56] = 1; // write_zeroes_may_unmap
+        }
         bytes
     }
 }

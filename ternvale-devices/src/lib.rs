@@ -34,11 +34,12 @@ pub use virtio::{
     VIRTIO_NET_F_STATUS, VIRTIO_NET_ID, VIRTIO_NET_S_LINK_UP,
 };
 pub use virtio::{
-    slot_base, AttachedBlk, BlkStats, Buffer, Chain, FixedDevice, IrqHook, QueueNotify, SplitQueue,
-    VirtioBlk, VirtioBlkError, VirtioDevice, VirtioIrq, VirtioMmio, VirtioMmioError,
+    slot_base, AttachedBlk, BlkStats, Buffer, Chain, DiskHandle, FixedDevice, IrqHook, QueueNotify,
+    SplitQueue, VirtioBlk, VirtioBlkError, VirtioDevice, VirtioIrq, VirtioMmio, VirtioMmioError,
     STATUS_ACKNOWLEDGE, STATUS_DEVICE_NEEDS_RESET, STATUS_DRIVER, STATUS_DRIVER_OK, STATUS_FAILED,
-    STATUS_FEATURES_OK, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO, VIRTIO_BLK_F_SEG_MAX,
-    VIRTIO_BLK_ID, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
+    STATUS_FEATURES_OK, VIRTIO_BLK_F_DISCARD, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO,
+    VIRTIO_BLK_F_SEG_MAX, VIRTIO_BLK_F_WRITE_ZEROES, VIRTIO_BLK_ID, VIRTIO_F_EVENT_IDX,
+    VIRTIO_F_INDIRECT_DESC, VIRTIO_F_VERSION_1,
 };
 pub use virtio::{
     AttachedBalloon, BalloonConfig, BalloonError, BalloonHandle, BalloonSnapshot, VirtioBalloon,

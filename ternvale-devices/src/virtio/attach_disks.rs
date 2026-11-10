@@ -7,7 +7,7 @@ use ternvale_config::{BlockDevice, BlockRole, VirtioTransport};
 use ternvale_vmm::pci::{Bdf, PciIdentity};
 use ternvale_vmm::{DeviceAttach, MachineError, MmioDevice};
 
-use super::blk::{BlkMedia, BlkOptions, BlkStats};
+use super::blk::{BlkMedia, BlkOptions, BlkStats, DiskHandle};
 use super::VirtioBlk;
 
 /// Base, size, and MMIO device for one attached disk.
@@ -42,6 +42,8 @@ pub struct AttachedBlock {
     pub placement: BlkPlacement,
     /// Live request counters.
     pub stats: Arc<BlkStats>,
+    /// Online resize / compact.
+    pub handle: Arc<DiskHandle>,
 }
 
 /// What [`attach_blocks`] produced.
@@ -100,9 +102,9 @@ pub fn attach_blocks_crypto(
         } else {
             xts.clone()
         };
-        let (placement, stats) = match transport {
+        let (placement, stats, handle) = match transport {
             VirtioTransport::Pci => {
-                let (bdf, stats) = VirtioBlk::attach_pci_media_crypto(
+                let (bdf, stats, handle) = VirtioBlk::attach_pci_media_crypto(
                     attach,
                     &device.path,
                     media,
@@ -114,12 +116,12 @@ pub fn attach_blocks_crypto(
                     tracing::warn!(target: "ternvale::virtio::blk", index, %bdf, "block device is not on the PCI slot the uefi boot order names");
                 }
                 let identity = PciIdentity::read(&attach.pci, bdf);
-                (BlkPlacement::Pci { bdf, identity }, stats)
+                (BlkPlacement::Pci { bdf, identity }, stats, handle)
             }
             VirtioTransport::Mmio => {
                 let slot =
                     u32::try_from(index).map_err(|_| fail("slot does not fit in u32".into()))?;
-                let (base, size, mmio, stats) = VirtioBlk::attach_media_crypto(
+                let (base, size, mmio, stats, handle) = VirtioBlk::attach_media_crypto(
                     slot,
                     &device.path,
                     media,
@@ -131,7 +133,7 @@ pub fn attach_blocks_crypto(
                 )
                 .map_err(|error| fail(error.to_string()))?;
                 out.mmio.push((base, size, mmio));
-                (BlkPlacement::Mmio { slot }, stats)
+                (BlkPlacement::Mmio { slot }, stats, handle)
             }
         };
         let block = AttachedBlock {
@@ -140,6 +142,7 @@ pub fn attach_blocks_crypto(
             media,
             placement,
             stats,
+            handle,
         };
         log_identity(&block);
         out.devices.push(block);
@@ -238,7 +241,7 @@ pub fn attach_disks_crypto<P: AsRef<Path>>(
             encrypted = xts.is_some(),
             "attaching virtio-blk from config disk"
         );
-        let (base, size, device, _stats) = VirtioBlk::attach_media_crypto(
+        let (base, size, device, _stats, _handle) = VirtioBlk::attach_media_crypto(
             slot,
             path,
             BlkMedia::Disk {
@@ -271,7 +274,7 @@ pub fn attach_disks_pci<P: AsRef<Path>>(
     let mut functions = Vec::with_capacity(disks.len());
     for (path, read_only) in disks {
         let path = path.as_ref();
-        let (bdf, _stats) = VirtioBlk::attach_pci(attach, path, *read_only)?;
+        let (bdf, _stats, _handle) = VirtioBlk::attach_pci(attach, path, *read_only)?;
         tracing::info!(
             target: "ternvale::virtio::blk",
             %bdf,

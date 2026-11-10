@@ -32,9 +32,10 @@ pub use balloon::{
 #[doc(hidden)]
 pub use blk::try_open_disk_for_write;
 pub use blk::{
-    AttachedBlk, BlkMedia, BlkOptions, BlkStats, VirtioBlk, VirtioBlkError, OPTICAL_BLOCK_SIZE,
-    VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO,
-    VIRTIO_BLK_F_SEG_MAX, VIRTIO_BLK_ID,
+    AttachedBlk, BlkMedia, BlkOptions, BlkStats, DiskHandle, VirtioBlk, VirtioBlkError,
+    OPTICAL_BLOCK_SIZE, VIRTIO_BLK_F_BLK_SIZE, VIRTIO_BLK_F_DISCARD, VIRTIO_BLK_F_FLUSH,
+    VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO, VIRTIO_BLK_F_SEG_MAX, VIRTIO_BLK_F_WRITE_ZEROES,
+    VIRTIO_BLK_ID,
 };
 pub use console::{
     AttachedConsole, ConsoleError, ConsoleStats, VirtioConsole, AGENT_PORT_NAME, F_MULTIPORT,

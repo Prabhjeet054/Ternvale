@@ -127,6 +127,23 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limit: Option<u64>,
     },
+    /// Grow a virtio-blk image and raise a config-change interrupt.
+    DiskResize {
+        /// New size in bytes (sector-aligned by the VMM).
+        bytes: u64,
+        /// Allow shrinking below the in-use size.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        force: bool,
+        /// `[[disks]]` index (default 0).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        disk: Option<u32>,
+    },
+    /// Compact is refused while the VM is running.
+    DiskCompact {
+        /// `[[disks]]` index (default 0).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        disk: Option<u32>,
+    },
 }
 
 impl Request {
@@ -153,6 +170,8 @@ impl Request {
             Self::SetDataKey { .. } => "set-data-key",
             Self::Exec { .. } => "exec",
             Self::Copy { .. } => "copy",
+            Self::DiskResize { .. } => "disk-resize",
+            Self::DiskCompact { .. } => "disk-compact",
         }
     }
 
@@ -178,6 +197,8 @@ impl Request {
             Self::SetDataKey { .. } => "set data key for",
             Self::Exec { .. } => "exec on",
             Self::Copy { .. } => "copy for",
+            Self::DiskResize { .. } => "resize disk for",
+            Self::DiskCompact { .. } => "compact disk for",
         }
     }
 }
@@ -342,6 +363,15 @@ pub struct Response {
     /// True when `copy` resumed from a non-zero offset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resumed: Option<bool>,
+    /// Host allocated bytes before compact/resize.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allocated_before: Option<u64>,
+    /// Host allocated bytes after compact/resize.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allocated_after: Option<u64>,
+    /// Guest-visible image size after resize.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logical_bytes: Option<u64>,
 }
 
 impl Response {
@@ -366,6 +396,9 @@ impl Response {
             bytes: None,
             sha256: None,
             resumed: None,
+            allocated_before: None,
+            allocated_after: None,
+            logical_bytes: None,
         }
     }
 
@@ -502,6 +535,17 @@ impl Response {
         }
     }
 
+    /// Compact/resize allocated sizes (optional fields; older clients ignore them).
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn disk_sizes(before: u64, after: u64, logical: Option<u64>) -> Self {
+        Self {
+            allocated_before: Some(before),
+            allocated_after: Some(after),
+            logical_bytes: logical,
+            ..Self::blank(true)
+        }
+    }
+
     /// Failure with a message.
     #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
     pub fn error(message: impl Into<String>) -> Self {
@@ -592,6 +636,18 @@ mod tests {
                     key_hex: DataKeyHex("aa".into()),
                 },
             ),
+            (
+                r#"{"cmd":"disk-resize","bytes":17179869184}"#,
+                Request::DiskResize {
+                    bytes: 17_179_869_184,
+                    force: false,
+                    disk: None,
+                },
+            ),
+            (
+                r#"{"cmd":"disk-compact"}"#,
+                Request::DiskCompact { disk: None },
+            ),
         ];
         for (line, want) in cases {
             let got: Request = serde_json::from_str(line).expect(line);
@@ -674,6 +730,18 @@ mod tests {
             },
         );
         assert_golden("response-error.json", &Response::error("nope"));
+        assert_golden(
+            "cmd-disk-resize.json",
+            &Request::DiskResize {
+                bytes: 17_179_869_184,
+                force: false,
+                disk: None,
+            },
+        );
+        assert_golden(
+            "cmd-disk-compact.json",
+            &Request::DiskCompact { disk: None },
+        );
     }
 
     #[test]

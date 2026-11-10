@@ -125,6 +125,11 @@ pub enum Command {
         #[arg(long, default_value_t = 7200)]
         timeout_secs: u64,
     },
+    /// Compact layered disks or grow a disk online.
+    Disk {
+        #[command(subcommand)]
+        action: DiskCommand,
+    },
     /// Create a sparse raw disk image.
     CreateDisk {
         /// Image path; must not exist yet.
@@ -365,6 +370,32 @@ pub enum CryptoCommand {
     Rotate {
         /// VM name.
         name: String,
+    },
+}
+
+/// `ternvale disk …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum DiskCommand {
+    /// Rewrite delta layers, dropping unmapped blocks (VM must be stopped).
+    Compact {
+        /// VM name.
+        vm: String,
+        /// Disk index (`[[disks]]` order, default 0).
+        #[arg(long)]
+        disk: Option<u32>,
+    },
+    /// Grow (or forced-shrink) a disk; running VMs get a virtio config change.
+    Resize {
+        /// VM name.
+        vm: String,
+        /// New size (`4G`, `8192M`, or bytes).
+        size: String,
+        /// Allow shrinking below the in-use size.
+        #[arg(long)]
+        force: bool,
+        /// Disk index (`[[disks]]` order, default 0).
+        #[arg(long)]
+        disk: Option<u32>,
     },
 }
 

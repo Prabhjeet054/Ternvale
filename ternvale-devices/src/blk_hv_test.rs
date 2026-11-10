@@ -150,7 +150,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
     let stats_for_attach = Arc::clone(&stats_slot);
     let image_for_attach = image.clone();
     let exit = Machine::run_with(&vm, Box::new(uart), Arc::clone(&cancel), move |attach| {
-        let (base, size, device, stats) = VirtioBlk::attach(
+        let (base, size, device, stats, _handle) = VirtioBlk::attach(
             0,
             &image_for_attach,
             false,

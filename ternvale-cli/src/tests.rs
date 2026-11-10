@@ -9,7 +9,7 @@ use std::time::Duration;
 use clap::{CommandFactory, Parser};
 use ternvale_vmm::{VmControl, VmState};
 
-use crate::cli::{Cli, Command};
+use crate::cli::{Cli, Command, DiskCommand};
 use crate::client::{self, Reach};
 use crate::display::DisplayMode;
 use crate::protocol::{Request, Response, MAX_LINE};
@@ -108,6 +108,26 @@ fn parses_every_subcommand() {
         Command::CreateDisk {
             path: "d.img".into(),
             size: "4G".into()
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "disk", "compact", "win11"]),
+        Command::Disk {
+            action: DiskCommand::Compact {
+                vm: "win11".into(),
+                disk: None
+            }
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "disk", "resize", "win11", "16G", "--force"]),
+        Command::Disk {
+            action: DiskCommand::Resize {
+                vm: "win11".into(),
+                size: "16G".into(),
+                force: true,
+                disk: None
+            }
         }
     );
     assert_eq!(

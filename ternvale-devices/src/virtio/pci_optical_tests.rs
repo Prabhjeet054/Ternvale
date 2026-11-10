@@ -39,7 +39,12 @@ fn media_selects_features_and_config_space() {
         "no FLUSH on read-only media"
     );
     let disk = BlkMedia::Disk { read_only: false };
-    assert_eq!(disk.features(), VIRTIO_BLK_F_FLUSH);
+    assert_eq!(
+        disk.features(),
+        VIRTIO_BLK_F_FLUSH
+            | crate::virtio::VIRTIO_BLK_F_DISCARD
+            | crate::virtio::VIRTIO_BLK_F_WRITE_ZEROES
+    );
     assert_eq!(disk.block_size(), None);
     let ro = BlkMedia::Disk { read_only: true };
     assert!(ro.read_only());

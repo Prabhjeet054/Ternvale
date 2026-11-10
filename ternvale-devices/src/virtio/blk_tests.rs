@@ -8,8 +8,9 @@ use ternvale_vmm::{GuestMemory, HOST_PAGE_SIZE};
 
 use super::backend::FileBackend;
 use super::{
-    VirtioBlk, SECTOR, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO, VIRTIO_BLK_F_SEG_MAX,
-    VIRTIO_BLK_S_IOERR, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_FLUSH, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT,
+    VirtioBlk, SECTOR, VIRTIO_BLK_F_DISCARD, VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_RO,
+    VIRTIO_BLK_F_SEG_MAX, VIRTIO_BLK_F_WRITE_ZEROES, VIRTIO_BLK_S_IOERR, VIRTIO_BLK_S_OK,
+    VIRTIO_BLK_T_DISCARD, VIRTIO_BLK_T_FLUSH, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT,
 };
 use crate::virtio::irq::VirtioIrq;
 use crate::virtio::{QueueNotify, VirtioDevice, VIRTIO_F_EVENT_IDX};
@@ -152,7 +153,7 @@ fn write_header(mem: &mut GuestMemory, addr: u64, ty: u32, sector: u64) {
 
 #[test]
 fn config_reports_capacity_and_flush() {
-    let (fx, mut blk) = Fixture::new(SECTOR * 8, false);
+    let (fx, blk) = Fixture::new(SECTOR * 8, false);
     assert_eq!(blk.read_config(0, 8), 8);
     assert_eq!(
         blk.device_features() & VIRTIO_BLK_F_FLUSH,
@@ -165,6 +166,9 @@ fn config_reports_capacity_and_flush() {
     assert_eq!(blk.num_queues(), 1);
     assert_eq!(blk.read_config(12, 4), 64);
     assert_eq!(blk.read_config(34, 2), 1);
+    assert_ne!(blk.device_features() & VIRTIO_BLK_F_DISCARD, 0);
+    assert_ne!(blk.device_features() & VIRTIO_BLK_F_WRITE_ZEROES, 0);
+    assert_eq!(blk.read_config(36, 4), 32_768);
     drop(fx);
 }
 
@@ -388,4 +392,107 @@ fn nocache_and_multi_queue_open() {
     assert_eq!(blk.read_config(34, 2), 4);
     drop(blk);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn discard_reads_as_zero() {
+    let (fx, mut blk) = Fixture::new(SECTOR * 8, false);
+    let hdr = fx.base + 0xc00;
+    let data = fx.data();
+    {
+        let mut mem = fx.memory.lock().expect("mem");
+        write_header(&mut mem, hdr, VIRTIO_BLK_T_OUT, 0);
+        mem.write_bytes(data, &[0xab; 512]).expect("payload");
+        mem.write_u8(data + 512, 0xff).expect("status");
+    }
+    fx.write_desc(0, hdr, 16, NEXT, 1);
+    fx.write_desc(1, data, 512, NEXT, 2);
+    fx.write_desc(2, data + 512, 1, WRITE, 0);
+    fx.publish(0);
+    fx.notify(&mut blk);
+    fx.wait_used();
+    assert_eq!(fx.status(), VIRTIO_BLK_S_OK);
+
+    blk.status_changed(0);
+    std::thread::sleep(Duration::from_millis(20));
+    let seg = fx.base + 0xd00;
+    let status = fx.base + 0xd20;
+    {
+        let mut mem = fx.memory.lock().expect("mem");
+        mem.write_u16(fx.used() + 2, 0).expect("reset used");
+        mem.write_u16(fx.avail() + 2, 0).expect("reset avail");
+        write_header(&mut mem, hdr, VIRTIO_BLK_T_DISCARD, 0);
+        mem.write_u64(seg, 0).expect("sector");
+        mem.write_u32(seg + 8, 1).expect("num");
+        mem.write_u32(seg + 12, 0).expect("flags");
+        mem.write_u8(status, 0xff).expect("status");
+        mem.write_u16(fx.avail() + 2, 1).expect("publish");
+    }
+    fx.write_desc(0, hdr, 16, NEXT, 1);
+    fx.write_desc(1, seg, 16, NEXT, 2);
+    fx.write_desc(2, status, 1, WRITE, 0);
+    fx.notify(&mut blk);
+    fx.wait_used();
+    {
+        let mem = fx.memory.lock().expect("mem");
+        assert_eq!(mem.read_u8(status).expect("st"), VIRTIO_BLK_S_OK);
+    }
+
+    blk.status_changed(0);
+    std::thread::sleep(Duration::from_millis(20));
+    {
+        let mut mem = fx.memory.lock().expect("mem");
+        mem.write_u16(fx.used() + 2, 0).expect("reset used");
+        mem.write_u16(fx.avail() + 2, 0).expect("reset avail");
+        write_header(&mut mem, hdr, VIRTIO_BLK_T_IN, 0);
+        mem.write_bytes(data, &[0xff; 512]).expect("buf");
+        mem.write_u8(data + 512, 0xff).expect("status");
+        mem.write_u16(fx.avail() + 2, 1).expect("publish");
+    }
+    fx.write_desc(0, hdr, 16, NEXT, 1);
+    fx.write_desc(1, data, 512, WRITE | NEXT, 2);
+    fx.write_desc(2, data + 512, 1, WRITE, 0);
+    fx.notify(&mut blk);
+    fx.wait_used();
+    assert_eq!(fx.status(), VIRTIO_BLK_S_OK);
+    let mem = fx.memory.lock().expect("mem");
+    let mut buf = [0u8; 512];
+    mem.read_bytes(data, &mut buf).expect("read");
+    assert_eq!(buf, [0u8; 512]);
+}
+
+#[test]
+fn resize_grows_capacity_and_config_generation() {
+    let (fx, blk) = Fixture::new(SECTOR * 8, false);
+    assert_eq!(blk.read_config(0, 8), 8);
+    assert_eq!(blk.config_generation(), 0);
+    blk.disk_handle().resize(SECTOR * 16, false).expect("grow");
+    assert_eq!(blk.read_config(0, 8), 16);
+    assert!(blk.config_generation() >= 1);
+    assert!(fx.raised.load(Ordering::Acquire));
+}
+
+#[test]
+fn resize_refuses_shrink_below_in_use() {
+    let (fx, mut blk) = Fixture::new(SECTOR * 8, false);
+    let hdr = fx.base + 0xc00;
+    let data = fx.data();
+    {
+        let mut mem = fx.memory.lock().expect("mem");
+        write_header(&mut mem, hdr, VIRTIO_BLK_T_OUT, 7);
+        mem.write_bytes(data, &[0x11; 512]).expect("payload");
+        mem.write_u8(data + 512, 0xff).expect("status");
+    }
+    fx.write_desc(0, hdr, 16, NEXT, 1);
+    fx.write_desc(1, data, 512, NEXT, 2);
+    fx.write_desc(2, data + 512, 1, WRITE, 0);
+    fx.publish(0);
+    fx.notify(&mut blk);
+    fx.wait_used();
+    assert_eq!(fx.status(), VIRTIO_BLK_S_OK);
+    let err = blk
+        .disk_handle()
+        .resize(SECTOR, false)
+        .expect_err("must refuse");
+    assert!(err.to_string().contains("in-use"), "{err}");
 }

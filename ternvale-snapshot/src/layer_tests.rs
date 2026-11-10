@@ -23,16 +23,7 @@ fn temp_dir(label: &str) -> std::path::PathBuf {
 }
 
 fn empty_delta_len(virtual_size: u64) -> u64 {
-    let header = DeltaHeader {
-        virtual_size,
-        block_size: DEFAULT_BLOCK_SIZE,
-        bitmap_offset: DELTA_HEADER_LEN as u64,
-        bitmap_bytes: 0,
-        data_offset: 0,
-    };
-    let blocks = header.block_count();
-    let bitmap_bytes = super::bitmap_bytes_for_blocks(blocks);
-    DELTA_HEADER_LEN as u64 + bitmap_bytes
+    DeltaHeader::empty_v2(virtual_size, DEFAULT_BLOCK_SIZE).data_offset
 }
 
 fn file_size(path: &Path) -> u64 {
@@ -169,5 +160,38 @@ fn corrupt_delta_magic_is_rejected() {
         }
         other => panic!("expected BadMagic with path, got {other:?}"),
     }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn discard_unmaps_block_from_base_and_compact_drops_payload() {
+    let dir = temp_dir("unmap");
+    std::fs::create_dir_all(&dir).expect("dir");
+    let virtual_size = 2 * u64::from(DEFAULT_BLOCK_SIZE);
+    let base = dir.join("base.img");
+    let delta = dir.join("layer.tdelta");
+    let stack_path = dir.join("disk.tstack");
+    seed_base(&base, virtual_size, 0xab);
+    DeltaLayer::create(&delta, virtual_size).expect("create");
+    StackManifest {
+        base: base.clone(),
+        deltas: vec![delta.clone()],
+    }
+    .save(&stack_path)
+    .expect("manifest");
+    let mut stack = ImageStack::open(&stack_path, false).expect("open");
+    stack.write_at(&[0xcd; 8], 0).expect("write");
+    stack
+        .discard(0, u64::from(DEFAULT_BLOCK_SIZE), true)
+        .expect("discard");
+    let mut buf = [0u8; 8];
+    stack.read_at(&mut buf, 0).expect("read");
+    assert_eq!(
+        buf, [0u8; 8],
+        "unmapped block must read as zeros, not the base"
+    );
+    stack.compact_top().expect("compact");
+    stack.read_at(&mut buf, 0).expect("read after");
+    assert_eq!(buf, [0u8; 8]);
     std::fs::remove_dir_all(&dir).ok();
 }

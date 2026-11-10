@@ -4,8 +4,9 @@ use ternvale_vmm::GuestMemory;
 
 use super::backend::BlkBackend;
 use super::{
-    BlkStats, Buffer, ID_BYTES, SECTOR, VIRTIO_BLK_S_IOERR, VIRTIO_BLK_S_OK, VIRTIO_BLK_S_UNSUPP,
-    VIRTIO_BLK_T_FLUSH, VIRTIO_BLK_T_GET_ID, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT,
+    BlkStats, Buffer, ID_BYTES, SECTOR, VIRTIO_BLK_DISCARD_UNMAP, VIRTIO_BLK_S_IOERR,
+    VIRTIO_BLK_S_OK, VIRTIO_BLK_S_UNSUPP, VIRTIO_BLK_T_DISCARD, VIRTIO_BLK_T_FLUSH,
+    VIRTIO_BLK_T_GET_ID, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT, VIRTIO_BLK_T_WRITE_ZEROES,
 };
 use crate::virtio::queue::Chain;
 
@@ -52,6 +53,8 @@ pub fn process(
             0,
         ),
         VIRTIO_BLK_T_FLUSH => (flush_req(backend, stats), 0),
+        VIRTIO_BLK_T_DISCARD => (discard_req(mem, backend, chain, true, stats), 0),
+        VIRTIO_BLK_T_WRITE_ZEROES => (discard_req(mem, backend, chain, false, stats), 0),
         VIRTIO_BLK_T_GET_ID => {
             let status = get_id(mem, chain, serial, stats);
             (
@@ -104,7 +107,7 @@ fn data_bytes(chain: &Chain, ty: u32) -> u32 {
             let total: u32 = chain.writable.iter().map(|b| b.len).sum();
             total.saturating_sub(1)
         }
-        VIRTIO_BLK_T_OUT => {
+        VIRTIO_BLK_T_OUT | VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
             let total: u32 = chain.readable.iter().map(|b| b.len).sum();
             total.saturating_sub(16)
         }
@@ -206,6 +209,91 @@ fn flush_req(backend: &BlkBackend, stats: &BlkStats) -> u8 {
     VIRTIO_BLK_S_OK
 }
 
+const MAX_DISCARD_SEG: usize = 32;
+const MAX_DISCARD_SECTORS: u32 = 32_768;
+const SEG_BYTES: usize = 16;
+
+#[allow(clippy::chunks_exact_to_as_chunks)]
+fn discard_req(
+    mem: &GuestMemory,
+    backend: &BlkBackend,
+    chain: &Chain,
+    always_unmap: bool,
+    stats: &BlkStats,
+) -> u8 {
+    if backend.read_only() {
+        tracing::error!(
+            target: "ternvale::virtio::blk",
+            "virtio-blk discard on read-only disk"
+        );
+        stats.error();
+        return VIRTIO_BLK_S_IOERR;
+    }
+    let data = out_readable(chain);
+    let mut raw = vec![0u8; data.iter().map(|b| b.len as usize).sum()];
+    if copy_from(mem, &data, &mut raw).is_err() {
+        stats.error();
+        return VIRTIO_BLK_S_IOERR;
+    }
+    if raw.len() % SEG_BYTES != 0 || raw.is_empty() {
+        tracing::warn!(target: "ternvale::virtio::blk", len = raw.len(), "malformed discard segments");
+        stats.error();
+        return VIRTIO_BLK_S_IOERR;
+    }
+    let segs = raw.len() / SEG_BYTES;
+    if segs > MAX_DISCARD_SEG {
+        tracing::warn!(target: "ternvale::virtio::blk", segs, "too many discard segments");
+        stats.error();
+        return VIRTIO_BLK_S_IOERR;
+    }
+    let mut total_sectors = 0u32;
+    for chunk in raw.chunks_exact(SEG_BYTES) {
+        let sector = u64::from_le_bytes([
+            chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+        ]);
+        let num = u32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
+        let flags = u32::from_le_bytes([chunk[12], chunk[13], chunk[14], chunk[15]]);
+        if num == 0 {
+            continue;
+        }
+        total_sectors = total_sectors.saturating_add(num);
+        if total_sectors > MAX_DISCARD_SECTORS {
+            tracing::warn!(
+                target: "ternvale::virtio::blk",
+                total_sectors,
+                "discard exceeds max_discard_sectors"
+            );
+            stats.error();
+            return VIRTIO_BLK_S_IOERR;
+        }
+        let len = u64::from(num) * SECTOR;
+        if !sectors_in_range(backend, sector, num) {
+            tracing::error!(
+                target: "ternvale::virtio::blk",
+                sector,
+                num,
+                "virtio-blk discard out of range"
+            );
+            stats.error();
+            return VIRTIO_BLK_S_IOERR;
+        }
+        let unmap = always_unmap || (flags & VIRTIO_BLK_DISCARD_UNMAP) != 0;
+        if let Err(error) = backend.discard(sector * SECTOR, len, unmap) {
+            tracing::error!(
+                target: "ternvale::virtio::blk",
+                sector,
+                num,
+                error = %error,
+                "virtio-blk discard failed"
+            );
+            stats.error();
+            return VIRTIO_BLK_S_IOERR;
+        }
+    }
+    stats.ok(0);
+    VIRTIO_BLK_S_OK
+}
+
 fn get_id(mem: &mut GuestMemory, chain: &Chain, serial: &[u8; ID_BYTES], stats: &BlkStats) -> u8 {
     if copy_to(mem, &data_writable(chain), serial).is_err() {
         stats.error();
@@ -213,6 +301,12 @@ fn get_id(mem: &mut GuestMemory, chain: &Chain, serial: &[u8; ID_BYTES], stats: 
     }
     stats.ok(ID_BYTES as u32);
     VIRTIO_BLK_S_OK
+}
+
+fn sectors_in_range(backend: &BlkBackend, sector: u64, num: u32) -> bool {
+    sector
+        .checked_add(u64::from(num))
+        .is_some_and(|end| end <= backend.capacity())
 }
 
 fn in_range(backend: &BlkBackend, sector: u64, len: u32) -> bool {

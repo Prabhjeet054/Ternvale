@@ -488,6 +488,20 @@ pub fn handle_line_with(
                 Err(error) => return Response::error(error.to_string()),
             }
         }
+        Request::DiskResize { bytes, force, disk } => {
+            let Some(diag) = diag else {
+                return Response::error("this vm has no disk diagnostics");
+            };
+            match diag.resize_disk(disk, bytes, force) {
+                Ok((before, after, logical)) => {
+                    Ok(Response::disk_sizes(before, after, Some(logical)))
+                }
+                Err(error) => return Response::error(error.to_string()),
+            }
+        }
+        Request::DiskCompact { .. } => {
+            return Response::error("disk compact requires the VM to be stopped");
+        }
         Request::DumpDiagnostics => {
             let Some(diag) = diag else {
                 tracing::warn!(target: "ternvale::cli", "dump-diagnostics on a server without diagnostics");

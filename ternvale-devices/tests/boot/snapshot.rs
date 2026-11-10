@@ -260,16 +260,8 @@ fn file_len(path: &Path) -> u64 {
 }
 
 fn empty_delta_len(virtual_size: u64) -> u64 {
-    use ternvale_snapshot::{bitmap_bytes_for_blocks, DeltaHeader, DELTA_HEADER_LEN};
-    let header = DeltaHeader {
-        virtual_size,
-        block_size: ternvale_snapshot::DEFAULT_BLOCK_SIZE,
-        bitmap_offset: DELTA_HEADER_LEN as u64,
-        bitmap_bytes: 0,
-        data_offset: 0,
-    };
-    let bitmap = bitmap_bytes_for_blocks(header.block_count());
-    DELTA_HEADER_LEN as u64 + bitmap
+    use ternvale_snapshot::DeltaHeader;
+    DeltaHeader::empty_v2(virtual_size, ternvale_snapshot::DEFAULT_BLOCK_SIZE).data_offset
 }
 
 fn delta_contains(path: &Path, needle: &[u8]) -> bool {

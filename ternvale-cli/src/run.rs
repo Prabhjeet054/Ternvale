@@ -337,7 +337,7 @@ fn attach_devices(
     let mut stats = lockwatch::lock(stats, "device-stats");
     let blocks = attach_blocks_crypto(attach, wanted.blocks, wanted.transport, wanted.xts.clone())?;
     for block in blocks.devices {
-        stats.disks.push((block.path, block.stats));
+        stats.disks.push((block.path, block.stats, block.handle));
     }
     let mut devices = blocks.mmio;
     let mmio_slots = devices.len();

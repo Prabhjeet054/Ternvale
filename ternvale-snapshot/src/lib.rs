@@ -15,7 +15,7 @@ pub use base_ref::{
     is_write_protected, release as release_base_ref,
 };
 pub use clone::{create_linked_stack, release_disk_base, shared_base_path};
-pub use delta::DeltaLayer;
+pub use delta::{allocated_bytes, DeltaLayer};
 pub use format::{
     bitmap_bytes_for_blocks, bitmap_rank_before, bitmap_set, bitmap_test, DeltaHeader,
     DEFAULT_BLOCK_SIZE, DELTA_HEADER_LEN, DELTA_MAGIC, DELTA_VERSION, STACK_MAGIC, STACK_VERSION,
