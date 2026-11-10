@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom
+.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom compat compat-test
 
 build:
 	$(CARGO) build --workspace
@@ -85,6 +85,13 @@ bench-image:
 
 bench-compare-test:
 	cd scripts/bench && python3 test_compare.py
+
+# Step 88: guest matrix → docs/COMPAT.md (skip missing images; --auto boots when HV is on).
+compat:
+	python3 scripts/compat/run.py --auto
+
+compat-test:
+	cd scripts/compat && python3 -m unittest discover -p 'test_*.py' -v
 
 # Step 79: libFuzzer smoke (30s per target). Needs nightly + `cargo install cargo-fuzz`.
 FUZZ_CRATE := ternvale-fuzz

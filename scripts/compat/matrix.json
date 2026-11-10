@@ -1,0 +1,263 @@
+{
+  "schema": 1,
+  "features": [
+    "login",
+    "disk",
+    "net",
+    "display",
+    "input",
+    "audio",
+    "agent",
+    "share",
+    "shutdown"
+  ],
+  "guests": [
+    {
+      "id": "alpine-virt",
+      "name": "Alpine Linux",
+      "os": "linux",
+      "arch": "aarch64",
+      "kernel": "virt",
+      "images": {
+        "kernel": "test-assets/virtio-root/Image",
+        "initrd": "test-assets/virtio-root/initramfs.cpio",
+        "disk": "test-assets/virtio-root/rootfs.ext4"
+      },
+      "supported": [
+        "login",
+        "disk",
+        "net",
+        "display",
+        "input",
+        "audio",
+        "agent",
+        "share",
+        "shutdown"
+      ],
+      "live_features": ["login", "disk", "shutdown"],
+      "patterns": {
+        "login": "ternvale root ready|login:",
+        "disk": "vda ready|/dev/vda",
+        "net": "PING |bytes from|netdev",
+        "display": "virtio-gpu|fb0|DRM",
+        "input": "virtio-input|/dev/input/event",
+        "audio": "virtio_snd|ALSA",
+        "agent": "ternvale agent started",
+        "share": "virtiofs|9p",
+        "shutdown": "reboot: System halted|Power down|SYSTEM_OFF"
+      }
+    },
+    {
+      "id": "alpine-lts",
+      "name": "Alpine Linux",
+      "os": "linux",
+      "arch": "aarch64",
+      "kernel": "lts",
+      "images": {
+        "kernel": "test-assets/compat/alpine-lts/Image",
+        "initrd": "test-assets/compat/alpine-lts/initramfs.cpio",
+        "disk": "test-assets/compat/alpine-lts/rootfs.ext4"
+      },
+      "supported": [
+        "login",
+        "disk",
+        "net",
+        "display",
+        "input",
+        "audio",
+        "agent",
+        "share",
+        "shutdown"
+      ],
+      "patterns": {
+        "login": "ternvale root ready|login:",
+        "disk": "vda ready|/dev/vda",
+        "net": "PING |bytes from",
+        "display": "virtio-gpu|fb0",
+        "input": "/dev/input/event",
+        "audio": "virtio_snd",
+        "agent": "ternvale agent started",
+        "share": "virtiofs",
+        "shutdown": "Power down|SYSTEM_OFF"
+      }
+    },
+    {
+      "id": "debian-aarch64",
+      "name": "Debian",
+      "os": "linux",
+      "arch": "aarch64",
+      "kernel": "cloud",
+      "images": {
+        "disk": "test-assets/compat/debian/disk.qcow2"
+      },
+      "supported": [
+        "login",
+        "disk",
+        "net",
+        "display",
+        "input",
+        "audio",
+        "agent",
+        "share",
+        "shutdown"
+      ],
+      "patterns": {
+        "login": "Debian GNU/Linux|login:",
+        "disk": "vda|ext4",
+        "net": "DHCP|ens|eth0",
+        "display": "virtio-gpu|fb0",
+        "input": "/dev/input/event",
+        "audio": "virtio_snd",
+        "agent": "ternvale agent started",
+        "share": "virtiofs",
+        "shutdown": "Reached target Power-Off|Power down"
+      }
+    },
+    {
+      "id": "ubuntu-server-aarch64",
+      "name": "Ubuntu Server",
+      "os": "linux",
+      "arch": "aarch64",
+      "kernel": "generic",
+      "images": {
+        "disk": "test-assets/compat/ubuntu-server/disk.qcow2"
+      },
+      "supported": [
+        "login",
+        "disk",
+        "net",
+        "display",
+        "input",
+        "audio",
+        "agent",
+        "share",
+        "shutdown"
+      ],
+      "patterns": {
+        "login": "Ubuntu|login:",
+        "disk": "vda|ext4",
+        "net": "DHCP|ens|eth0",
+        "display": "virtio-gpu|fb0",
+        "input": "/dev/input/event",
+        "audio": "virtio_snd",
+        "agent": "ternvale agent started",
+        "share": "virtiofs",
+        "shutdown": "Power-Off|Power down"
+      }
+    },
+    {
+      "id": "fedora-aarch64",
+      "name": "Fedora",
+      "os": "linux",
+      "arch": "aarch64",
+      "kernel": "generic",
+      "images": {
+        "disk": "test-assets/compat/fedora/disk.qcow2"
+      },
+      "supported": [
+        "login",
+        "disk",
+        "net",
+        "display",
+        "input",
+        "audio",
+        "agent",
+        "share",
+        "shutdown"
+      ],
+      "patterns": {
+        "login": "Fedora Linux|login:",
+        "disk": "vda|xfs|ext4",
+        "net": "DHCP|ens",
+        "display": "virtio-gpu|fb0",
+        "input": "/dev/input/event",
+        "audio": "virtio_snd",
+        "agent": "ternvale agent started",
+        "share": "virtiofs",
+        "shutdown": "Power-Off|Power down"
+      }
+    },
+    {
+      "id": "archlinuxarm",
+      "name": "Arch Linux ARM",
+      "os": "linux",
+      "arch": "aarch64",
+      "kernel": "linux-aarch64",
+      "images": {
+        "disk": "test-assets/compat/archlinuxarm/disk.qcow2"
+      },
+      "supported": [
+        "login",
+        "disk",
+        "net",
+        "display",
+        "input",
+        "audio",
+        "agent",
+        "share",
+        "shutdown"
+      ],
+      "patterns": {
+        "login": "Arch Linux|login:",
+        "disk": "vda|ext4",
+        "net": "DHCP|ens|eth0",
+        "display": "virtio-gpu|fb0",
+        "input": "/dev/input/event",
+        "audio": "virtio_snd",
+        "agent": "ternvale agent started",
+        "share": "virtiofs",
+        "shutdown": "Power down|SYSTEM_OFF"
+      }
+    },
+    {
+      "id": "freebsd-arm64",
+      "name": "FreeBSD",
+      "os": "freebsd",
+      "arch": "aarch64",
+      "kernel": "GENERIC",
+      "images": {
+        "disk": "test-assets/compat/freebsd/disk.qcow2"
+      },
+      "supported": ["login", "disk", "net", "display", "input", "shutdown"],
+      "unsupported_reason": {
+        "audio": "no virtio_snd in GENERIC",
+        "agent": "no ternvale-agent port",
+        "share": "no virtio-fs on FreeBSD arm64"
+      },
+      "patterns": {
+        "login": "FreeBSD/arm64|login:",
+        "disk": "vtbd0|virtio_blk",
+        "net": "vtnet0|DHCP",
+        "display": "virtio-gpu|vt",
+        "input": "virtio-input|ukbd",
+        "shutdown": "Uptime:|powerd|shutdown"
+      }
+    },
+    {
+      "id": "windows11-arm",
+      "name": "Windows 11 ARM",
+      "os": "windows",
+      "arch": "aarch64",
+      "kernel": "nt",
+      "profile": "windows",
+      "images": {
+        "disk": "test-assets/compat/windows11/disk.vhdx",
+        "iso": "test-assets/windows/Win11_*.iso"
+      },
+      "supported": ["login", "disk", "net", "display", "input", "audio", "shutdown"],
+      "unsupported_reason": {
+        "agent": "guest agent MSI not in the unattended image yet",
+        "share": "virtio-fs / WinFsp guest bits not installed"
+      },
+      "patterns": {
+        "login": "Getting Windows ready|login:|Press CTRL",
+        "disk": "viostor|Disk",
+        "net": "NetKVM|Ethernet",
+        "display": "viogpu|BasicDisplay",
+        "input": "vioinput",
+        "audio": "virtio-snd|High Definition Audio",
+        "shutdown": "Shutdown|Power off"
+      }
+    }
+  ]
+}
