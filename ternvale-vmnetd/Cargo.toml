@@ -17,3 +17,6 @@ ternvale-sandbox = { path = "../ternvale-sandbox" }
 ternvale-usb = { path = "../ternvale-usb" }
 ternvale-usb-host = { path = "../ternvale-usb-host" }
 tracing = "0.1"
+
+[lints]
+workspace = true

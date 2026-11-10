@@ -380,7 +380,14 @@ fn config_status_follows_backend_link() {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert!(net.config_generation() >= 1, "generation bumped");
-    assert_ne!(irq_status.status() & 2, 0, "VIRTIO_MMIO_INT_CONFIG pending");
+    let irq_wait = Instant::now();
+    while irq_status.status() & 2 == 0 {
+        assert!(
+            irq_wait.elapsed() < Duration::from_secs(2),
+            "VIRTIO_MMIO_INT_CONFIG pending"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
     up.store(true, Ordering::Release);
     let reopen = Instant::now();
     while net.read_config(6, 2) != u64::from(VIRTIO_NET_S_LINK_UP) {

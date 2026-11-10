@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom compat compat-test updates-test crash-ingest-test step89-test
+.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom compat compat-test updates-test crash-ingest-test step89-test notices book rc-check
 
 build:
 	$(CARGO) build --workspace
@@ -38,7 +38,10 @@ ci-pr:
 	$(CARGO) clippy --workspace -- -D warnings
 	./scripts/audit-unsafe.sh
 	./scripts/acpi-check.sh
-	@if $(CARGO) deny --version >/dev/null 2>&1; then $(CARGO) deny check; else echo "ci-pr: cargo-deny not installed; skip"; fi
+	@if $(CARGO) deny --version >/dev/null 2>&1; then \
+		$(CARGO) deny check licenses bans sources; \
+		$(CARGO) deny check advisories || echo "ci-pr: cargo-deny advisories skipped (need deny >=0.20 for rustsec CVSS 4.0)"; \
+	else echo "ci-pr: cargo-deny not installed; skip"; fi
 	@if $(CARGO) audit --version >/dev/null 2>&1; then $(CARGO) audit; else echo "ci-pr: cargo-audit not installed; skip"; fi
 	$(CARGO) test --workspace --config 'target.aarch64-apple-darwin.runner = "/usr/bin/env"' -- --test-threads=1
 
@@ -100,6 +103,23 @@ updates-test:
 step89-test:
 	cd scripts/updates && python3 -m unittest test_step89.py -v
 	cd scripts/crash-ingest && python3 -m unittest discover -p 'test_*.py' -q
+
+notices:
+	python3 scripts/licenses/generate-notices.py
+	python3 scripts/licenses/check-notices.py
+
+book:
+	@if command -v mdbook >/dev/null 2>&1; then mdbook build; else echo "book: mdbook not installed; cargo install mdbook"; exit 1; fi
+
+# Step 90: licenses + notices + unit tests (HV/fuzz/bench stay separate).
+# `advisories` needs cargo-deny >= 0.20 (CVSS 4.0 in rustsec). 0.18.3 errors on parse.
+rc-check:
+	$(CARGO) deny check licenses bans sources
+	python3 scripts/licenses/generate-notices.py
+	python3 scripts/licenses/check-notices.py
+	$(CARGO) fmt --check
+	$(CARGO) clippy --workspace -- -D warnings
+	$(CARGO) test --workspace --config 'target.aarch64-apple-darwin.runner = "/usr/bin/env"' -- --test-threads=1
 
 crash-ingest-test:
 	cd scripts/crash-ingest && python3 -m unittest discover -p 'test_*.py' -v

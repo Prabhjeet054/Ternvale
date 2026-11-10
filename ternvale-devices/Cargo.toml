@@ -66,3 +66,6 @@ ternvale-gpu = { path = "../ternvale-gpu" }
 ternvale-virtiofs = { path = "../ternvale-virtiofs" }
 # clone boot scenario: SHA-256 of the shared base image.
 sha2 = "0.10"
+
+[lints]
+workspace = true

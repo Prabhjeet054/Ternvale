@@ -1,6 +1,6 @@
 # Ternvale guest compatibility
 
-Generated: 2026-11-10T13:33:03Z
+Generated: 2026-11-10T14:11:53Z
 
 Ternvale: `0.1.0` on `macOS-27.0.1-arm64-arm-64bit-Mach-O`.
 
@@ -8,7 +8,7 @@ Cells are pass / fail / skip. Skip means the guest does not support the feature 
 
 | Guest | Kernel | Boot (s) | login | disk | net | display | input | audio | agent | share | shutdown |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| Alpine Linux (`alpine-virt`) | virt | 0.5 | skip | skip | skip | skip | skip | skip | skip | skip | skip |
+| Alpine Linux (`alpine-virt`) | virt | — | skip | skip | skip | skip | skip | skip | skip | skip | skip |
 | Alpine Linux (`alpine-lts`) | lts | — | skip | skip | skip | skip | skip | skip | skip | skip | skip |
 | Debian (`debian-aarch64`) | cloud | — | skip | skip | skip | skip | skip | skip | skip | skip | skip |
 | Ubuntu Server (`ubuntu-server-aarch64`) | generic | — | skip | skip | skip | skip | skip | skip | skip | skip | skip |
@@ -19,7 +19,7 @@ Cells are pass / fail / skip. Skip means the guest does not support the feature 
 
 ## Notes
 
-- `alpine-virt` skipped: host SIGKILL (AMFI/codesign) before guest serial; see docs/CI.md and scripts/sign-and-run.sh
+- `alpine-virt` skipped: image present; offline (pass --live on a host with kern.hv_support=1)
 - `alpine-lts` skipped: no image (kernel, initrd, disk) under test-assets/compat or env overlay
 - `debian-aarch64` skipped: no image (disk) under test-assets/compat or env overlay
 - `ubuntu-server-aarch64` skipped: no image (disk) under test-assets/compat or env overlay
@@ -31,14 +31,3 @@ Cells are pass / fail / skip. Skip means the guest does not support the feature 
 ## Review
 
 Every **fail** must have a reason in Notes (or a tracking issue). Skip is not a failure: missing images, unsupported guest features, or the host killing the boot harness before serial (AMFI SIGKILL).
-
-## Deliberate virtio-net disable
-
-Same Alpine virt fixture with `COMPAT_BREAK=net` / virtio-net disabled. Net must be **fail**, not skip.
-
-| Guest | login | net |
-|---|---|---|
-| Alpine Linux (`alpine-virt`) | pass | **fail** |
-
-- net: COMPAT_BREAK=net (status=fail)
-- login still pass

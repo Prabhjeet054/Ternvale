@@ -13,3 +13,6 @@ serde_json = "1"
 thiserror = "2"
 # Every message sent or received is logged at DEBUG on ternvale::agent.
 tracing = "0.1"
+
+[lints]
+workspace = true

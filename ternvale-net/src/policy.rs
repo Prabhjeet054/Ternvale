@@ -316,8 +316,9 @@ fn dhcp_ack(frame: &[u8]) -> Option<([u8; 4], Vec<[u8; 4]>)> {
             break;
         }
         if tag == OPT_ROUTER {
-            for chunk in bootp[start..end].chunks_exact(4) {
-                routers.push([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            let (chunks, _) = bootp[start..end].as_chunks::<4>();
+            for chunk in chunks {
+                routers.push(*chunk);
             }
         }
         i = end;

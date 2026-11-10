@@ -22,3 +22,11 @@ ternvale-fuzz/fuzz/campaign/
 ternvale-cursor-prompts.md
 ternvale-cursor-prompts-part2.md
 ternvale-cursor-prompts-part3.md
+# Leftover HTML if mdbook is run without book.toml build-dir
+/book/*.html
+/book/*.js
+/book/*.css
+/book/.nojekyll
+/book/css/
+/book/fonts/
+/book/FontAwesome/

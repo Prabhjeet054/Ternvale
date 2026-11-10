@@ -90,3 +90,6 @@ toml = "0.8"
 [dev-dependencies]
 # Status tests connect the real agent loop to the agent server.
 ternvale-agent = { path = "../ternvale-agent" }
+
+[lints]
+workspace = true
