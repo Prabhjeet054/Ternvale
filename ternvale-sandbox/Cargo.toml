@@ -16,3 +16,6 @@ ternvale-log = { path = "../ternvale-log" }
 ternvale-net = { path = "../ternvale-net" }
 thiserror = "2"
 tracing = "0.1"
+
+[lints]
+workspace = true

@@ -114,7 +114,7 @@ pub fn process_transfer(
                 events.post(mem, slot_id, dci, CC_STALL_ERROR, trb_ptr, 0)?;
             }
         }
-        ptr += 16;
+        ptr = ptr.saturating_add(16);
     }
     if !hold_dequeue {
         if dci == 0 {

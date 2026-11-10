@@ -1,0 +1,128 @@
+# PR / push: hosted macOS arm64. No Hypervisor.framework (see docs/CI.md).
+name: PR
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: change filter
+    runs-on: macos-15
+    outputs:
+      rust: ${{ steps.detect.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        run: bash scripts/ci/detect-rust-changes.sh
+
+  docs:
+    name: docs-only
+    needs: gate
+    if: needs.gate.outputs.rust != 'true'
+    runs-on: macos-15
+    steps:
+      - run: echo "No Rust/CI paths changed; skipping fmt/clippy/test/fuzz."
+
+  hv-probe:
+    name: HV probe (hosted)
+    needs: gate
+    if: needs.gate.outputs.rust == 'true'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Hypervisor.framework
+        run: bash scripts/ci/hv-probe.sh
+
+  checks:
+    name: fmt clippy test deny audit acpi unsafe
+    needs: gate
+    if: needs.gate.outputs.rust == 'true'
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-audit
+      - name: brew acpica (iasl)
+        run: brew install acpica || true
+      - name: fmt
+        run: cargo fmt --check
+      - name: clippy
+        run: bash scripts/ci/clippy-run.sh
+      - name: unsafe audit
+        run: ./scripts/audit-unsafe.sh
+      - name: cargo-deny
+        run: cargo deny check licenses bans sources
+      - name: cargo-audit
+        run: cargo audit
+      - name: ACPI tables
+        env:
+          TERNVALE_REQUIRE_IASL: "0"
+        run: ./scripts/acpi-check.sh
+      - name: unit tests (no HV runner)
+        run: >
+          cargo test --workspace
+          --config 'target.aarch64-apple-darwin.runner = "/usr/bin/env"'
+          -- --test-threads=1
+      - name: Collect logs on failure
+        if: failure()
+        run: bash scripts/ci/collect-artifacts.sh "${{ github.workspace }}/ci-artifacts"
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-checks-${{ github.run_id }}
+          path: ci-artifacts
+          if-no-files-found: ignore
+          retention-days: 14
+
+  fuzz-smoke:
+    name: make fuzz-smoke
+    needs: gate
+    if: needs.gate.outputs.rust == 'true'
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: aarch64-apple-darwin
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ternvale-fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: fuzz-smoke (30s per target)
+        run: make fuzz-smoke
+      - name: Collect fuzz artifacts
+        if: failure()
+        run: bash scripts/ci/collect-artifacts.sh "${{ github.workspace }}/ci-artifacts"
+      - name: Upload fuzz crashers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-fuzz-${{ github.run_id }}
+          path: ci-artifacts
+          if-no-files-found: ignore
+          retention-days: 14

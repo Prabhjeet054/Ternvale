@@ -15,3 +15,6 @@ tracing = "0.1"
 # Scoped subscriber that captures the per-table INFO lines in unit tests.
 # Already built for ternvale-log.
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[lints]
+workspace = true

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Build, codesign (hv-only), and run every cargo-fuzz target for FUZZ_TIME seconds.
+# Build and run every cargo-fuzz target for FUZZ_TIME seconds.
+# Unsigned: libFuzzer does not need HV, and Apple Development + ASan Team IDs clash.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 export RUSTUP_HOME="${RUSTUP_HOME:-$ROOT/.fuzz-toolchain/rustup}"
@@ -11,7 +12,6 @@ export CARGO_TARGET_DIR="$ROOT/ternvale-fuzz/fuzz/target"
 FUZZ_TIME="${FUZZ_TIME:-600}"
 TIMEOUT="${TIMEOUT:-5}"
 RSS_MB="${RSS_MB:-4096}"
-ENT="${TERNVALE_ENTITLEMENTS:-$ROOT/entitlements/ternvale-hv-only.entitlements}"
 OUT="$ROOT/ternvale-fuzz/fuzz/campaign"
 TARGETS="${FUZZ_TARGETS:-virtqueue virtio_blk virtio_net virtio_rng virtio_vsock virtio_gpu virtio_input virtio_balloon virtio_fs virtio_pci xhci_trb tpm_crb vsock_packet agent_proto esr psci user_net fuse}"
 
@@ -25,15 +25,8 @@ cd "$ROOT/ternvale-fuzz"
 echo "fuzz-campaign: building targets"
 cargo +nightly fuzz build
 
-ID="${TERNVALE_CODESIGN_IDENTITY:-}"
-if [[ -z "$ID" ]]; then
-	ID=$(security find-identity -v -p codesigning 2>/dev/null \
-		| sed -n 's/.*"\(Apple Development:.*\)"/\1/p' | head -n 1 || true)
-fi
-if [[ -z "$ID" ]]; then
-	ID="-"
-fi
-
+# Do not codesign fuzz binaries. libFuzzer does not use Hypervisor.framework,
+# and Apple Development signatures cannot load rustc's ASan dylib (Team ID).
 bins=()
 for t in $TARGETS; do
 	bin="$CARGO_TARGET_DIR/aarch64-apple-darwin/release/$t"
@@ -41,7 +34,6 @@ for t in $TARGETS; do
 		echo "fuzz-campaign: missing $bin" >&2
 		exit 1
 	fi
-	codesign --sign "$ID" --force --entitlements "$ENT" "$bin"
 	rm -rf "$OUT/corpus/$t" "$OUT/artifacts/$t"
 	mkdir -p "$OUT/corpus/$t" "$OUT/artifacts/$t"
 	cp -R "$ROOT/ternvale-fuzz/fuzz/corpus/$t/." "$OUT/corpus/$t/"

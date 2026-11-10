@@ -319,22 +319,22 @@ fn finish_ep0_control(
         }
         return Ok(());
     }
-    let mut ptr = setup_ptr + 16;
+    let mut ptr = setup_ptr.saturating_add(16);
     if is_in && bytes > 0 {
         let data_trb = read_trb(mem, ptr)?;
         if data_trb.trb_type() == TRB_TYPE_DATA_STAGE {
             let len = bytes.min(data_trb.status) as usize;
             write_bytes(mem, data_trb.param, &in_buf[..len.min(in_buf.len())])?;
             xhci.post_passthrough_completion(slot_id, 0, CC_SUCCESS, ptr, len as u32, mem)?;
-            ptr += 16;
+            ptr = ptr.saturating_add(16);
         }
     } else if !is_in && job.setup.length > 0 {
-        ptr += 16;
+        ptr = ptr.saturating_add(16);
     }
     let status_trb = read_trb(mem, ptr)?;
     if status_trb.trb_type() == TRB_TYPE_STATUS_STAGE {
         xhci.post_passthrough_completion(slot_id, 0, CC_SUCCESS, ptr, 0, mem)?;
-        ptr += 16;
+        ptr = ptr.saturating_add(16);
     }
     if let Some(slot) = xhci.slots_mut().slot_mut(slot_id) {
         slot.ep0.dequeue = ptr;

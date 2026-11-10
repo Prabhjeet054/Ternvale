@@ -13,6 +13,9 @@ final class LibraryViewModel: ObservableObject {
     @Published var isBusy = false
     @Published var showCreateVM = false
     @Published var showVMSettings = false
+    @Published var showPreferences = false
+    @Published var crashOffer: CrashReportPayload?
+    @Published var showCrashOffer = false
 
     private let scanner = VMLibraryScanner()
     private let control = ControlSocketClient()
@@ -58,6 +61,9 @@ final class LibraryViewModel: ObservableObject {
     }
 
     func onAppear() {
+        if CrashHeartbeat.takeLaunchOffer() {
+            presentCrashOffer(vmName: "app", reason: "The previous Ternvale app session ended without a clean shutdown.")
+        }
         refreshLibrary()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -346,6 +352,45 @@ final class LibraryViewModel: ObservableObject {
             }
         }
         log.error("vm \(vmName, privacy: .public) crashed: \(self.crashSummary ?? "", privacy: .public)")
+        presentCrashOffer(vmName: vmName, reason: crashSummary)
+    }
+
+    func presentCrashOffer(vmName: String, reason: String?) {
+        let files = CrashBundleReader.previewFiles(vmName: vmName)
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        crashOffer = CrashReportPayload.preview(
+            files: files,
+            fields: [
+                ("vm_name", vmName),
+                ("app_version", version),
+                ("reason", reason ?? ""),
+            ],
+            appVersion: version
+        )
+        showCrashOffer = true
+        log.info("crash preview offered vm=\(vmName, privacy: .public) files=\(files.count, privacy: .public)")
+    }
+
+    func sendCrashOffer() {
+        guard let payload = crashOffer else { return }
+        isBusy = true
+        Task {
+            do {
+                try await CrashReporter.send(payload)
+                statusMessage = "Crash report sent"
+                showCrashOffer = false
+                crashOffer = nil
+            } catch {
+                statusMessage = error.localizedDescription
+                log.error("crash send failed: \(error.localizedDescription, privacy: .public)")
+            }
+            isBusy = false
+        }
+    }
+
+    func dismissCrashOffer() {
+        showCrashOffer = false
+        crashOffer = nil
     }
 
     private func waitForRunning(vmName: String, seconds: UInt64) async throws {

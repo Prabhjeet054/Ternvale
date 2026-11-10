@@ -1,5 +1,6 @@
 //! Initrd busybox scenario for the boot harness.
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -74,6 +75,7 @@ pub fn run() -> Result<(), String> {
     });
 
     let exit = Machine::run_until(&vm, Box::new(uart), Arc::clone(&cancel));
+    cancel.store(true, Ordering::Release);
     let script = feeder
         .join()
         .unwrap_or_else(|_| Err("feeder panicked".to_string()));

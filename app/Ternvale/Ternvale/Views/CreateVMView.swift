@@ -28,18 +28,18 @@ struct CreateVMView: View {
                 TextField("Windows ISO path", text: $windowsIso)
                 SecureField("Account password (Keychain)", text: $password)
                 TextField("Product key (optional)", text: $productKey)
-                Text("You supply the Windows ISO and licence. Ternvale never generates keys.")
+                Text("You supply the Windows ISO and licence. Ternvale never generates keys. Set TERNVALE_FIRMWARE (or --firmware) and build a tools ISO first; create is unattended-only.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
                 TextField("Kernel path (optional)", text: $kernelPath)
-                Text("Creates ~/Library/Application Support/Ternvale/vms/<name>/config.toml")
+                Text("Writes ~/Library/Application Support/Ternvale/vms/<name>/config.toml. You still need a real ARM64 kernel or firmware, and `ternvale create-disk` on disks/disk0.img before Start.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: windowsUnattended ? 320 : 200)
+        .frame(width: 460, height: windowsUnattended ? 360 : 240)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }

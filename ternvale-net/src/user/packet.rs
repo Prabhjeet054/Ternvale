@@ -21,11 +21,11 @@ pub const REPLY_TTL: u8 = 64;
 #[tracing::instrument(level = "trace", target = "ternvale::net::user", skip_all)]
 pub fn checksum(data: &[u8]) -> u16 {
     let mut sum = 0u32;
-    let mut chunks = data.chunks_exact(2);
-    for chunk in &mut chunks {
-        sum += u32::from(u16::from_be_bytes([chunk[0], chunk[1]]));
+    let (chunks, remainder) = data.as_chunks::<2>();
+    for chunk in chunks {
+        sum += u32::from(u16::from_be_bytes(*chunk));
     }
-    if let Some(odd) = chunks.remainder().first() {
+    if let Some(odd) = remainder.first() {
         sum += u32::from(*odd) << 8;
     }
     while sum > 0xffff {

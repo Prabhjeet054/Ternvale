@@ -4,6 +4,7 @@ struct ContentView: View {
     @StateObject private var library = LibraryViewModel()
     @StateObject private var logTailer = HostLogTailer()
     @StateObject private var updates = UpdateChecker()
+    @StateObject private var sparkle = SparkleUpdater()
 
     var body: some View {
         NavigationSplitView {
@@ -64,21 +65,42 @@ struct ContentView: View {
                 }
             }
         }
-        .commands {
-            CommandGroup(replacing: .newItem) {}
-            CommandGroup(after: .help) {
-                Button("Send Feedback…") {
-                    library.sendFeedback()
-                }
-                .disabled(library.selection == nil || library.isBusy)
+        .sheet(isPresented: $library.showCrashOffer) {
+            if let payload = library.crashOffer {
+                CrashReportPreviewView(
+                    payload: payload,
+                    optedIn: AppSettings.crashReportingOptIn,
+                    onSend: library.sendCrashOffer,
+                    onCancel: library.dismissCrashOffer
+                )
             }
+        }
+        .sheet(isPresented: $library.showPreferences) {
+            PreferencesView(
+                onCheckUpdates: {
+                    sparkle.checkForUpdates()
+                    updates.check()
+                },
+                onConsentChanged: sparkle.applyConsent
+            )
         }
         .onAppear {
             library.onAppear()
+            sparkle.start()
             updates.check()
         }
         .onDisappear {
             library.onDisappear()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ternvaleCheckUpdates)) { _ in
+            sparkle.checkForUpdates()
+            updates.check()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ternvaleSendFeedback)) { _ in
+            library.sendFeedback()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ternvaleShowPreferences)) { _ in
+            library.showPreferences = true
         }
         .onChange(of: library.selection?.name) { _, name in
             logTailer.follow(vmName: name)

@@ -20,3 +20,6 @@ ternvale-devices = { path = "../ternvale-devices", default-features = false }
 
 [dev-dependencies]
 ternvale-log = { path = "../ternvale-log" }
+
+[lints]
+workspace = true

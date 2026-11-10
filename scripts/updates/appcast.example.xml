@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Ternvale</title>
+    <item>
+      <title>Ternvale 0.2.0</title>
+      <sparkle:version>2</sparkle:version>
+      <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+      <description><![CDATA[Example stable item. Replace sparkle:edSignature with generate_keys / generate-appcast.py output.]]></description>
+      <enclosure url="https://updates.ternvale.dev/Ternvale-0.2.0.zip"
+                 length="1"
+                 type="application/octet-stream"
+                 sparkle:edSignature="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==" />
+    </item>
+  </channel>
+</rss>
