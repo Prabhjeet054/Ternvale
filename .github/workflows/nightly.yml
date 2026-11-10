@@ -1,0 +1,76 @@
+# Long fuzz, bench vs last good JSON, compatibility matrix. Trusted runner only.
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzz_time:
+        description: "Seconds per fuzz target (default 600; make fuzz-long uses 3600)"
+        required: false
+        default: "600"
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    name: fuzz + bench + compat
+    if: github.repository_owner != '' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, macOS, ARM64, ternvale]
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Hypervisor.framework
+        run: bash scripts/ci/hv-probe.sh
+      - name: Toolchain
+        run: |
+          rustup show
+          rustup toolchain install nightly --profile minimal
+          rustup component add rustfmt clippy
+          command -v cargo-fuzz >/dev/null || cargo install cargo-fuzz --locked
+      - name: Long fuzz
+        env:
+          FUZZ_TIME: ${{ github.event.inputs.fuzz_time || '600' }}
+        run: make fuzz-run
+      - name: Benchmark + regression compare
+        run: |
+          mkdir -p bench-results
+          if [[ -d test-assets/bench ]]; then
+            make bench
+            latest=$(ls -1t bench-results/*.json 2>/dev/null | head -n1 || true)
+            baseline=$(ls -1t bench-results/*.json 2>/dev/null | sed -n '2p' || true)
+            if [[ -n "${latest}" && -n "${baseline}" ]]; then
+              python3 scripts/bench/compare.py --threshold 5 "${baseline}" "${latest}"
+            else
+              echo "bench: need two JSON results for compare; ran one snapshot"
+            fi
+          else
+            make bench-compare-test
+          fi
+      - name: Compatibility matrix
+        run: bash scripts/ci/compat-nightly.sh
+      - name: Collect logs on failure
+        if: failure()
+        run: bash scripts/ci/collect-artifacts.sh "${{ github.workspace }}/ci-artifacts"
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ github.run_id }}
+          path: ci-artifacts
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Upload bench JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-bench-${{ github.run_id }}
+          path: bench-results
+          if-no-files-found: ignore
+          retention-days: 90

@@ -1,0 +1,89 @@
+# Tag v* → scripts/release.sh. Notary and identity come from encrypted Actions secrets.
+# Runs on the self-hosted Mac (Developer ID in Keychain). Forks never trigger this.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      skip_notarize:
+        description: "Pass --skip-notarize (dry-run sign only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: scripts/release.sh
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, macOS, ARM64, ternvale]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup show
+      - name: Notary key (secret file, never logged)
+        env:
+          TERNVALE_NOTARY_KEY: ${{ secrets.TERNVALE_NOTARY_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${TERNVALE_NOTARY_KEY}" ]]; then
+            echo "TERNVALE_NOTARY_KEY unset; notarization will be skipped by release.sh"
+            exit 0
+          fi
+          umask 077
+          mkdir -p "${RUNNER_TEMP}/notary"
+          key="${RUNNER_TEMP}/notary/AuthKey.p8"
+          printf '%s\n' "${TERNVALE_NOTARY_KEY}" >"${key}"
+          echo "TERNVALE_NOTARY_KEY_PATH=${key}" >>"${GITHUB_ENV}"
+      - name: Release
+        env:
+          TERNVALE_CODESIGN_IDENTITY: ${{ secrets.TERNVALE_CODESIGN_IDENTITY }}
+          TERNVALE_TEAM_ID: ${{ secrets.TERNVALE_TEAM_ID }}
+          TERNVALE_NOTARY_KEY_ID: ${{ secrets.TERNVALE_NOTARY_KEY_ID }}
+          TERNVALE_NOTARY_ISSUER: ${{ secrets.TERNVALE_NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event.inputs.skip_notarize || 'false' }}" == "true" ]]; then
+            ./scripts/release.sh --skip-notarize
+          else
+            ./scripts/release.sh
+          fi
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ternvale-${{ github.ref_name }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 30
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          zip=dist/Ternvale.zip
+          if [[ -f "${zip}" ]]; then
+            gh release create "${GITHUB_REF_NAME}" "${zip}" --title "${GITHUB_REF_NAME}" --generate-notes
+          else
+            echo "no dist/Ternvale.zip; skip gh release"
+          fi
+      - name: Collect logs on failure
+        if: failure()
+        run: bash scripts/ci/collect-artifacts.sh "${{ github.workspace }}/ci-artifacts"
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-logs-${{ github.run_id }}
+          path: ci-artifacts
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Shred notary key
+        if: always()
+        run: |
+          rm -f "${RUNNER_TEMP}/notary/AuthKey.p8"
+          rm -rf "${RUNNER_TEMP}/notary"

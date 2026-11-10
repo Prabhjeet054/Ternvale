@@ -1,0 +1,65 @@
+# needs-hv tests, boot harness, and benches. Self-hosted Apple Silicon only.
+# Fork PRs never run here (untrusted code on a machine with Hypervisor.framework).
+name: Hypervisor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: hv-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  skip-fork:
+    name: skip fork PRs
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-15
+    steps:
+      - run: |
+          echo "Fork PR ${{ github.event.pull_request.head.repo.full_name }} is not allowed on the self-hosted runner."
+          echo "needs-hv / boot / bench run after merge to main, or from a same-repo branch."
+
+  hv:
+    name: needs-hv + boot + bench
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64, ternvale]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Hypervisor.framework
+        run: bash scripts/ci/hv-probe.sh
+      - name: Toolchain
+        run: |
+          rustup show
+          rustup component add rustfmt clippy
+      - name: needs-hv tests
+        run: make test-hv
+      - name: Boot harness
+        run: ./scripts/regression.sh
+        env:
+          TERNVALE_REGRESSION_SCENARIOS: initrd rootfs
+      - name: Benchmarks
+        run: |
+          if [[ -d test-assets/bench ]]; then
+            make bench
+          else
+            echo "bench image missing; running compare unit tests only"
+            make bench-compare-test
+          fi
+      - name: Collect logs, serial, crash bundles
+        if: always()
+        run: bash scripts/ci/collect-artifacts.sh "${{ github.workspace }}/ci-artifacts"
+      - name: Upload boot harness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypervisor-${{ github.run_id }}
+          path: ci-artifacts
+          if-no-files-found: ignore
+          retention-days: 14

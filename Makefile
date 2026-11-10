@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale.entitlements
 
-.PHONY: build test test-hv lint sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom
+.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run audit-unsafe miri sanitize-stress loom
 
 build:
 	$(CARGO) build --workspace
@@ -31,6 +31,16 @@ lint:
 
 audit-unsafe:
 	./scripts/audit-unsafe.sh
+
+# Hosted PR job without fuzz-smoke / cargo-fuzz (see docs/CI.md).
+ci-pr:
+	$(CARGO) fmt --check
+	$(CARGO) clippy --workspace -- -D warnings
+	./scripts/audit-unsafe.sh
+	./scripts/acpi-check.sh
+	@if $(CARGO) deny --version >/dev/null 2>&1; then $(CARGO) deny check; else echo "ci-pr: cargo-deny not installed; skip"; fi
+	@if $(CARGO) audit --version >/dev/null 2>&1; then $(CARGO) audit; else echo "ci-pr: cargo-audit not installed; skip"; fi
+	$(CARGO) test --workspace --config 'target.aarch64-apple-darwin.runner = "/usr/bin/env"' -- --test-threads=1
 
 miri:
 	./scripts/miri.sh

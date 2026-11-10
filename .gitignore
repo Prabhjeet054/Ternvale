@@ -5,6 +5,8 @@ guest-tests/*.bin
 **/*.rs.bk
 *.pdb
 .DS_Store
+__pycache__/
+*.pyc
 .cursor/
 docs/
 test-assets/
