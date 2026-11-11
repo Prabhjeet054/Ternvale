@@ -1,0 +1,22 @@
+[package]
+name = "ternvale-vz"
+description = "Virtualization.framework host (Swift static library + C ABI)."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+links = "tv_vz"
+
+[dependencies]
+# Typed VzError.
+thiserror = "2"
+# Required project-wide logging (target ternvale::vz).
+tracing = "0.1"
+# VmConfig mapping and reject rules.
+ternvale-config = { path = "../ternvale-config" }
+# AGENT_PORT (5000) for the vsock Unix proxy.
+ternvale-agent-proto = { path = "../ternvale-agent-proto" }
+# CString / CStr for the C ABI.
+libc = "0.2"
+
+[lints]
+workspace = true

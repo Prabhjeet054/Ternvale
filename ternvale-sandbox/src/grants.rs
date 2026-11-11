@@ -109,7 +109,12 @@ impl Grants {
             false,
         );
 
-        let network_client = config.nics.iter().any(|nic| nic.backend == "user");
+        // User-mode NAT and Virtualization.framework NAT (VZ always attaches
+        // VZNATNetworkDeviceAttachment) need IP sockets. TODO(verify): VZ NAT
+        // under Seatbelt on macOS 15+ (`network-outbound` vs extra mach names).
+        let network_client = config.nics.iter().any(|nic| nic.backend == "user")
+            || config.backend == ternvale_config::BackendKind::Vz
+            || config.profile == ternvale_config::Profile::Macos;
         let paths: Vec<Grant> = set.into_iter().collect();
         tracing::info!(
             target: "ternvale::sandbox",
@@ -167,5 +172,13 @@ mod tests {
         let config = VmConfig::parse(text).unwrap();
         let grants = Grants::from_config(&config, Path::new("/tmp/vm.toml"));
         assert!(!grants.network_client);
+    }
+
+    #[test]
+    fn vz_requests_network_client() {
+        let text = "name = \"g\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\nbackend = \"vz\"\n[tpm]\nenabled = false\n";
+        let config = VmConfig::parse(text).unwrap();
+        let grants = Grants::from_config(&config, Path::new("/tmp/vm.toml"));
+        assert!(grants.network_client);
     }
 }

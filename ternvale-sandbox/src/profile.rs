@@ -13,6 +13,8 @@ pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 /// TODO(verify): Hypervisor.framework (`hv_vm_create`) under this profile on
 /// macOS 15, 16, and 26. If `hv_vm_create` returns `HV_DENIED`, widen
 /// `mach-lookup` / `iokit-open` here rather than granting general file access.
+/// TODO(verify): Virtualization.framework (`VZVirtualMachine.start`) under the
+/// same profile when `network_client` is set for VZ NAT (Step 92).
 #[tracing::instrument(level = "debug", target = "ternvale::sandbox", skip_all, fields(grants = grants.paths.len(), network_client = grants.network_client))]
 pub fn render(grants: &Grants) -> String {
     let mut out = String::from("(version 1)\n(deny default)\n");

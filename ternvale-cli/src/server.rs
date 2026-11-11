@@ -45,7 +45,14 @@ impl ControlServer {
         control: Arc<VmControl>,
         agent: Option<Arc<AgentServer>>,
     ) -> Result<Self> {
-        Self::with_agent_exec(path, control, agent, false)
+        Self::with_caps(
+            path,
+            control,
+            agent,
+            false,
+            "native".into(),
+            ternvale_backend::BackendCapabilities::native(),
+        )
     }
 
     /// [`Self::with_agent`] with `agent.allow_exec` (exec/copy on the control socket).
@@ -56,6 +63,26 @@ impl ControlServer {
         agent: Option<Arc<AgentServer>>,
         allow_exec: bool,
     ) -> Result<Self> {
+        Self::with_caps(
+            path,
+            control,
+            agent,
+            allow_exec,
+            "native".into(),
+            ternvale_backend::BackendCapabilities::native(),
+        )
+    }
+
+    /// [`Self::with_agent_exec`] with the opened backend's advertised caps.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(path = %path.display(), vm = control.name(), backend = %backend, agent = agent.is_some()))]
+    pub fn with_caps(
+        path: &Path,
+        control: Arc<VmControl>,
+        agent: Option<Arc<AgentServer>>,
+        allow_exec: bool,
+        backend: String,
+        capabilities: ternvale_backend::BackendCapabilities,
+    ) -> Result<Self> {
         Self::serve_vm(
             path,
             Served {
@@ -65,6 +92,8 @@ impl ControlServer {
                 tools_iso: None,
                 power: None,
                 allow_exec,
+                backend,
+                capabilities,
             },
         )
     }
@@ -89,6 +118,8 @@ impl ControlServer {
                 tools_iso,
                 power,
                 allow_exec,
+                backend: "native".into(),
+                capabilities: ternvale_backend::BackendCapabilities::native(),
             },
         )
     }
@@ -174,6 +205,8 @@ struct Served {
     tools_iso: Option<PathBuf>,
     power: Option<Arc<crate::power::PowerState>>,
     allow_exec: bool,
+    backend: String,
+    capabilities: ternvale_backend::BackendCapabilities,
 }
 
 fn accept_loop(listener: &UnixListener, served: &Served, stop: &AtomicBool) {
@@ -268,6 +301,8 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
             served.tools_iso.as_deref(),
             served.power.as_deref(),
             served.allow_exec,
+            &served.backend,
+            served.capabilities,
             &mut handshook,
         ) {
             crate::rpc_vm::Dispatch::Reply(out) => {
@@ -328,11 +363,22 @@ fn stream_exec(
 /// response includes `agent`'s connection.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name()))]
 pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>) -> Response {
-    handle_line_with(line, control, agent, None, None, None, false)
+    handle_line_with(
+        line,
+        control,
+        agent,
+        None,
+        None,
+        None,
+        false,
+        "native",
+        ternvale_backend::BackendCapabilities::native(),
+    )
 }
 
 /// [`handle_line`], with `diag` answering `dump-diagnostics` (an error without it).
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = control.name(), diag = diag.is_some()))]
+#[allow(clippy::too_many_arguments)]
 pub fn handle_line_with(
     line: &str,
     control: &VmControl,
@@ -341,6 +387,8 @@ pub fn handle_line_with(
     tools_iso: Option<&Path>,
     power: Option<&crate::power::PowerState>,
     allow_exec: bool,
+    backend: &str,
+    capabilities: ternvale_backend::BackendCapabilities,
 ) -> Response {
     let request: Request = match serde_json::from_str(line) {
         Ok(request) => request,
@@ -356,7 +404,7 @@ pub fn handle_line_with(
     if let Some(handled) = crate::power::handle(&request, control, agent, power) {
         return match handled {
             Ok(mut response) => {
-                decorate_status(&mut response, agent, tools_iso);
+                decorate_status(&mut response, agent, tools_iso, backend, capabilities);
                 response
             }
             Err(error) => Response::error(error),
@@ -459,7 +507,7 @@ pub fn handle_line_with(
             return match crate::clipboard::pull_from_guest(agent, wait) {
                 Ok(text) => {
                     let mut response = Response::clipboard(&control.status(), text);
-                    decorate_status(&mut response, Some(agent), tools_iso);
+                    decorate_status(&mut response, Some(agent), tools_iso, backend, capabilities);
                     response
                 }
                 Err(error) => Response::error(format!("clipboard-get: {error:#}")),
@@ -476,7 +524,7 @@ pub fn handle_line_with(
                 return Response::error(format!("clipboard-set: {error}"));
             }
             let mut response = Response::status(&control.status());
-            decorate_status(&mut response, Some(agent), tools_iso);
+            decorate_status(&mut response, Some(agent), tools_iso, backend, capabilities);
             return response;
         }
         Request::Exec { .. } | Request::Copy { .. } => {
@@ -513,7 +561,7 @@ pub fn handle_line_with(
                         &control.status(),
                         files.iter().map(|f| f.display().to_string()).collect(),
                     );
-                    decorate_status(&mut response, agent, tools_iso);
+                    decorate_status(&mut response, agent, tools_iso, backend, capabilities);
                     response
                 }
                 Err(error) => {
@@ -525,7 +573,7 @@ pub fn handle_line_with(
     };
     match result {
         Ok(mut response) => {
-            decorate_status(&mut response, agent, tools_iso);
+            decorate_status(&mut response, agent, tools_iso, backend, capabilities);
             tracing::debug!(target: "ternvale::cli", state = ?response.status.as_ref().map(|s| s.state.as_str()), agent = ?response.status.as_ref().and_then(|s| s.agent.as_ref()).map(|a| a.state.as_str()), tools_outdated = ?response.status.as_ref().and_then(|s| s.tools_outdated), "control request done");
             response
         }
@@ -536,13 +584,19 @@ pub fn handle_line_with(
     }
 }
 
-fn decorate_status(response: &mut Response, agent: Option<&AgentServer>, tools_iso: Option<&Path>) {
+fn decorate_status(
+    response: &mut Response,
+    agent: Option<&AgentServer>,
+    tools_iso: Option<&Path>,
+    backend: &str,
+    capabilities: ternvale_backend::BackendCapabilities,
+) {
     if let Some(status) = response.status.as_mut() {
         if let Some(agent) = agent {
             status.agent = Some(AgentJson::from(&agent.status()));
         }
         crate::tools::fill_tools_outdated(status, tools_iso);
-        status.backend = Some("native".into());
-        status.capabilities = Some(ternvale_backend::BackendCapabilities::native());
+        status.backend = Some(backend.to_string());
+        status.capabilities = Some(capabilities);
     }
 }

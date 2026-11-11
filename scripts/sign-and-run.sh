@@ -2,7 +2,8 @@
 # Codesign a binary with the hypervisor entitlement, then exec it.
 # Cargo passes the test or run binary as the first argument and the rest unchanged.
 #
-# Default entitlements are hypervisor-only. `com.apple.vm.device-access` in
+# Default entitlements are hypervisor + virtualization (Step 92 VZ).
+# `com.apple.vm.device-access` in
 # entitlements/ternvale.entitlements SIGKILLs Apple Development CLI tools
 # (no provisioning profile). USB live checks must set TERNVALE_ENTITLEMENTS.
 set -euo pipefail

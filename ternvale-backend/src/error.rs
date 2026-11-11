@@ -19,6 +19,14 @@ pub enum BackendError {
         /// Capability or backend name, such as `vz` or `nested_virt`.
         feature: &'static str,
     },
+    /// A config option this backend cannot honour.
+    #[error("{option} is not supported by this backend (capability {capability})")]
+    UnsupportedOption {
+        /// TOML / config field.
+        option: String,
+        /// [`crate::BackendCapabilities`] flag name, or `none`.
+        capability: &'static str,
+    },
     /// Orchestrator [`ControlError`].
     #[error(transparent)]
     Control(#[from] ControlError),

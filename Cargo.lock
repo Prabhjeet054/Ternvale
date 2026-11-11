@@ -1561,6 +1561,7 @@ dependencies = [
  "serde",
  "ternvale-config",
  "ternvale-vmm",
+ "ternvale-vz",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -1839,6 +1840,17 @@ dependencies = [
  "ternvale-sandbox",
  "ternvale-usb",
  "ternvale-usb-host",
+ "tracing",
+]
+
+[[package]]
+name = "ternvale-vz"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "ternvale-agent-proto",
+ "ternvale-config",
+ "thiserror 2.0.21",
  "tracing",
 ]
 

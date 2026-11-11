@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ternvale_agent_proto::AGENT_PORT;
+use ternvale_backend::StopMode;
 use ternvale_config::{BlockDevice, Nic, Profile, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
     attach_blocks_crypto, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon,
@@ -25,7 +26,8 @@ use ternvale_devices::{
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
-    lockwatch, DeviceAttach, Machine, MachineError, MmioDevice, VmControl, VmState,
+    lockwatch, ControlHooks, DeviceAttach, ExitReason, Machine, MachineError, MmioDevice,
+    VmControl, VmState,
 };
 
 use crate::diag::{DiagSink, RunManifest, SharedDevices};
@@ -51,6 +53,120 @@ pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> 
     let _swtpm = hold.swtpm;
     let _bookmarks = hold.bookmarks;
     run_vm(config_path, mode, fps)
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = %config.name))]
+fn run_self_hosted(
+    config: VmConfig,
+    opened: ternvale_backend::Opened,
+    mode: DisplayMode,
+) -> Result<ExitCode> {
+    tracing::info!(
+        target: "ternvale::cli",
+        vm = %config.name,
+        guest_linux = opened.capabilities().guest_linux,
+        custom_display = opened.capabilities().custom_display_pipeline,
+        "self-hosted backend owns vCPUs and devices"
+    );
+    if mode == DisplayMode::Window && !opened.capabilities().custom_display_pipeline {
+        tracing::info!(
+            target: "ternvale::cli",
+            vm = %config.name,
+            "display window skipped; backend has no custom display pipeline"
+        );
+    }
+    let socket = paths::socket_path(&config.name)?;
+    let vsock = crate::vsock::prepare(&config, &socket)
+        .with_context(|| format!("set up vsock for vm {}", config.name))?;
+    if let Some(setup) = vsock.as_ref() {
+        opened.set_vsock_uds_dir(&setup.device.uds_dir);
+    }
+    if let Some(parent) = config.serial_log.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create serial log dir {}", parent.display()))?;
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&config.serial_log)
+        .with_context(|| format!("create serial log {}", config.serial_log.display()))?;
+
+    let control = Arc::new(VmControl::new(&config.name, config.cpus));
+    let agent = vsock.as_ref().and_then(|setup| setup.agent.clone());
+    let backend_name = opened.kind().to_string();
+    let capabilities = opened.capabilities();
+    let _server = ControlServer::with_caps(
+        &socket,
+        Arc::clone(&control),
+        agent,
+        config.allow_exec(),
+        backend_name,
+        capabilities,
+    )
+    .with_context(|| format!("start the control socket for vm {}", config.name))?;
+
+    let opened = Arc::new(opened);
+    let stop_opened = Arc::clone(&opened);
+    let stop_control = Arc::clone(&control);
+    control.bind(ControlHooks {
+        kick: Box::new(|| {}),
+        stop: Box::new(move || {
+            let mode = if stop_control.forced_for().is_some() {
+                StopMode::Force
+            } else {
+                StopMode::Graceful
+            };
+            if let Err(error) = stop_opened.stop_blocking(mode) {
+                tracing::warn!(
+                    target: "ternvale::cli",
+                    error = %error,
+                    "self-hosted stop hook failed"
+                );
+            }
+        }),
+        stopping: Box::new({
+            let control = Arc::clone(&control);
+            move || {
+                matches!(
+                    control.state(),
+                    VmState::Stopping | VmState::Stopped | VmState::Failed
+                )
+            }
+        }),
+    });
+
+    opened
+        .start_blocking()
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    control.mark_running();
+    tracing::info!(
+        target: "ternvale::cli",
+        vm = %config.name,
+        "self-hosted backend running; control socket ready"
+    );
+
+    let rx = opened.subscribe_state();
+    let mirror = Arc::clone(&control);
+    let _state_thread = std::thread::Builder::new()
+        .name("vz-state".into())
+        .spawn(move || {
+            while let Ok(state) = rx.recv() {
+                tracing::debug!(target: "ternvale::cli", %state, "self-hosted state");
+                if state.is_terminal() {
+                    mirror.finish(Ok(ExitReason::SystemOff));
+                    break;
+                }
+            }
+        })
+        .context("spawn self-hosted state mirror")?;
+
+    opened
+        .wait_stopped()
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    if !control.state().is_terminal() {
+        control.finish(Ok(ExitReason::SystemOff));
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %config_path.display(), display = %mode, fps))]
@@ -90,12 +206,10 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     }
     warn_config_problems(&config);
 
-    let selection =
-        ternvale_backend::select(&config).map_err(|error| anyhow::anyhow!("{error}"))?;
-    if selection.resolved == ternvale_config::BackendKind::Vz {
-        anyhow::bail!(
-            "backend vz is not available yet (macOS guests need Virtualization.framework)"
-        );
+    let opened =
+        ternvale_backend::open_sync(config.clone()).map_err(|error| anyhow::anyhow!("{error}"))?;
+    if opened.drives_guest() {
+        return run_self_hosted(config, opened, mode);
     }
 
     let socket = paths::socket_path(&config.name)?;

@@ -49,4 +49,28 @@ impl BackendCapabilities {
             cpu_profiles: false,
         }
     }
+
+    /// Virtualization.framework Linux guests (Step 92). macOS guests are Step 93.
+    #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
+    pub fn linux_vz() -> Self {
+        Self {
+            guest_linux: true,
+            guest_windows: false,
+            guest_macos: false,
+            tpm: false,
+            snapshots_disk: false,
+            snapshots_memory: false,
+            nested_virt: false,
+            rosetta: false,
+            gpu_2d: false,
+            gpu_3d: false,
+            usb_passthrough: false,
+            bridged_net: false,
+            disk_discard: false,
+            balloon: false,
+            shared_folders: false,
+            custom_display_pipeline: false,
+            cpu_profiles: false,
+        }
+    }
 }

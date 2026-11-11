@@ -1,5 +1,14 @@
 # Sign each `cargo test` / `cargo run` binary before exec (scripts/sign-and-run.sh).
-# Default entitlements are hypervisor-only; device-access SIGKILLs AMFI on
+# Default entitlements are hypervisor + virtualization; device-access SIGKILLs AMFI on
 # Apple Development CLI tools. Override with TERNVALE_ENTITLEMENTS.
 [target.aarch64-apple-darwin]
 runner = "scripts/sign-and-run.sh"
+# Swift static lib from ternvale-vz needs the toolchain concurrency runtime.
+rustflags = [
+    "-C",
+    "link-arg=-Wl,-rpath,/usr/lib/swift",
+    "-C",
+    "link-arg=-Wl,-rpath,/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.5/macosx",
+    "-C",
+    "link-arg=-Wl,-rpath,/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx",
+]

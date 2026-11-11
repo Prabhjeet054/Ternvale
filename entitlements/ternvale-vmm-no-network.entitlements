@@ -6,6 +6,8 @@
 	<true/>
 	<key>com.apple.security.hypervisor</key>
 	<true/>
+	<key>com.apple.security.virtualization</key>
+	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 </dict>
