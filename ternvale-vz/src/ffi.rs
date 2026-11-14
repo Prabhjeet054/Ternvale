@@ -32,6 +32,9 @@ extern "C" {
         disk_count: u32,
         attach_vsock: u8,
         attach_nat: u8,
+        mac_hw_hex: *const c_char,
+        mac_id_hex: *const c_char,
+        mac_aux: *const c_char,
         cb: Option<extern "C" fn(*mut c_void, i32, *const c_char)>,
         ctx: *mut c_void,
         err: *mut c_char,
@@ -56,6 +59,39 @@ extern "C" fn rust_log(level: i32, message: *const c_char) {
     }
 }
 
+pub(crate) fn ensure_logger() {
+    install_logger();
+}
+
+/// SAFETY: `ptr` is null or a NUL-terminated UTF-8 C string that lives for this call.
+pub(crate) unsafe fn cstr_owned(ptr: *const c_char) -> String {
+    // SAFETY: caller invariant above.
+    cstr(ptr)
+}
+
+pub(crate) fn cstring(s: &str) -> Result<CString, VzError> {
+    CString::new(s).map_err(|_| VzError::Host {
+        op: "cstring",
+        detail: "config string contains interior NUL".into(),
+    })
+}
+
+pub(crate) fn read_err(buf: &[c_char], rc: i32, op: &'static str) -> Result<(), VzError> {
+    if rc >= 0 {
+        return Ok(());
+    }
+    let detail = unsafe { cstr(buf.as_ptr()) };
+    tracing::error!(target: "ternvale::vz", op, detail = %detail, rc, "vz ffi failed");
+    Err(VzError::Host {
+        op,
+        detail: if detail.is_empty() {
+            format!("rc={rc}")
+        } else {
+            detail
+        },
+    })
+}
+
 unsafe fn cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
         return String::new();
@@ -71,29 +107,6 @@ fn install_logger() {
         // only reads the C string for the call.
         unsafe { tv_vz_set_logger(Some(rust_log)) };
     });
-}
-
-fn cstring(s: &str) -> Result<CString, VzError> {
-    CString::new(s).map_err(|_| VzError::Host {
-        op: "cstring",
-        detail: "config string contains interior NUL".into(),
-    })
-}
-
-fn read_err(buf: &[c_char], rc: i32, op: &'static str) -> Result<(), VzError> {
-    if rc >= 0 {
-        return Ok(());
-    }
-    let detail = unsafe { cstr(buf.as_ptr()) };
-    tracing::error!(target: "ternvale::vz", op, detail = %detail, rc, "vz ffi failed");
-    Err(VzError::Host {
-        op,
-        detail: if detail.is_empty() {
-            format!("rc={rc}")
-        } else {
-            detail
-        },
-    })
 }
 
 /// Create a live VZ virtual machine. `cb` is invoked on the VM dispatch queue.
@@ -118,6 +131,9 @@ pub fn create(
         .collect::<Vec<_>>()
         .join("\n");
     let disks = cstring(&disk_blob)?;
+    let mac_hw = cstring(&plan.macos_hw_hex)?;
+    let mac_id = cstring(&plan.macos_id_hex)?;
+    let mac_aux = cstring(&plan.macos_aux)?;
     let ro: Vec<u8> = plan.disks.iter().map(|(_, ro)| u8::from(*ro)).collect();
     let mut err = [0 as c_char; ERR_LEN];
     // SAFETY: pointers are live CStrings; `cb`/`ctx` are held by the Swift
@@ -140,6 +156,9 @@ pub fn create(
             plan.disks.len() as u32,
             u8::from(plan.attach_vsock),
             u8::from(plan.attach_nat),
+            mac_hw.as_ptr(),
+            mac_id.as_ptr(),
+            mac_aux.as_ptr(),
             cb,
             ctx,
             err.as_mut_ptr(),

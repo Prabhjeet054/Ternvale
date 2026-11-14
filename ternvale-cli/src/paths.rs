@@ -15,6 +15,8 @@ pub const SNAPSHOTS_DIR_ENV: &str = "TERNVALE_SNAPSHOTS_DIR";
 pub const VMS_DIR_ENV: &str = "TERNVALE_VMS_DIR";
 /// Overrides `~/Library/Application Support/Ternvale/templates`.
 pub const TEMPLATES_DIR_ENV: &str = "TERNVALE_TEMPLATES_DIR";
+/// Overrides `~/Library/Caches/Ternvale/ipsw` (restore images; never bundled).
+pub const IPSW_CACHE_ENV: &str = "TERNVALE_IPSW_CACHE";
 
 /// The directory holding every VM's control socket.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
@@ -169,6 +171,16 @@ pub fn templates_root() -> Result<PathBuf> {
 pub fn template_dir(name: &str) -> Result<PathBuf> {
     socket_path(name)?;
     Ok(templates_root()?.join(name))
+}
+
+/// User cache for macOS restore images (IPSW). Never ships in the app bundle.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn ipsw_cache_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os(IPSW_CACHE_ENV) {
+        return Ok(PathBuf::from(dir));
+    }
+    let home = std::env::var_os("HOME").context("HOME is not set; cannot find the IPSW cache")?;
+    Ok(PathBuf::from(home).join("Library/Caches/Ternvale/ipsw"))
 }
 
 /// Wrapped data-encryption key (`TVKW`) for VM `name`.

@@ -41,6 +41,9 @@ pub fn stream_vm_events(
                 state: Some(status.state.clone()),
                 tools_outdated: None,
                 line: None,
+                completed: None,
+                total: None,
+                permille: None,
             };
             if !emit(writer, &event) {
                 return;
@@ -58,6 +61,9 @@ pub fn stream_vm_events(
                     state: Some(now.to_string()),
                     tools_outdated: None,
                     line: None,
+                    completed: None,
+                    total: None,
+                    permille: None,
                 };
                 if !emit(writer, &event) {
                     return;
@@ -70,6 +76,9 @@ pub fn stream_vm_events(
                     state: Some(now.to_string()),
                     tools_outdated: None,
                     line: None,
+                    completed: None,
+                    total: None,
+                    permille: None,
                 };
                 if !emit(writer, &event) {
                     return;
@@ -86,6 +95,9 @@ pub fn stream_vm_events(
                     state: None,
                     tools_outdated: Some(flag),
                     line: None,
+                    completed: None,
+                    total: None,
+                    permille: None,
                 };
                 if !emit(writer, &event) {
                     return;

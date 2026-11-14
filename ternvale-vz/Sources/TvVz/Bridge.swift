@@ -29,6 +29,9 @@ func tv_vz_create(
     _ diskCount: UInt32,
     _ attachVsock: UInt8,
     _ attachNat: UInt8,
+    _ macHwHex: UnsafePointer<CChar>?,
+    _ macIdHex: UnsafePointer<CChar>?,
+    _ macAux: UnsafePointer<CChar>?,
     _ cb: tv_vz_state_fn?,
     _ ctx: UnsafeMutableRawPointer?,
     _ err: UnsafeMutablePointer<CChar>?,
@@ -56,7 +59,10 @@ func tv_vz_create(
             diskRo: diskRo,
             diskCount: Int(diskCount),
             attachVsock: attachVsock != 0,
-            attachNat: attachNat != 0
+            attachNat: attachNat != 0,
+            macHwHex: cString(macHwHex),
+            macIdHex: cString(macIdHex),
+            macAux: cString(macAux)
         )
         // VZVirtualMachine.init(configuration:queue:) — macOS 12.0.
         let vm = VZVirtualMachine(configuration: config, queue: session.queue)
@@ -251,15 +257,25 @@ private func buildConfig(
     diskRo: UnsafePointer<UInt8>?,
     diskCount: Int,
     attachVsock: Bool,
-    attachNat: Bool
+    attachNat: Bool,
+    macHwHex: String,
+    macIdHex: String,
+    macAux: String
 ) throws -> VZVirtualMachineConfiguration {
     let config = VZVirtualMachineConfiguration()
     config.cpuCount = Int(cpus)
     config.memorySize = ramBytes
-    // VZGenericPlatformConfiguration — macOS 12.0. Linux guests; not VZMac*.
-    config.platform = VZGenericPlatformConfiguration()
+    let macos = !macHwHex.isEmpty
+    if macos {
+        try applyMacPlatform(config, hwHex: macHwHex, idHex: macIdHex, aux: macAux)
+    } else {
+        // VZGenericPlatformConfiguration — macOS 12.0. Linux guests; not VZMac*.
+        config.platform = VZGenericPlatformConfiguration()
+    }
 
-    if kernel.isEmpty {
+    if macos {
+        // Boot loader set by applyMacPlatform (VZMacOSBootLoader).
+    } else if kernel.isEmpty {
         // VZEFIBootLoader — macOS 13.0.
         let boot = VZEFIBootLoader()
         if !nvram.isEmpty {

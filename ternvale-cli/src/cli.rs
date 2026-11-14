@@ -21,6 +21,7 @@ pub struct Cli {
 
 /// One `ternvale` subcommand.
 #[derive(Debug, Subcommand, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)] // `Create` grew `--macos` / `--ipsw` / `--sha256`.
 pub enum Command {
     /// Listen on the JSON-RPC hub socket (`run/api.sock`) until killed.
     Serve,
@@ -77,7 +78,7 @@ pub enum Command {
         /// VM config (TOML).
         config: PathBuf,
     },
-    /// Create a library VM (`--windows --iso --unattended`).
+    /// Create a library VM (`--windows --iso --unattended` or `--macos`).
     Create {
         /// Guest name under `~/Library/Application Support/Ternvale/vms/`.
         #[arg(long)]
@@ -85,6 +86,15 @@ pub enum Command {
         /// Windows 11 ARM64 profile.
         #[arg(long)]
         windows: bool,
+        /// macOS guest on the VZ backend (restore image + installer).
+        #[arg(long)]
+        macos: bool,
+        /// User-supplied macOS restore image (`.ipsw`). Omitted: fetch latest supported.
+        #[arg(long)]
+        ipsw: Option<PathBuf>,
+        /// Expected SHA-256 of the restore image (hex). Verified after download.
+        #[arg(long)]
+        sha256: Option<String>,
         /// User-supplied Windows installer ISO (never bundled).
         #[arg(long)]
         iso: Option<PathBuf>,
@@ -97,6 +107,12 @@ pub enum Command {
         /// System disk size (default 64G).
         #[arg(long, default_value = crate::create_cmd::DEFAULT_DISK)]
         disk_size: String,
+        /// vCPUs for `--macos` (raised to the restore image minimum).
+        #[arg(long, default_value_t = crate::create_macos::DEFAULT_CPUS)]
+        cpus: u32,
+        /// Guest RAM in MiB for `--macos` (raised to the restore image minimum).
+        #[arg(long, default_value_t = crate::create_macos::DEFAULT_RAM_MIB)]
+        ram_mib: u64,
         /// UEFI firmware (`QEMU_EFI.fd`).
         #[arg(long)]
         firmware: Option<PathBuf>,

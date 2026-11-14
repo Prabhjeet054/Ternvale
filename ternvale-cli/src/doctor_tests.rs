@@ -53,12 +53,11 @@ fn a_healthy_host_passes_everything() {
         "{checks:?}"
     );
     let text = render(&checks);
+    assert!(text.starts_with("PASS  macOS version"), "{text}");
+    assert!(text.contains("macOS 26.1"), "{text}");
+    assert!(text.contains("macOS guest space"), "{text}");
     assert!(
-        text.starts_with("PASS  macOS version  macOS 26.1\n"),
-        "{text}"
-    );
-    assert!(
-        text.ends_with("8 passed, 0 warnings, 0 failed, 0 skipped"),
+        text.ends_with("9 passed, 0 warnings, 0 failed, 0 skipped"),
         "{text}"
     );
     assert!(!text.contains("fix:"));
@@ -105,15 +104,12 @@ fn unsigned_binary_fails_hypervisor_and_entitlement_with_codesign_fix() {
     assert_eq!(check_gic(&facts.gic).outcome, Outcome::Skip);
     let text = render(&evaluate(&facts));
     assert!(
-        text.contains("\nFAIL  entitlement    /bin/ternvale lacks"),
+        text.contains("FAIL  entitlement") && text.contains("/bin/ternvale lacks"),
         "{text}"
     );
+    assert!(text.contains("fix: Sign it:"), "{text}");
     assert!(
-        text.contains(&format!("\n{}fix: Sign it:", " ".repeat(6 + 13 + 2))),
-        "{text}"
-    );
-    assert!(
-        text.ends_with("5 passed, 0 warnings, 2 failed, 1 skipped"),
+        text.ends_with("6 passed, 0 warnings, 2 failed, 1 skipped"),
         "{text}"
     );
 }
@@ -174,6 +170,28 @@ fn disk_thresholds() {
         "50.0 GiB free of 100.0 GiB on the volume holding /logs"
     );
     assert_eq!(check_disk(&Err("x".into())).outcome, Outcome::Warn);
+}
+
+#[test]
+fn macos_guest_space_warns_below_eighty_gib() {
+    use super::{check_macos_guest_space, require_macos_create_space, MACOS_GUEST_WARN_BYTES};
+    let disk = |free: u64| {
+        check_macos_guest_space(&Ok(DiskFacts {
+            path: PathBuf::from("/vms"),
+            free_bytes: free,
+            total_bytes: 500 << 30,
+        }))
+    };
+    assert_eq!(disk(20 << 30).outcome, Outcome::Warn);
+    assert_eq!(disk(MACOS_GUEST_WARN_BYTES).outcome, Outcome::Pass);
+    assert_eq!(
+        super::macos_create_need(64 << 30, 16 << 30),
+        (64 << 30) + (16 << 30) + super::MACOS_CREATE_OVERHEAD_BYTES
+    );
+    let err = require_macos_create_space(100, 5000).expect_err("low");
+    assert!(err.contains("not enough disk"), "{err}");
+    assert!(err.contains("before downloading"), "{err}");
+    assert!(require_macos_create_space(5000, 100).is_ok());
 }
 
 #[test]

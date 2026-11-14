@@ -22,6 +22,12 @@ pub struct VzPlan {
     pub disks: Vec<(String, bool)>,
     pub attach_vsock: bool,
     pub attach_nat: bool,
+    /// Empty: Linux generic platform. Hex of `VZMacHardwareModel`.
+    pub macos_hw_hex: String,
+    /// Hex of `VZMacMachineIdentifier`.
+    pub macos_id_hex: String,
+    /// `VZMacAuxiliaryStorage` path.
+    pub macos_aux: String,
 }
 
 impl VzPlan {
@@ -64,6 +70,7 @@ impl VzPlan {
         }
         let (uds_dir, listen_ports, attach_vsock) = vsock_plan(config);
         let attach_nat = true;
+        let (macos_hw_hex, macos_id_hex, macos_aux) = macos_platform(config)?;
         tracing::info!(
             target: "ternvale::vz",
             vm = %config.name,
@@ -83,7 +90,11 @@ impl VzPlan {
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_default(),
-            cmdline: with_hvc_console(&config.cmdline),
+            cmdline: if config.profile == Profile::Macos {
+                String::new()
+            } else {
+                with_hvc_console(&config.cmdline)
+            },
             nvram,
             serial_log: config.serial_log.display().to_string(),
             uds_dir,
@@ -91,6 +102,9 @@ impl VzPlan {
             disks,
             attach_vsock,
             attach_nat,
+            macos_hw_hex,
+            macos_id_hex,
+            macos_aux,
         })
     }
 }
@@ -130,6 +144,33 @@ fn path_string(path: &std::path::Path) -> String {
     path.display().to_string()
 }
 
+fn macos_platform(config: &VmConfig) -> Result<(String, String, String), VzError> {
+    if config.profile != Profile::Macos {
+        return Ok((String::new(), String::new(), String::new()));
+    }
+    let bundle = config.serial_log.parent().ok_or_else(|| VzError::Host {
+        op: "macos_platform",
+        detail: "serial_log has no parent directory for the VM bundle".into(),
+    })?;
+    let path = crate::macos::MacosIdentity::path_in(bundle);
+    let identity = crate::macos::MacosIdentity::load(&path)?;
+    let aux = crate::macos::MacosIdentity::aux_path_in(bundle);
+    if !aux.is_file() {
+        return Err(VzError::Host {
+            op: "macos_platform",
+            detail: format!(
+                "{} is missing; the VM cannot boot without AuxiliaryStorage",
+                aux.display()
+            ),
+        });
+    }
+    Ok((
+        identity.hardware_hex(),
+        identity.identifier_hex(),
+        aux.display().to_string(),
+    ))
+}
+
 fn vsock_plan(config: &VmConfig) -> (String, Vec<u32>, bool) {
     let Some(section) = &config.vsock else {
         return (String::new(), Vec::new(), false);
@@ -149,9 +190,6 @@ fn vsock_plan(config: &VmConfig) -> (String, Vec<u32>, bool) {
 fn reject_unsupported(config: &VmConfig) -> Result<(), VzError> {
     if config.profile == Profile::Windows {
         return Err(unsupported("profile=windows", "guest_windows"));
-    }
-    if config.profile == Profile::Macos {
-        return Err(unsupported("profile=macos", "guest_macos"));
     }
     if config.tpm_enabled() {
         return Err(unsupported("[tpm]", "tpm"));
@@ -284,6 +322,21 @@ mod tests {
         config.firmware = Some(PathBuf::from("/fw.fd"));
         let plan = VzPlan::from_config(&config).expect("efi");
         assert!(plan.kernel.is_empty());
+    }
+
+    #[test]
+    fn macos_without_identity_cannot_boot() {
+        let mut config = linux();
+        config.profile = Profile::Macos;
+        config.serial_log = PathBuf::from("/tmp/no-such-tv-macos/serial.log");
+        let err = VzPlan::from_config(&config).expect_err("identity");
+        let text = err.to_string();
+        assert!(
+            text.contains("macos-platform")
+                || text.contains("cannot boot")
+                || text.contains("read:"),
+            "{text}"
+        );
     }
 
     #[test]

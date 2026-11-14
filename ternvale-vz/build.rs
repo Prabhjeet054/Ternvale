@@ -17,6 +17,8 @@ fn main() {
         "Sources/TvVz/Host.swift",
         "Sources/TvVz/Socket.swift",
         "Sources/TvVz/Bridge.swift",
+        "Sources/TvVz/Macos.swift",
+        "Sources/TvVz/MacosDownload.swift",
     ]
     .into_iter()
     .map(|p| manifest.join(p))
@@ -29,7 +31,14 @@ fn main() {
         .args(["-swift-version", "5"])
         .args(["-target", "arm64-apple-macos13.0"])
         .args(["-sdk", sdk.trim()])
-        .args(["-framework", "Virtualization", "-framework", "Foundation"])
+        .args([
+            "-framework",
+            "Virtualization",
+            "-framework",
+            "Foundation",
+            "-framework",
+            "CryptoKit",
+        ])
         .args(["-Xfrontend", "-disable-implicit-concurrency-module-import"])
         .arg("-O")
         .arg("-o")
@@ -47,6 +56,7 @@ fn main() {
     println!("cargo:rustc-link-arg=-Wl,-force_load,{}", lib.display());
     println!("cargo:rustc-link-lib=framework=Virtualization");
     println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rustc-link-lib=framework=CryptoKit");
     link_swift_runtime();
 }
 

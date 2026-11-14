@@ -16,6 +16,8 @@ pub enum EventKind {
     GuestToolsOutdated,
     /// One host log line (already formatted).
     Log,
+    /// macOS restore download or `VZMacOSInstaller` progress (`permille` 0..=1000).
+    InstallProgress,
 }
 
 impl EventKind {
@@ -28,6 +30,7 @@ impl EventKind {
             Self::AgentDisconnect => "agent-disconnect",
             Self::GuestToolsOutdated => "guest-tools-outdated",
             Self::Log => "log",
+            Self::InstallProgress => "install-progress",
         }
     }
 
@@ -45,6 +48,7 @@ pub const EVENT_KINDS: &[EventKind] = &[
     EventKind::AgentDisconnect,
     EventKind::GuestToolsOutdated,
     EventKind::Log,
+    EventKind::InstallProgress,
 ];
 
 /// Notification params (`method` is always `event`).
@@ -58,6 +62,15 @@ pub struct Event {
     pub tools_outdated: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<String>,
+    /// Completed units (`install-progress`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed: Option<u64>,
+    /// Total units (`install-progress`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
+    /// Progress in parts per thousand, 0..=1000.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permille: Option<u32>,
 }
 
 impl Event {

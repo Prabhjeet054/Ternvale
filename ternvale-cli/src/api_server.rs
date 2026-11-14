@@ -256,6 +256,9 @@ fn stream_hub_events(writer: &mut UnixStream, kinds: &[EventKind]) {
                         }),
                         tools_outdated: None,
                         line: None,
+                        completed: None,
+                        total: None,
+                        permille: None,
                     };
                     if !write_event(writer, &event) {
                         return;

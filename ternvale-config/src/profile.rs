@@ -19,7 +19,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
-use crate::{FirmwareTables, TpmBackendKind, VmConfig};
+use crate::{BackendKind, FirmwareTables, TpmBackendKind, VmConfig};
 
 // Windows 11 minimums. Source: Microsoft Learn, "Windows 11 requirements",
 // section "Virtual machine support" (fetched 2026-10-13):
@@ -124,21 +124,25 @@ impl Profile {
 
 fn validate_macos(config: &VmConfig) -> Result<(), ConfigError> {
     let profile = Profile::Macos;
-    if config.firmware.is_none() {
-        tracing::error!(target: "ternvale::config", profile = %profile, "profile needs firmware");
-        return Err(ConfigError::ProfileNeedsFirmware { profile });
+    if config.backend == BackendKind::Native {
+        return Err(conflict(
+            profile,
+            "backend = \"native\"",
+            "macOS guests run on Virtualization.framework (backend = \"vz\" or \"auto\")",
+        ));
     }
     if config.firmware_tables == Some(FirmwareTables::Fdt) {
         return Err(conflict(
             profile,
             "firmware_tables = \"fdt\"",
-            "macOS guests boot UEFI firmware, not a device tree",
+            "macOS guests boot Apple's VZMacOSBootLoader, not a device tree",
         ));
     }
     tracing::debug!(
         target: "ternvale::config",
         profile = %profile,
-        "macos profile: firmware required; auto backend is vz"
+        backend = %config.backend,
+        "macos profile: VZ platform identity lives in the VM bundle"
     );
     Ok(())
 }

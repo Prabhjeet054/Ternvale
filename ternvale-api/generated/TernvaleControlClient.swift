@@ -37,6 +37,7 @@ public enum TernvaleEventKind: String, Codable, CaseIterable {
     case agentDisconnect = "agent-disconnect"
     case guestToolsOutdated = "guest-tools-outdated"
     case log = "log"
+    case installProgress = "install-progress"
 }
 
 /// JSON-RPC 2.0 request (one object per line on the Unix socket).

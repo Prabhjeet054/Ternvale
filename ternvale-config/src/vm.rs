@@ -309,7 +309,15 @@ impl VmConfig {
     }
 
     /// Firmware boot needs `firmware`; a direct boot needs `kernel`.
+    /// macOS guests use `VZMacOSBootLoader` (no kernel or EDK2 firmware file).
     fn validate_boot_source(&self) -> Result<(), ConfigError> {
+        if self.profile == Profile::Macos {
+            tracing::debug!(
+                target: "ternvale::config",
+                "macos guest: VZMacOSBootLoader; kernel and firmware files are not used"
+            );
+            return Ok(());
+        }
         let Some(firmware) = &self.firmware else {
             tracing::debug!(target: "ternvale::config", "firmware omitted; direct kernel boot");
             require_file("kernel", &self.kernel)?;

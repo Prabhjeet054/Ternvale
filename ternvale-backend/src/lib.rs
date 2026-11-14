@@ -12,6 +12,7 @@ mod caps;
 /// Conformance helpers invoked by [`backend_conformance`].
 pub mod conformance;
 mod error;
+mod macos;
 mod mock;
 mod native;
 mod opened;
@@ -24,10 +25,14 @@ pub use conformance::{
     graceful_stop, invalid_transitions, lifecycle, run_all, stats_shape, unsupported_features,
 };
 pub use error::BackendError;
+pub use macos::{
+    download_restore, inspect_restore, install_macos, persist_platform, require_supported,
+};
 pub use mock::MockBackend;
 pub use native::NativeBackend;
 pub use opened::Opened;
 pub use select::{resolve, select, Selection};
+pub use ternvale_vz::{DownloadResult, MacosIdentity, MacosRestoreInfo, AUX_NAME, IDENTITY_NAME};
 pub use types::{
     AgentChannel, BackendStats, DisplaySurface, InputSink, MediaAttachment, MediaSlot, StopMode,
 };

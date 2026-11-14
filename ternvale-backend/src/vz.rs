@@ -143,7 +143,11 @@ impl VzBackend {
 impl VmBackend for VzBackend {
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
     fn capabilities(&self) -> BackendCapabilities {
-        BackendCapabilities::linux_vz()
+        if self.config.profile == ternvale_config::Profile::Macos {
+            BackendCapabilities::macos_vz()
+        } else {
+            BackendCapabilities::linux_vz()
+        }
     }
 
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all, fields(vm = %self.config.name, live = self.live))]

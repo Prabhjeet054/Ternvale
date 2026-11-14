@@ -62,6 +62,9 @@ fn event_state_matches_golden() {
         state: Some("paused".into()),
         tools_outdated: None,
         line: None,
+        completed: None,
+        total: None,
+        permille: None,
     };
     assert_json_eq(
         "event-state.json",

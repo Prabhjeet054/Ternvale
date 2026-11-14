@@ -249,7 +249,13 @@ fn linux_is_the_default_and_keeps_cpus_and_ram_required() {
     assert_eq!(macos.virtio_transport(), VirtioTransport::Mmio);
     macos
         .validate()
-        .expect("windows template already has firmware");
+        .expect("macos profile does not require firmware");
+    let native_macos = VmConfig::parse(&format!(
+        "{text}cpus = 1\nram_mib = 256\nprofile = \"macos\"\nbackend = \"native\"\n"
+    ))
+    .expect("parses");
+    let err = native_macos.validate().expect_err("native macos");
+    assert!(err.to_string().contains("backend = \"native\""), "{err}");
 }
 
 #[test]

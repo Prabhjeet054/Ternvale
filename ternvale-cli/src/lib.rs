@@ -29,6 +29,7 @@ pub mod commands;
 pub mod control_agent;
 pub mod cp_cmd;
 pub mod create_cmd;
+pub mod create_macos;
 pub mod create_progress;
 pub mod crypto_cmd;
 pub mod diag;
@@ -205,10 +206,15 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
         Command::Create {
             name,
             windows,
+            macos,
+            ipsw,
+            sha256,
             iso,
             unattended,
             edition,
             disk_size,
+            cpus,
+            ram_mib,
             firmware,
             tools_iso,
             user,
@@ -219,8 +225,22 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             wait,
             timeout_secs,
         } => {
+            if macos {
+                if windows {
+                    anyhow::bail!("choose one of --windows or --macos");
+                }
+                return create_macos::create_macos(create_macos::CreateMacos {
+                    name,
+                    ipsw,
+                    sha256,
+                    disk_size,
+                    cpus,
+                    ram_mib,
+                    wait,
+                });
+            }
             if !windows {
-                anyhow::bail!("`ternvale create` currently supports --windows only");
+                anyhow::bail!("`ternvale create` requires --windows or --macos");
             }
             let iso = iso.ok_or_else(|| {
                 anyhow::anyhow!("--iso PATH is required (your Windows 11 ARM64 installer)")

@@ -20,6 +20,10 @@ use ternvale_hv::{MacosVersion, GIC_MIN_MACOS_MAJOR};
 pub const DISK_FAIL_BYTES: u64 = 1 << 30;
 /// Free space below this warns.
 pub const DISK_WARN_BYTES: u64 = 5 << 30;
+/// Warn that a macOS guest create (IPSW + 64 GiB disk) will not fit.
+pub const MACOS_GUEST_WARN_BYTES: u64 = 80 << 30;
+/// Extra headroom besides disk image + restore image.
+pub const MACOS_CREATE_OVERHEAD_BYTES: u64 = 8 << 30;
 /// Log directory size above this warns.
 pub const LOG_DIR_WARN_BYTES: u64 = 1 << 30;
 /// The entitlement every `ternvale` binary needs.
@@ -234,6 +238,57 @@ pub fn check_disk(disk: &Result<DiskFacts, String>) -> Check {
     }
 }
 
+/// Room for a macOS restore image plus a 64 GiB system disk (create flow).
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn check_macos_guest_space(disk: &Result<DiskFacts, String>) -> Check {
+    const NAME: &str = "macOS guest space";
+    match disk {
+        Ok(d) => {
+            let detail = format!(
+                "{} free; macOS create needs ~{} (restore image + 64 GiB disk)",
+                human(d.free_bytes),
+                human(MACOS_GUEST_WARN_BYTES)
+            );
+            if d.free_bytes < MACOS_GUEST_WARN_BYTES {
+                Check::new(NAME, Outcome::Warn, detail).fix(
+                    "Free space before `ternvale create --macos`, or pass --ipsw to a cached restore image.",
+                )
+            } else {
+                Check::new(NAME, Outcome::Pass, detail)
+            }
+        }
+        Err(error) => Check::new(NAME, Outcome::Warn, format!("could not measure: {error}"))
+            .fix("Check `df -h ~` by hand."),
+    }
+}
+
+/// Bytes `ternvale create --macos` must see free before it starts a download.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn macos_create_need(disk_bytes: u64, restore_bytes: u64) -> u64 {
+    disk_bytes
+        .saturating_add(restore_bytes)
+        .saturating_add(MACOS_CREATE_OVERHEAD_BYTES)
+}
+
+/// Refuse create when `free_bytes` is below [`macos_create_need`].
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn require_macos_create_space(free_bytes: u64, need: u64) -> Result<(), String> {
+    if free_bytes < need {
+        tracing::warn!(
+            target: "ternvale::cli",
+            free_bytes,
+            need,
+            "refusing macos create; not enough disk"
+        );
+        return Err(format!(
+            "not enough disk for a macOS guest: {} free, need {} (restore image + disk + headroom); free space and retry before downloading",
+            human(free_bytes),
+            human(need)
+        ));
+    }
+    Ok(())
+}
+
 /// The log directory exists, is writable, and is not huge.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
 pub fn check_log_dir(log_dir: &Result<LogDirFacts, String>) -> Check {
@@ -277,6 +332,7 @@ pub fn evaluate(facts: &Facts) -> Vec<Check> {
         check_entitlement(facts),
         check_gic(&facts.gic),
         check_disk(&facts.disk),
+        check_macos_guest_space(&facts.disk),
         check_log_dir(&facts.log_dir),
         tpm::check_swtpm(&facts.swtpm, tpm::Need::Optional),
         check_qemu_img(&facts.qemu_img),

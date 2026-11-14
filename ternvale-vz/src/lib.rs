@@ -15,10 +15,16 @@
 mod error;
 mod ffi;
 mod host;
+mod macos;
+mod macos_host;
 mod plan;
 
 pub use error::VzError;
 pub use host::VzHost;
+pub use macos::{MacosIdentity, AUX_NAME, IDENTITY_NAME};
+pub use macos_host::{
+    create_aux, download, inspect, install, write_platform, DownloadResult, MacosRestoreInfo,
+};
 pub use plan::VzPlan;
 
 #[cfg(test)]
