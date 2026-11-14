@@ -38,6 +38,7 @@ int32_t tv_vz_create(
     const char *mac_hw_hex,
     const char *mac_id_hex,
     const char *mac_aux,
+    const char *devices,
     tv_vz_state_fn cb,
     void *ctx,
     char *err,
@@ -49,6 +50,8 @@ int32_t tv_vz_resume(int32_t handle, char *err, size_t err_len);
 int32_t tv_vz_stop(int32_t handle, uint8_t force, char *err, size_t err_len);
 int32_t tv_vz_state(int32_t handle);
 void tv_vz_destroy(int32_t handle);
+void tv_vz_nsapp_run(void);
+void tv_vz_nsapp_stop(void);
 
 int32_t tv_vz_macos_inspect(
     const char *ipsw,

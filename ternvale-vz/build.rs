@@ -19,6 +19,8 @@ fn main() {
         "Sources/TvVz/Bridge.swift",
         "Sources/TvVz/Macos.swift",
         "Sources/TvVz/MacosDownload.swift",
+        "Sources/TvVz/Devices.swift",
+        "Sources/TvVz/View.swift",
     ]
     .into_iter()
     .map(|p| manifest.join(p))
@@ -36,6 +38,8 @@ fn main() {
             "Virtualization",
             "-framework",
             "Foundation",
+            "-framework",
+            "AppKit",
             "-framework",
             "CryptoKit",
         ])
@@ -56,6 +60,7 @@ fn main() {
     println!("cargo:rustc-link-arg=-Wl,-force_load,{}", lib.display());
     println!("cargo:rustc-link-lib=framework=Virtualization");
     println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rustc-link-lib=framework=AppKit");
     println!("cargo:rustc-link-lib=framework=CryptoKit");
     link_swift_runtime();
 }

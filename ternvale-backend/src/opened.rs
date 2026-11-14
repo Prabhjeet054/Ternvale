@@ -95,6 +95,19 @@ impl Opened {
         }
     }
 
+    /// Ask the self-hosted backend to show its native display view.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::backend",
+        skip_all,
+        fields(show_view)
+    )]
+    pub fn set_show_view(&self, show_view: bool) {
+        if let Self::Vz(backend) = self {
+            backend.set_show_view(show_view);
+        }
+    }
+
     /// Block until the self-hosted VM is Stopped or Failed.
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
     pub fn wait_stopped(&self) -> Result<(), BackendError> {

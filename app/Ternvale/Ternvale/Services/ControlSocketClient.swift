@@ -136,6 +136,16 @@ struct AgentPayload: Decodable {
     let agent: String?
 }
 
+struct BackendCapabilitiesPayload: Decodable {
+    let customDisplayPipeline: Bool?
+    let guestMacos: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case customDisplayPipeline = "custom_display_pipeline"
+        case guestMacos = "guest_macos"
+    }
+}
+
 struct VMStatusPayload: Decodable {
     let name: String
     let state: String
@@ -146,9 +156,10 @@ struct VMStatusPayload: Decodable {
     let toolsOutdated: Bool?
     let toolsIsoAgent: String?
     let agent: AgentPayload?
+    let capabilities: BackendCapabilitiesPayload?
 
     enum CodingKeys: String, CodingKey {
-        case name, state, cpus, failure, agent
+        case name, state, cpus, failure, agent, capabilities
         case uptimeMs = "uptime_ms"
         case stopCause = "stop_cause"
         case toolsOutdated = "tools_outdated"

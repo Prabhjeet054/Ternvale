@@ -32,6 +32,7 @@ func tv_vz_create(
     _ macHwHex: UnsafePointer<CChar>?,
     _ macIdHex: UnsafePointer<CChar>?,
     _ macAux: UnsafePointer<CChar>?,
+    _ devicesBlob: UnsafePointer<CChar>?,
     _ cb: tv_vz_state_fn?,
     _ ctx: UnsafeMutableRawPointer?,
     _ err: UnsafeMutablePointer<CChar>?,
@@ -62,7 +63,8 @@ func tv_vz_create(
             attachNat: attachNat != 0,
             macHwHex: cString(macHwHex),
             macIdHex: cString(macIdHex),
-            macAux: cString(macAux)
+            macAux: cString(macAux),
+            devices: parseTvVzDevices(cString(devicesBlob))
         )
         // VZVirtualMachine.init(configuration:queue:) — macOS 12.0.
         let vm = VZVirtualMachine(configuration: config, queue: session.queue)
@@ -74,6 +76,10 @@ func tv_vz_create(
             session.vsockPorts = (0..<Int(portCount)).map { ports[$0] }
         }
         attachVsockListeners(session: session, udsDir: session.udsDir, ports: session.vsockPorts)
+        let extras = parseTvVzDevices(cString(devicesBlob))
+        if extras.showView {
+            TvVzGuestWindow.present(session: session, width: extras.width, height: extras.height)
+        }
         let id = Registry.put(session)
         TvLog.emit(.info, "vm=\(vmName) vz created handle=\(id) cpus=\(cpus) ram=\(ramBytes)")
         return id
@@ -233,6 +239,8 @@ func tv_vz_state(_ handle: Int32) -> Int32 {
 @_cdecl("tv_vz_destroy")
 func tv_vz_destroy(_ handle: Int32) {
     guard let session = Registry.take(handle), let vm = session.vm else { return }
+    session.guestWindow?.close()
+    session.guestWindow = nil
     session.queue.sync {
         vm.removeObserver(session, forKeyPath: "state")
         vm.delegate = nil
@@ -260,7 +268,8 @@ private func buildConfig(
     attachNat: Bool,
     macHwHex: String,
     macIdHex: String,
-    macAux: String
+    macAux: String,
+    devices: TvVzDevices
 ) throws -> VZVirtualMachineConfiguration {
     let config = VZVirtualMachineConfiguration()
     config.cpuCount = Int(cpus)
@@ -268,6 +277,7 @@ private func buildConfig(
     let macos = !macHwHex.isEmpty
     if macos {
         try applyMacPlatform(config, hwHex: macHwHex, idHex: macIdHex, aux: macAux)
+        try attachMacGuestDevices(config, devices: devices)
     } else {
         // VZGenericPlatformConfiguration — macOS 12.0. Linux guests; not VZMac*.
         config.platform = VZGenericPlatformConfiguration()
@@ -321,6 +331,10 @@ private func buildConfig(
     }
 
     config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+
+    if !macos {
+        attachLinuxSpiceIfRequested(config, devices: devices)
+    }
 
     if attachVsock {
         let vsock = VZVirtioSocketDeviceConfiguration()

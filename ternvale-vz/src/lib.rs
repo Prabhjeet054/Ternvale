@@ -20,6 +20,7 @@ mod macos_host;
 mod plan;
 
 pub use error::VzError;
+pub use ffi::{nsapp_run, nsapp_stop};
 pub use host::VzHost;
 pub use macos::{MacosIdentity, AUX_NAME, IDENTITY_NAME};
 pub use macos_host::{

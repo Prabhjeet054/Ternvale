@@ -4,6 +4,8 @@ struct VMDisplayPanel: View {
     @ObservedObject var controller: VMDisplayController
     @ObservedObject var seamless: SeamlessWindowsCoordinator
     let isActive: Bool
+    /// When false, skip Metal (`custom_display_pipeline`); VZ owns the pixels.
+    var usesCustomDisplayPipeline: Bool = true
 
     @State private var lastRequestedSize: CGSize = .zero
 
@@ -23,6 +25,20 @@ struct VMDisplayPanel: View {
                             .multilineTextAlignment(.center)
                     }
                     .padding()
+                } else if isActive, !usesCustomDisplayPipeline {
+                    VStack(spacing: 10) {
+                        VzGuestDisplayView()
+                            .frame(maxWidth: .infinity, maxHeight: 8)
+                        Text("Display is owned by Virtualization.framework")
+                            .font(.headline)
+                        Text(
+                            "The guest is in the Ternvale VZ window. Resize that window to change resolution on macOS 14+ (`automaticallyReconfiguresDisplay`). The app skips the Metal viewer for this backend."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    }
                 } else if isActive {
                     VMMetalDisplayView(controller: controller)
                 } else {
@@ -58,7 +74,7 @@ struct VMDisplayPanel: View {
     }
 
     private func requestResizeIfNeeded(viewSize: CGSize) {
-        guard isActive, controller.isConnected else { return }
+        guard isActive, usesCustomDisplayPipeline, controller.isConnected else { return }
         let scale = NSScreen.main?.backingScaleFactor ?? 2
         let w = UInt32(max(64, (viewSize.width * scale).rounded(.down)))
         let h = UInt32(max(64, (viewSize.height * scale).rounded(.down)))

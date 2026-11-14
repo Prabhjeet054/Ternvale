@@ -41,6 +41,7 @@ pub struct VzBackend {
     shared: Arc<Shared>,
     media: Mutex<HashMap<MediaSlot, std::path::PathBuf>>,
     uds_dir: Mutex<Option<std::path::PathBuf>>,
+    show_view: Mutex<bool>,
 }
 
 impl VzBackend {
@@ -85,6 +86,7 @@ impl VzBackend {
             config,
             media: Mutex::new(HashMap::new()),
             uds_dir: Mutex::new(None),
+            show_view: Mutex::new(false),
         })
     }
 
@@ -92,6 +94,17 @@ impl VzBackend {
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all, fields(dir = %dir.display()))]
     pub fn set_vsock_uds_dir(&self, dir: &Path) {
         *self.uds_dir.lock().unwrap_or_else(|p| p.into_inner()) = Some(dir.to_path_buf());
+    }
+
+    /// `VZVirtualMachineView` in the VMM process (`--display window`).
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::backend",
+        skip_all,
+        fields(show_view)
+    )]
+    pub fn set_show_view(&self, show_view: bool) {
+        *self.show_view.lock().unwrap_or_else(|p| p.into_inner()) = show_view;
     }
 
     fn require(&self, allowed: &[VmState], op: &'static str) -> Result<VmState, BackendError> {
@@ -109,6 +122,38 @@ impl VzBackend {
     /// Block until Stopped or Failed (live run loop).
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all, fields(vm = %self.config.name))]
     pub fn wait_terminal(&self) -> Result<(), BackendError> {
+        let show_view = *self.show_view.lock().unwrap_or_else(|p| p.into_inner());
+        if self.live && show_view {
+            let rx = self.subscribe_state();
+            let vm = self.config.name.clone();
+            std::thread::Builder::new()
+                .name("ternvale.vz.wait".into())
+                .spawn(move || {
+                    while let Ok(state) = rx.recv() {
+                        if state.is_terminal() {
+                            tracing::info!(
+                                target: "ternvale::backend",
+                                vm = %vm,
+                                state = %state,
+                                "vz terminal (stop NSApplication)"
+                            );
+                            ternvale_vz::nsapp_stop();
+                            break;
+                        }
+                    }
+                })
+                .map_err(|error| BackendError::Io {
+                    op: "vz_wait_thread",
+                    detail: error.to_string(),
+                })?;
+            tracing::info!(
+                target: "ternvale::vz",
+                vm = %self.config.name,
+                "vz entering NSApplication.run for VirtualMachineView"
+            );
+            ternvale_vz::nsapp_run();
+            return Ok(());
+        }
         let rx = self.subscribe_state();
         while let Ok(state) = rx.recv() {
             if state.is_terminal() {
@@ -168,6 +213,15 @@ impl VmBackend for VzBackend {
                 {
                     plan.uds_dir = dir.display().to_string();
                 }
+                plan.show_view = *self.show_view.lock().unwrap_or_else(|p| p.into_inner());
+                tracing::info!(
+                    target: "ternvale::macos",
+                    vm = %self.config.name,
+                    show_view = plan.show_view,
+                    audio_in = plan.audio_in,
+                    shares = plan.shares.len(),
+                    "macos vz start devices"
+                );
                 let shared = Arc::clone(&self.shared);
                 let hook = Arc::new(move |code, detail: String| {
                     let state = VzBackend::map_host_state(code);

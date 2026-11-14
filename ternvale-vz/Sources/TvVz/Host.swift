@@ -25,6 +25,8 @@ final class TvVzSession: NSObject, VZVirtualMachineDelegate {
     /// Held so the VZ serial `FileHandle` is not closed while the VM runs.
     var serialWriter: FileHandle?
     var serialReader: FileHandle?
+    /// VZVirtualMachineView window (VMM process; not the SwiftUI Metal path).
+    var guestWindow: TvVzGuestWindow?
 
     init(name: String) {
         self.name = name

@@ -16,6 +16,8 @@ final class LibraryViewModel: ObservableObject {
     @Published var showPreferences = false
     @Published var crashOffer: CrashReportPayload?
     @Published var showCrashOffer = false
+    /// From `status.capabilities.custom_display_pipeline`. Missing: assume Metal.
+    @Published var usesCustomDisplayPipeline = true
 
     private let scanner = VMLibraryScanner()
     private let control = ControlSocketClient()
@@ -190,6 +192,12 @@ final class LibraryViewModel: ObservableObject {
         default:
             if phase == .starting { phase = .running }
         }
+        if let custom = status.capabilities?.customDisplayPipeline {
+            usesCustomDisplayPipeline = custom
+        }
+        if !usesCustomDisplayPipeline {
+            display.disconnect()
+        }
         if status.toolsOutdated == true {
             let iso = status.toolsIsoAgent ?? "newer"
             toolsOutdatedMessage =
@@ -207,7 +215,9 @@ final class LibraryViewModel: ObservableObject {
         crashSummary = nil
         phase = .starting
         lastHelperExit = nil
-        display.connect(vmName: vm.name)
+        if usesCustomDisplayPipeline {
+            display.connect(vmName: vm.name)
+        }
         Task {
             do {
                 try processes.start(

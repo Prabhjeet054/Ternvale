@@ -43,7 +43,8 @@ struct ContentView: View {
                 VMDisplayPanel(
                     controller: library.display,
                     seamless: library.seamless,
-                    isActive: library.selectedIsRunning
+                    isActive: library.selectedIsRunning,
+                    usesCustomDisplayPipeline: library.usesCustomDisplayPipeline
                 )
                 Divider()
                 LogPanelView(text: logTailer.text, path: logTailer.path)

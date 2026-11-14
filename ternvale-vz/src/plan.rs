@@ -28,6 +28,46 @@ pub struct VzPlan {
     pub macos_id_hex: String,
     /// `VZMacAuxiliaryStorage` path.
     pub macos_aux: String,
+    pub display_width: u32,
+    pub display_height: u32,
+    pub display_ppi: u32,
+    pub audio_out: bool,
+    /// Host microphone; opt-in (`[audio] input = true`). Step 111 TCC UI.
+    pub audio_in: bool,
+    /// `VZSpiceAgentPortAttachment` (Linux spice-vdagent only).
+    pub spice_clipboard: bool,
+    /// Show `VZVirtualMachineView` in the VMM process.
+    pub show_view: bool,
+    /// virtiofs shares: tag, host path, read-only.
+    pub shares: Vec<(String, String, bool)>,
+}
+
+impl VzPlan {
+    /// Key=value blob for the Swift `tv_vz_create` devices argument.
+    #[tracing::instrument(level = "debug", target = "ternvale::vz", skip_all)]
+    pub fn devices_blob(&self) -> String {
+        let mut lines = vec![
+            format!("w={}", self.display_width),
+            format!("h={}", self.display_height),
+            format!("ppi={}", self.display_ppi),
+            format!("audio_out={}", u8::from(self.audio_out)),
+            format!("audio_in={}", u8::from(self.audio_in)),
+            format!("spice={}", u8::from(self.spice_clipboard)),
+            format!("view={}", u8::from(self.show_view)),
+        ];
+        for (tag, path, ro) in &self.shares {
+            lines.push(format!("share={tag}\t{path}\t{}", u8::from(*ro)));
+        }
+        let blob = lines.join("\n");
+        tracing::debug!(
+            target: "ternvale::vz",
+            bytes = blob.len(),
+            shares = self.shares.len(),
+            show_view = self.show_view,
+            "vz devices blob"
+        );
+        blob
+    }
 }
 
 impl VzPlan {
@@ -71,6 +111,24 @@ impl VzPlan {
         let (uds_dir, listen_ports, attach_vsock) = vsock_plan(config);
         let attach_nat = true;
         let (macos_hw_hex, macos_id_hex, macos_aux) = macos_platform(config)?;
+        let macos = config.profile == Profile::Macos;
+        let shares = if macos {
+            config
+                .shares
+                .iter()
+                .map(|s| {
+                    (
+                        s.tag.clone(),
+                        s.host_path.display().to_string(),
+                        s.read_only,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let audio_out = config.audio_enabled();
+        let audio_in = macos && config.audio_input_enabled();
         tracing::info!(
             target: "ternvale::vz",
             vm = %config.name,
@@ -78,7 +136,11 @@ impl VzPlan {
             disks = disks.len(),
             attach_vsock,
             ports = listen_ports.len(),
-            "vz linux plan"
+            macos,
+            shares = shares.len(),
+            audio_out,
+            audio_in,
+            "vz plan"
         );
         Ok(Self {
             name: config.name.clone(),
@@ -105,6 +167,14 @@ impl VzPlan {
             macos_hw_hex,
             macos_id_hex,
             macos_aux,
+            display_width: 1920,
+            display_height: 1080,
+            display_ppi: 80,
+            audio_out,
+            audio_in,
+            spice_clipboard: !macos,
+            show_view: false,
+            shares,
         })
     }
 }
@@ -206,7 +276,7 @@ fn reject_unsupported(config: &VmConfig) -> Result<(), VzError> {
             return Err(unsupported("ram_min_mib", "balloon"));
         }
     }
-    if !config.shares.is_empty() {
+    if !config.shares.is_empty() && config.profile != Profile::Macos {
         return Err(unsupported("[[shares]]", "shared_folders"));
     }
     if config.encryption {
@@ -283,8 +353,10 @@ mod tests {
         let plan = VzPlan::from_config(&linux()).expect("plan");
         assert_eq!(plan.kernel, "/k");
         assert!(plan.attach_nat);
+        assert!(!plan.show_view);
         assert_eq!(plan.cpus, 2);
         assert_eq!(plan.ram_bytes, 256 * 1024 * 1024);
+        assert!(plan.devices_blob().contains("spice=1"));
         assert!(plan.cmdline.contains("console=hvc0"), "{}", plan.cmdline);
         assert!(
             !plan.cmdline.contains("ttyAMA"),
@@ -363,6 +435,24 @@ mod tests {
             }) => {}
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn linux_share_still_names_capability() {
+        let mut config = linux();
+        config.shares = vec![Share {
+            tag: "host".into(),
+            host_path: PathBuf::from("/tmp"),
+            mount_point: "/mnt/t".into(),
+            read_only: false,
+        }];
+        assert!(matches!(
+            VzPlan::from_config(&config),
+            Err(VzError::UnsupportedOption {
+                capability: "shared_folders",
+                ..
+            })
+        ));
     }
 
     #[test]

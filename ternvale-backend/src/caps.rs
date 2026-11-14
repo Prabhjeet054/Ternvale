@@ -45,7 +45,8 @@ impl BackendCapabilities {
             disk_discard: true,
             balloon: true,
             shared_folders: true,
-            custom_display_pipeline: false,
+            // virtio-gpu presenter + app Metal viewer (TVDP). Not VZVirtualMachineView.
+            custom_display_pipeline: true,
             cpu_profiles: false,
         }
     }
@@ -93,9 +94,31 @@ impl BackendCapabilities {
             bridged_net: false,
             disk_discard: false,
             balloon: false,
-            shared_folders: false,
+            shared_folders: true,
             custom_display_pipeline: false,
             cpu_profiles: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BackendCapabilities;
+
+    #[test]
+    fn macos_vz_uses_vz_display_and_shares() {
+        let caps = BackendCapabilities::macos_vz();
+        assert!(caps.guest_macos);
+        assert!(caps.shared_folders);
+        assert!(!caps.custom_display_pipeline);
+    }
+
+    #[test]
+    fn native_linux_keeps_metal_display_pipeline() {
+        let caps = BackendCapabilities::native();
+        assert!(caps.guest_linux);
+        assert!(caps.gpu_2d);
+        assert!(caps.custom_display_pipeline);
+        assert!(!caps.guest_macos);
     }
 }

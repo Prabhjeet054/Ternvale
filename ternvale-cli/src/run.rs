@@ -69,11 +69,14 @@ fn run_self_hosted(
         "self-hosted backend owns vCPUs and devices"
     );
     if mode == DisplayMode::Window && !opened.capabilities().custom_display_pipeline {
+        let show_vz_view = opened.capabilities().guest_macos;
         tracing::info!(
             target: "ternvale::cli",
             vm = %config.name,
-            "display window skipped; backend has no custom display pipeline"
+            show_vz_view,
+            "Metal/custom display pipeline off; VZVirtualMachineView is hosted by the backend when guest_macos"
         );
+        opened.set_show_view(show_vz_view);
     }
     let socket = paths::socket_path(&config.name)?;
     let vsock = crate::vsock::prepare(&config, &socket)

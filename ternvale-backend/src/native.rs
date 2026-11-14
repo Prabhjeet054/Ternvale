@@ -191,8 +191,11 @@ impl VmBackend for NativeBackend {
 
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all, fields(vm = %self.config.name))]
     async fn display_surface(&self) -> Result<DisplaySurface, BackendError> {
+        // Frames go through the CLI presenter socket / app Metal viewer, not
+        // this trait. `custom_display_pipeline` is still true so the app keeps
+        // VMMetalDisplayView for native Linux/Windows guests.
         Err(BackendError::Unsupported {
-            feature: "custom_display_pipeline",
+            feature: "display_surface_trait",
         })
     }
 

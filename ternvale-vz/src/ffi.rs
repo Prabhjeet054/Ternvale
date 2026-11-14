@@ -35,6 +35,7 @@ extern "C" {
         mac_hw_hex: *const c_char,
         mac_id_hex: *const c_char,
         mac_aux: *const c_char,
+        devices: *const c_char,
         cb: Option<extern "C" fn(*mut c_void, i32, *const c_char)>,
         ctx: *mut c_void,
         err: *mut c_char,
@@ -46,6 +47,8 @@ extern "C" {
     fn tv_vz_stop(handle: i32, force: u8, err: *mut c_char, err_len: usize) -> i32;
     fn tv_vz_state(handle: i32) -> i32;
     fn tv_vz_destroy(handle: i32);
+    fn tv_vz_nsapp_run();
+    fn tv_vz_nsapp_stop();
 }
 
 extern "C" fn rust_log(level: i32, message: *const c_char) {
@@ -134,6 +137,7 @@ pub fn create(
     let mac_hw = cstring(&plan.macos_hw_hex)?;
     let mac_id = cstring(&plan.macos_id_hex)?;
     let mac_aux = cstring(&plan.macos_aux)?;
+    let devices = cstring(&plan.devices_blob())?;
     let ro: Vec<u8> = plan.disks.iter().map(|(_, ro)| u8::from(*ro)).collect();
     let mut err = [0 as c_char; ERR_LEN];
     // SAFETY: pointers are live CStrings; `cb`/`ctx` are held by the Swift
@@ -159,6 +163,7 @@ pub fn create(
             mac_hw.as_ptr(),
             mac_id.as_ptr(),
             mac_aux.as_ptr(),
+            devices.as_ptr(),
             cb,
             ctx,
             err.as_mut_ptr(),
@@ -214,6 +219,22 @@ pub fn stop(handle: Handle, force: bool) -> Result<(), VzError> {
 pub fn state(handle: Handle) -> i32 {
     // SAFETY: handle is a live session or Swift returns failed.
     unsafe { tv_vz_state(handle) }
+}
+
+/// Block the calling thread on `NSApplication.run` (CLI main thread).
+#[tracing::instrument(level = "info", target = "ternvale::vz", skip_all)]
+pub fn nsapp_run() {
+    tracing::info!(target: "ternvale::vz", "vz NSApplication.run (main thread)");
+    // SAFETY: Swift `tv_vz_nsapp_run` runs AppKit; must be the process main thread.
+    unsafe { tv_vz_nsapp_run() }
+}
+
+/// Unblock [`nsapp_run`] after the VM reaches a terminal state.
+#[tracing::instrument(level = "debug", target = "ternvale::vz", skip_all)]
+pub fn nsapp_stop() {
+    tracing::debug!(target: "ternvale::vz", "vz NSApplication.stop");
+    // SAFETY: posts stop onto the main queue; safe from any thread.
+    unsafe { tv_vz_nsapp_stop() }
 }
 
 #[tracing::instrument(level = "debug", target = "ternvale::vz", skip_all, fields(handle))]

@@ -282,7 +282,6 @@ func applyMacPlatform(
     config.platform = platform
     // VZMacOSBootLoader — macOS 12.0.
     config.bootLoader = VZMacOSBootLoader()
-    attachMacInput(config)
 }
 
 private func macInstallConfig(
@@ -308,6 +307,7 @@ private func macInstallConfig(
     net.attachment = VZNATNetworkDeviceAttachment()
     config.networkDevices = [net]
     config.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+    try attachMacGuestDevices(config, devices: TvVzDevices())
     try config.validate()
     return config
 }
@@ -319,18 +319,3 @@ private final class InstallerBox {
     var obs: NSKeyValueObservation?
 }
 
-func attachMacInput(_ config: VZVirtualMachineConfiguration) {
-    // VZMacGraphicsDeviceConfiguration — macOS 12.0. Full display tuning is Step 94.
-    let graphics = VZMacGraphicsDeviceConfiguration()
-    let display = VZMacGraphicsDisplayConfiguration(widthInPixels: 1920, heightInPixels: 1080, pixelsPerInch: 80)
-    graphics.displays = [display]
-    config.graphicsDevices = [graphics]
-    if #available(macOS 14.0, *) {
-        // VZMacKeyboardConfiguration / VZMacTrackpadConfiguration — macOS 14.0.
-        config.keyboards = [VZMacKeyboardConfiguration()]
-        config.pointingDevices = [VZMacTrackpadConfiguration()]
-    } else {
-        config.keyboards = [VZUSBKeyboardConfiguration()]
-        config.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
-    }
-}
