@@ -346,6 +346,14 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(
+        parse(&["ternvale", "guest-setup", "lab", "--dry-run"]),
+        Command::GuestSetup {
+            name: "lab".into(),
+            dry_run: true,
+            undo: false,
+        }
+    );
+    assert_eq!(
         parse(&["ternvale", "wait-ready", "win11", "--timeout", "30"]),
         Command::WaitReady {
             name: "win11".into(),

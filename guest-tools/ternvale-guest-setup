@@ -1,0 +1,119 @@
+#!/bin/sh
+# Make x86_64 (Rosetta) work in a Ternvale Linux guest: persistent virtiofs
+# mount, binfmt, Debian/Ubuntu multiarch, Docker/Podman drop-ins.
+# Idempotent and reversible. Run inside the guest (agent or by hand).
+# Do not run on the Mac host except with --root for tests.
+set -eu
+
+HERE=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+LIB=
+for _cand in \
+    "$HERE/lib/guest-setup" \
+    "$HERE/../lib/ternvale/guest-setup" \
+    /usr/local/lib/ternvale/guest-setup
+do
+    if [ -f "$_cand/common.sh" ]; then
+        LIB=$_cand
+        break
+    fi
+done
+if [ -z "$LIB" ]; then
+    echo "ERROR target=ternvale::guest-setup reason=missing-lib" >&2
+    exit 2
+fi
+
+# shellcheck source=lib/guest-setup/common.sh
+. "$LIB/common.sh"
+# shellcheck source=lib/guest-setup/distro.sh
+. "$LIB/distro.sh"
+# shellcheck source=lib/guest-setup/mount.sh
+. "$LIB/mount.sh"
+# shellcheck source=lib/guest-setup/binfmt.sh
+. "$LIB/binfmt.sh"
+# shellcheck source=lib/guest-setup/multiarch.sh
+. "$LIB/multiarch.sh"
+# shellcheck source=lib/guest-setup/container.sh
+. "$LIB/container.sh"
+
+DRY_RUN=0
+DO_UNDO=0
+ROOT=
+CHANGED_COUNT=0
+FAMILY=
+
+gs_usage() {
+    cat <<'EOF'
+Usage: ternvale-guest-setup [--dry-run] [--undo] [--root DIR]
+
+  --dry-run   Log actions; write nothing.
+  --undo      Run the last undo script (var/lib/ternvale/guest-setup-undo.sh).
+  --root DIR  Prefix filesystem paths (tests / chroot). Implies no live mount.
+
+Supported os-release IDs (and ID_LIKE): debian, ubuntu, fedora, rhel, centos,
+rocky, alma, alpine. Anything else exits 2.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --dry-run) DRY_RUN=1 ;;
+    --undo) DO_UNDO=1 ;;
+    --root)
+        shift
+        [ $# -ge 1 ] || gs_die "reason=missing-arg arg=--root"
+        ROOT=$1
+        ;;
+    --root=*)
+        ROOT=${1#--root=}
+        ;;
+    -h | --help)
+        gs_usage
+        exit 0
+        ;;
+    *)
+        gs_die "reason=unknown-arg arg=$1"
+        ;;
+    esac
+    shift
+done
+
+# TERNVALE_GUEST_ROOT is an alias for --root (CI).
+if [ -z "$ROOT" ] && [ -n "${TERNVALE_GUEST_ROOT:-}" ]; then
+    ROOT=$TERNVALE_GUEST_ROOT
+fi
+
+gs_run_undo() {
+    _undo=$(gs_path "${STATE_REL}/${UNDO_NAME}")
+    if [ ! -f "$_undo" ]; then
+        gs_die "reason=no-undo path=$_undo"
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+        gs_info "action=undo dry_run=true path=$_undo"
+        return 0
+    fi
+    gs_info "action=undo path=$_undo"
+    sh "$_undo"
+    gs_info "action=undo result=ok"
+}
+
+gs_main() {
+    gs_info "action=start dry_run=$DRY_RUN root=${ROOT:-/}"
+    gs_detect_family
+    gs_undo_init
+    gs_init_state
+    gs_configure_mount
+    gs_configure_binfmt
+    gs_configure_multiarch
+    gs_configure_containers
+    if [ "$DRY_RUN" -eq 1 ]; then
+        gs_info "action=done dry_run=true planned=$CHANGED_COUNT undo=not-written"
+    else
+        gs_info "action=done changed=$CHANGED_COUNT undo=$(gs_path "${STATE_REL}/${UNDO_NAME}")"
+    fi
+}
+
+if [ "$DO_UNDO" -eq 1 ]; then
+    gs_run_undo
+    exit 0
+fi
+gs_main

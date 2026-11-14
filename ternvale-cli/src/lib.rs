@@ -41,6 +41,7 @@ pub mod doctor;
 pub mod events_sub;
 pub mod exec_cmd;
 pub mod export_cmd;
+pub mod guest_setup;
 pub mod import_cmd;
 pub mod json_out;
 pub mod keychain;
@@ -205,6 +206,11 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             argv,
         } => exec_cmd::exec(&name, timeout, &argv, json),
         Command::Cp { src, dst } => cp_cmd::cp(&src, &dst, json),
+        Command::GuestSetup {
+            name,
+            dry_run,
+            undo,
+        } => guest_setup::guest_setup(&name, dry_run, undo, json),
         Command::WaitReady { name, timeout } => wait_cmd::wait_ready(&name, timeout, json),
         Command::Ssh { name } => ssh_cmd::ssh(&name, json),
         Command::Create {

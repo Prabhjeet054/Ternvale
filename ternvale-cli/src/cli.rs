@@ -60,6 +60,18 @@ pub enum Command {
         /// Destination (`path` or `vm:/path`).
         dst: String,
     },
+    /// Copy `guest-tools/ternvale-guest-setup` into a Linux guest and run it
+    /// (Rosetta mount, binfmt, multiarch, Docker/Podman). Needs `agent.allow_exec`.
+    GuestSetup {
+        /// VM name.
+        name: String,
+        /// Log guest actions without writing files.
+        #[arg(long)]
+        dry_run: bool,
+        /// Run the guest undo script instead of applying setup.
+        #[arg(long)]
+        undo: bool,
+    },
     /// Wait until the guest agent is connected.
     WaitReady {
         /// VM name.
