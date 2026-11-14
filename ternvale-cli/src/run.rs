@@ -111,6 +111,8 @@ fn run_self_hosted(
     let opened = Arc::new(opened);
     let stop_opened = Arc::clone(&opened);
     let stop_control = Arc::clone(&control);
+    let snap_opened = Arc::clone(&opened);
+    let snap_restore = Arc::clone(&opened);
     control.bind(ControlHooks {
         kick: Box::new(|| {}),
         stop: Box::new(move || {
@@ -136,6 +138,17 @@ fn run_self_hosted(
                 )
             }
         }),
+        snapshot_save: Some(Box::new(move |label, path| {
+            snap_opened
+                .snapshot_save_blocking(label, path)
+                .map_err(|error| error.to_string())?;
+            Ok(path.to_path_buf())
+        })),
+        snapshot_restore: Some(Box::new(move |path| {
+            snap_restore
+                .snapshot_restore_blocking("", path)
+                .map_err(|error| error.to_string())
+        })),
     });
 
     opened

@@ -18,15 +18,20 @@ mod host;
 mod macos;
 mod macos_host;
 mod plan;
+mod tvzs;
 
 pub use error::VzError;
 pub use ffi::{nsapp_run, nsapp_stop};
 pub use host::VzHost;
-pub use macos::{MacosIdentity, AUX_NAME, IDENTITY_NAME};
+pub use macos::{parse_hex, MacosIdentity, AUX_NAME, IDENTITY_NAME};
 pub use macos_host::{
-    create_aux, download, inspect, install, write_platform, DownloadResult, MacosRestoreInfo,
+    create_aux, download, inspect, install, new_machine_identifier, write_platform, DownloadResult,
+    MacosRestoreInfo,
 };
 pub use plan::VzPlan;
+pub use tvzs::{
+    unwrap_to as unwrap_tvzs, wrap as wrap_tvzs, MAGIC as TVZS_MAGIC, VERSION as TVZS_VERSION,
+};
 
 #[cfg(test)]
 mod tests {

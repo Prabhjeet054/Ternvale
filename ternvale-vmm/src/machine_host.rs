@@ -24,6 +24,8 @@ pub(super) fn control_hooks(power: &Arc<CpuPower>) -> ControlHooks {
         kick: Box::new(move || kick.nudge_all()),
         stop: Box::new(move || stop.request_stop(ExitReason::Canceled)),
         stopping: Box::new(move || stopping.stop_reason().is_some()),
+        snapshot_save: None,
+        snapshot_restore: None,
     }
 }
 

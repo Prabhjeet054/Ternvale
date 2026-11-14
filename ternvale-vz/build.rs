@@ -21,6 +21,7 @@ fn main() {
         "Sources/TvVz/MacosDownload.swift",
         "Sources/TvVz/Devices.swift",
         "Sources/TvVz/View.swift",
+        "Sources/TvVz/Save.swift",
     ]
     .into_iter()
     .map(|p| manifest.join(p))

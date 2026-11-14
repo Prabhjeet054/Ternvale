@@ -49,6 +49,8 @@ extern "C" {
     fn tv_vz_destroy(handle: i32);
     fn tv_vz_nsapp_run();
     fn tv_vz_nsapp_stop();
+    fn tv_vz_save(handle: i32, path: *const c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn tv_vz_restore(handle: i32, path: *const c_char, err: *mut c_char, err_len: usize) -> i32;
 }
 
 extern "C" fn rust_log(level: i32, message: *const c_char) {
@@ -235,6 +237,34 @@ pub fn nsapp_stop() {
     tracing::debug!(target: "ternvale::vz", "vz NSApplication.stop");
     // SAFETY: posts stop onto the main queue; safe from any thread.
     unsafe { tv_vz_nsapp_stop() }
+}
+
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::vz",
+    skip_all,
+    fields(handle, path)
+)]
+pub fn save(handle: Handle, path: &str) -> Result<(), VzError> {
+    let c_path = cstring(path)?;
+    let mut err = [0 as c_char; ERR_LEN];
+    // SAFETY: handle is live; path/err live for the call.
+    let rc = unsafe { tv_vz_save(handle, c_path.as_ptr(), err.as_mut_ptr(), err.len()) };
+    read_err(&err, rc, "save")
+}
+
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::vz",
+    skip_all,
+    fields(handle, path)
+)]
+pub fn restore(handle: Handle, path: &str) -> Result<(), VzError> {
+    let c_path = cstring(path)?;
+    let mut err = [0 as c_char; ERR_LEN];
+    // SAFETY: handle is live; path/err live for the call.
+    let rc = unsafe { tv_vz_restore(handle, c_path.as_ptr(), err.as_mut_ptr(), err.len()) };
+    read_err(&err, rc, "restore")
 }
 
 #[tracing::instrument(level = "debug", target = "ternvale::vz", skip_all, fields(handle))]

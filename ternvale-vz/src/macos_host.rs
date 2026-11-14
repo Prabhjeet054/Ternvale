@@ -36,6 +36,12 @@ extern "C" {
         err: *mut c_char,
         err_len: usize,
     ) -> i32;
+    fn tv_vz_macos_new_machine_id(
+        out: *mut c_char,
+        out_len: usize,
+        err: *mut c_char,
+        err_len: usize,
+    ) -> i32;
     fn tv_vz_macos_install(
         ipsw: *const c_char,
         disk: *const c_char,
@@ -198,6 +204,33 @@ pub fn create_aux(aux: &Path, hardware_hex: &str) -> Result<(), VzError> {
         tv_vz_macos_create_aux(c_aux.as_ptr(), c_hw.as_ptr(), err.as_mut_ptr(), err.len())
     };
     read_err(&err, rc, "macos_aux")
+}
+
+/// Hex of a new `VZMacMachineIdentifier` (clone; never reuse the source).
+#[tracing::instrument(level = "info", target = "ternvale::vz", skip_all)]
+pub fn new_machine_identifier() -> Result<String, VzError> {
+    ensure_logger();
+    let mut out = [0 as c_char; ERR_LEN];
+    let mut err = [0 as c_char; ERR_LEN];
+    // SAFETY: buffers live for the call; Swift writes a hex C string.
+    let rc = unsafe {
+        tv_vz_macos_new_machine_id(out.as_mut_ptr(), out.len(), err.as_mut_ptr(), err.len())
+    };
+    read_err(&err, rc, "macos_new_id")?;
+    // SAFETY: NUL-terminated hex written by Swift.
+    let hex = unsafe { cstr_owned(out.as_ptr()) };
+    if hex.is_empty() {
+        return Err(VzError::Host {
+            op: "macos_new_id",
+            detail: "empty machineIdentifier".into(),
+        });
+    }
+    tracing::info!(
+        target: "ternvale::vz",
+        bytes = hex.len() / 2,
+        "generated macos machine identifier for clone"
+    );
+    Ok(hex)
 }
 
 /// Persist identity + aux. Reuses an existing identity so the machine id stays stable.

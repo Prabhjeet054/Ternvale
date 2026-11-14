@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
-use ternvale_config::VmConfig;
+use ternvale_config::{Profile, VmConfig};
 use ternvale_vmm::VmState;
 use ternvale_vz::{VzError, VzHost, VzPlan};
 
@@ -42,6 +43,7 @@ pub struct VzBackend {
     media: Mutex<HashMap<MediaSlot, std::path::PathBuf>>,
     uds_dir: Mutex<Option<std::path::PathBuf>>,
     show_view: Mutex<bool>,
+    restoring: Arc<AtomicBool>,
 }
 
 impl VzBackend {
@@ -87,6 +89,7 @@ impl VzBackend {
             media: Mutex::new(HashMap::new()),
             uds_dir: Mutex::new(None),
             show_view: Mutex::new(false),
+            restoring: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -183,6 +186,89 @@ impl VzBackend {
     fn host_lock(&self) -> std::sync::MutexGuard<'_, Option<VzHost>> {
         self.host.lock().unwrap_or_else(|p| p.into_inner())
     }
+
+    fn state_hook(&self) -> Arc<dyn Fn(i32, String) + Send + Sync> {
+        let shared = Arc::clone(&self.shared);
+        let restoring = Arc::clone(&self.restoring);
+        Arc::new(move |code, detail: String| {
+            let state = VzBackend::map_host_state(code);
+            if restoring.load(Ordering::SeqCst) && state.is_terminal() {
+                tracing::debug!(
+                    target: "ternvale::vz",
+                    vm = %shared.name,
+                    state = %state,
+                    detail = %detail,
+                    "ignoring terminal vz state during restore"
+                );
+                return;
+            }
+            tracing::info!(
+                target: "ternvale::vz",
+                vm = %shared.name,
+                state = %state,
+                detail = %detail,
+                "vz delegate/kvo"
+            );
+            shared.set_state(state);
+        })
+    }
+
+    fn open_live_host(&self, restore_apple: Option<&Path>) -> Result<(), BackendError> {
+        let mut plan = VzPlan::from_config(&self.config).map_err(BackendError::from)?;
+        if let Some(dir) = self
+            .uds_dir
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+        {
+            plan.uds_dir = dir.display().to_string();
+        }
+        plan.show_view = *self.show_view.lock().unwrap_or_else(|p| p.into_inner());
+        tracing::info!(
+            target: "ternvale::macos",
+            vm = %self.config.name,
+            show_view = plan.show_view,
+            restore = restore_apple.is_some(),
+            "macos vz start devices"
+        );
+        let host = VzHost::create(&plan, self.state_hook()).map_err(BackendError::from)?;
+        if let Some(apple) = restore_apple {
+            host.restore(&apple.display().to_string())
+                .map_err(BackendError::from)?;
+            host.resume().map_err(BackendError::from)?;
+        } else {
+            host.start().map_err(map_vz_start)?;
+        }
+        *self.host_lock() = Some(host);
+        if matches!(
+            self.shared.state(),
+            VmState::Created | VmState::Stopping | VmState::Stopped | VmState::Paused
+        ) {
+            self.shared.set_state(VmState::Running);
+        }
+        Ok(())
+    }
+}
+
+fn map_vz_start(error: VzError) -> BackendError {
+    let text = error.to_string();
+    if text.contains("exceeds the limit")
+        || text.contains("maximum supported number")
+        || text.contains("VirtualMachineLimitExceeded")
+    {
+        tracing::warn!(
+            target: "ternvale::macos",
+            error = %text,
+            "vz start hit Apple macos guest limit"
+        );
+        return BackendError::Io {
+            op: "macos_guest_limit",
+            detail: format!(
+                "cannot start a macOS guest: Apple's Virtualization.framework allows two concurrent macOS VMs (VZErrorVirtualMachineLimitExceeded; SLA §2B(iii)). Stop one first. framework: {text}"
+            ),
+        };
+    }
+    BackendError::from(error)
 }
 
 impl VmBackend for VzBackend {
@@ -204,43 +290,10 @@ impl VmBackend for VzBackend {
                 Ok(())
             }
             VmState::Created => {
-                let mut plan = VzPlan::from_config(&self.config).map_err(BackendError::from)?;
-                if let Some(dir) = self
-                    .uds_dir
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .as_ref()
-                {
-                    plan.uds_dir = dir.display().to_string();
+                if self.config.profile == Profile::Macos {
+                    crate::refuse_if_at_limit(&self.config.name)?;
                 }
-                plan.show_view = *self.show_view.lock().unwrap_or_else(|p| p.into_inner());
-                tracing::info!(
-                    target: "ternvale::macos",
-                    vm = %self.config.name,
-                    show_view = plan.show_view,
-                    audio_in = plan.audio_in,
-                    shares = plan.shares.len(),
-                    "macos vz start devices"
-                );
-                let shared = Arc::clone(&self.shared);
-                let hook = Arc::new(move |code, detail: String| {
-                    let state = VzBackend::map_host_state(code);
-                    tracing::info!(
-                        target: "ternvale::vz",
-                        vm = %shared.name,
-                        state = %state,
-                        detail = %detail,
-                        "vz delegate/kvo"
-                    );
-                    shared.set_state(state);
-                });
-                let host = VzHost::create(&plan, hook).map_err(BackendError::from)?;
-                host.start().map_err(BackendError::from)?;
-                *self.host_lock() = Some(host);
-                if matches!(self.shared.state(), VmState::Created | VmState::Stopping) {
-                    self.shared.set_state(VmState::Running);
-                }
-                Ok(())
+                self.open_live_host(None)
             }
             _ => Err(BackendError::InvalidTransition {
                 op: "start",
@@ -318,16 +371,76 @@ impl VmBackend for VzBackend {
         Ok(())
     }
 
-    async fn snapshot_save(&self, _label: &str, _path: &Path) -> Result<(), BackendError> {
-        Err(BackendError::Unsupported {
-            feature: "snapshots_disk",
-        })
+    #[tracing::instrument(level = "info", target = "ternvale::snapshot", skip_all, fields(vm = %self.config.name, label, path = %path.display()))]
+    async fn snapshot_save(&self, label: &str, path: &Path) -> Result<(), BackendError> {
+        if !self.live {
+            return Err(BackendError::Unsupported {
+                feature: "snapshots",
+            });
+        }
+        std::fs::create_dir_all(path).map_err(|error| BackendError::Io {
+            op: "vz_snapshot_mkdir",
+            detail: error.to_string(),
+        })?;
+        let apple = path.join("apple.vzvmsave");
+        let wrapped = path.join("state.tvzs");
+        {
+            let host = self.host_lock();
+            let host = host.as_ref().ok_or(BackendError::Unsupported {
+                feature: "snapshots",
+            })?;
+            host.pause().map_err(BackendError::from)?;
+            host.save(&apple.display().to_string())
+                .map_err(BackendError::from)?;
+            // Leave paused: resuming would dirty the disk and make restore
+            // (`invalid argument`) fail. WWDC23-10007: copy disks with the save.
+        }
+        self.shared.set_state(VmState::Paused);
+        ternvale_vz::wrap_tvzs(&apple, &wrapped).map_err(BackendError::from)?;
+        let label_json = label.replace('\\', "\\\\").replace('"', "\\\"");
+        let meta = format!("{{\"format\":\"tvzs\",\"version\":1,\"label\":\"{label_json}\"}}\n");
+        std::fs::write(path.join("meta.json"), meta).map_err(|error| BackendError::Io {
+            op: "vz_snapshot_meta",
+            detail: error.to_string(),
+        })?;
+        tracing::info!(
+            target: "ternvale::snapshot",
+            vm = %self.config.name,
+            label,
+            path = %wrapped.display(),
+            "vz machine state saved"
+        );
+        Ok(())
     }
 
-    async fn snapshot_restore(&self, _label: &str, _path: &Path) -> Result<(), BackendError> {
-        Err(BackendError::Unsupported {
-            feature: "snapshots_memory",
-        })
+    #[tracing::instrument(level = "info", target = "ternvale::snapshot", skip_all, fields(vm = %self.config.name, label, path = %path.display()))]
+    async fn snapshot_restore(&self, _label: &str, path: &Path) -> Result<(), BackendError> {
+        if !self.live {
+            return Err(BackendError::Unsupported {
+                feature: "snapshots",
+            });
+        }
+        let wrapped = path.join("state.tvzs");
+        let apple = path.join("apple.restore.vzvmsave");
+        ternvale_vz::unwrap_tvzs(&wrapped, &apple).map_err(BackendError::from)?;
+        self.restoring.store(true, Ordering::SeqCst);
+        {
+            let mut slot = self.host_lock();
+            if let Some(host) = slot.as_ref() {
+                host.stop(true).map_err(BackendError::from)?;
+            }
+            *slot = None;
+        }
+        let result = self.open_live_host(Some(&apple));
+        self.restoring.store(false, Ordering::SeqCst);
+        result?;
+        tracing::info!(
+            target: "ternvale::snapshot",
+            vm = %self.config.name,
+            path = %path.display(),
+            "vz machine state restored"
+        );
+        Ok(())
     }
 
     async fn display_surface(&self) -> Result<DisplaySurface, BackendError> {

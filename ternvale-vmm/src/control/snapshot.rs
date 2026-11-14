@@ -398,6 +398,18 @@ impl VmControl {
     /// Pause, capture RAM/GIC/vCPU state, write `dir`, resume.
     #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(vm = %self.name, label, dir = %dir.display()))]
     pub fn snapshot_create(&self, label: &str, dir: &Path) -> Result<PathBuf, ControlError> {
+        if let Some(hooks) = self.hooks.get() {
+            if let Some(save) = &hooks.snapshot_save {
+                tracing::info!(
+                    target: "ternvale::snapshot",
+                    vm = %self.name,
+                    label,
+                    dir = %dir.display(),
+                    "delegating snapshot create to vz saveMachineStateTo"
+                );
+                return save(label, dir).map_err(|detail| ControlError::Snapshot { detail });
+            }
+        }
         let host = self
             .snapshot_host
             .get()
@@ -441,6 +453,17 @@ impl VmControl {
     /// Pause, restore from `dir`, resume.
     #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(vm = %self.name, dir = %dir.display()))]
     pub fn snapshot_restore(&self, dir: &Path) -> Result<(), ControlError> {
+        if let Some(hooks) = self.hooks.get() {
+            if let Some(restore) = &hooks.snapshot_restore {
+                tracing::info!(
+                    target: "ternvale::snapshot",
+                    vm = %self.name,
+                    dir = %dir.display(),
+                    "delegating snapshot restore to vz restoreMachineStateFrom"
+                );
+                return restore(dir).map_err(|detail| ControlError::Snapshot { detail });
+            }
+        }
         let host = self
             .snapshot_host
             .get()

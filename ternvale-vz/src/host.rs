@@ -80,6 +80,18 @@ impl VzHost {
     pub fn state(&self) -> i32 {
         self.handle().map(ffi::state).unwrap_or(5)
     }
+
+    /// Pause first. Writes Apple's save file to `path` (`saveMachineStateTo`, macOS 14).
+    #[tracing::instrument(level = "info", target = "ternvale::vz", skip_all, fields(path))]
+    pub fn save(&self, path: &str) -> Result<(), VzError> {
+        ffi::save(self.handle()?, path)
+    }
+
+    /// Stopped VM only. `restoreMachineStateFrom` (macOS 14).
+    #[tracing::instrument(level = "info", target = "ternvale::vz", skip_all, fields(path))]
+    pub fn restore(&self, path: &str) -> Result<(), VzError> {
+        ffi::restore(self.handle()?, path)
+    }
 }
 
 impl Drop for VzHost {

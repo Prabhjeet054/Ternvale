@@ -108,6 +108,36 @@ impl Opened {
         }
     }
 
+    /// VZ `saveMachineStateTo` into `path` (native snapshots stay on VmControl).
+    #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all, fields(label, path = %path.display()))]
+    pub fn snapshot_save_blocking(
+        &self,
+        label: &str,
+        path: &std::path::Path,
+    ) -> Result<(), BackendError> {
+        match self {
+            Self::Native(_) => Err(BackendError::Unsupported {
+                feature: "vz_machine_state",
+            }),
+            Self::Vz(backend) => pollster::block_on(backend.snapshot_save(label, path)),
+        }
+    }
+
+    /// Recreate the VZ VM from a TVZS bundle and resume.
+    #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all, fields(label, path = %path.display()))]
+    pub fn snapshot_restore_blocking(
+        &self,
+        label: &str,
+        path: &std::path::Path,
+    ) -> Result<(), BackendError> {
+        match self {
+            Self::Native(_) => Err(BackendError::Unsupported {
+                feature: "vz_machine_state",
+            }),
+            Self::Vz(backend) => pollster::block_on(backend.snapshot_restore(label, path)),
+        }
+    }
+
     /// Block until the self-hosted VM is Stopped or Failed.
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
     pub fn wait_stopped(&self) -> Result<(), BackendError> {

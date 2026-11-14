@@ -27,6 +27,8 @@ final class TvVzSession: NSObject, VZVirtualMachineDelegate {
     var serialReader: FileHandle?
     /// VZVirtualMachineView window (VMM process; not the SwiftUI Metal path).
     var guestWindow: TvVzGuestWindow?
+    /// Kept for `validateSaveRestoreSupport` (macOS 14.0).
+    var configuration: VZVirtualMachineConfiguration?
 
     init(name: String) {
         self.name = name

@@ -60,7 +60,8 @@ impl BackendCapabilities {
             guest_macos: false,
             tpm: false,
             snapshots_disk: false,
-            snapshots_memory: false,
+            // VZ `saveMachineStateTo` (macOS 14+), not the native RAM/GIC bundle.
+            snapshots_memory: true,
             nested_virt: false,
             rosetta: false,
             gpu_2d: false,
@@ -85,7 +86,7 @@ impl BackendCapabilities {
             guest_macos: true,
             tpm: false,
             snapshots_disk: false,
-            snapshots_memory: false,
+            snapshots_memory: true,
             nested_virt: false,
             rosetta: false,
             gpu_2d: false,
@@ -111,6 +112,8 @@ mod tests {
         assert!(caps.guest_macos);
         assert!(caps.shared_folders);
         assert!(!caps.custom_display_pipeline);
+        assert!(caps.snapshots_memory);
+        assert!(!caps.snapshots_disk);
     }
 
     #[test]

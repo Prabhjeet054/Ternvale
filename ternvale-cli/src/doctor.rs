@@ -28,6 +28,10 @@ pub const MACOS_CREATE_OVERHEAD_BYTES: u64 = 8 << 30;
 pub const LOG_DIR_WARN_BYTES: u64 = 1 << 30;
 /// The entitlement every `ternvale` binary needs.
 pub const HV_ENTITLEMENT: &str = "com.apple.security.hypervisor";
+/// Virtualization.framework (VZ Linux/macOS guests). macOS 12+.
+pub const VZ_ENTITLEMENT: &str = "com.apple.security.virtualization";
+/// macOS guests need VZ on 13+; save/restore needs 14+.
+pub const VZ_MACOS_GUEST_MAJOR: u32 = 13;
 
 /// One check's verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -330,6 +334,7 @@ pub fn evaluate(facts: &Facts) -> Vec<Check> {
         check_macos(&facts.macos),
         check_hypervisor(facts),
         check_entitlement(facts),
+        check_vz_backend(facts),
         check_gic(&facts.gic),
         check_disk(&facts.disk),
         check_macos_guest_space(&facts.disk),
@@ -423,10 +428,16 @@ pub fn doctor(json: bool, config: Option<&std::path::Path>) -> Result<ExitCode> 
 /// grants the hypervisor entitlement.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
 pub fn has_hv_entitlement(codesign: &str) -> bool {
-    let Some(at) = codesign.find(HV_ENTITLEMENT) else {
+    has_entitlement(codesign, HV_ENTITLEMENT)
+}
+
+/// `codesign` output grants `name`.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn has_entitlement(codesign: &str, name: &str) -> bool {
+    let Some(at) = codesign.find(name) else {
         return false;
     };
-    let rest = &codesign[at + HV_ENTITLEMENT.len()..];
+    let rest = &codesign[at + name.len()..];
     let value = rest
         .find("<key>")
         .into_iter()
@@ -434,6 +445,68 @@ pub fn has_hv_entitlement(codesign: &str) -> bool {
         .min()
         .map_or(rest, |end| &rest[..end]);
     value.contains("<true/>") || value.contains("[Bool] true")
+}
+
+/// Apple silicon + Virtualization.framework entitlement + macOS 13+ for macOS guests.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn check_vz_backend(facts: &Facts) -> Check {
+    const NAME: &str = "vz backend";
+    let silicon = facts.hv_support.as_ref().is_ok_and(|ok| *ok) || facts.vm.is_ok();
+    if !silicon {
+        return Check::new(
+            NAME,
+            Outcome::Fail,
+            "Virtualization.framework macOS/Linux guests need Apple silicon",
+        )
+        .fix("Run Ternvale on an Apple silicon Mac (aarch64-apple-darwin).");
+    }
+    match &facts.entitlements {
+        Ok(out) if !has_entitlement(out, VZ_ENTITLEMENT) => {
+            return Check::new(
+                NAME,
+                Outcome::Fail,
+                format!("{} lacks {VZ_ENTITLEMENT}", facts.exe.display()),
+            )
+            .fix(sign_fix(&facts.exe));
+        }
+        Err(error) => {
+            return Check::new(
+                NAME,
+                Outcome::Warn,
+                format!("could not read the VZ entitlement: {error}"),
+            )
+            .fix(format!(
+                "Run `codesign -d --entitlements - {}` by hand.",
+                facts.exe.display()
+            ));
+        }
+        _ => {}
+    }
+    match &facts.macos {
+        Ok(v) if v.major >= VZ_MACOS_GUEST_MAJOR => Check::new(
+            NAME,
+            Outcome::Pass,
+            format!(
+                "Apple silicon, {VZ_ENTITLEMENT}, macOS {} (macOS guests 13+; save/restore 14+)",
+                v.text
+            ),
+        ),
+        Ok(v) => Check::new(
+            NAME,
+            Outcome::Warn,
+            format!(
+                "macOS {} can run Linux VZ guests; macOS guests need {VZ_MACOS_GUEST_MAJOR}.0+",
+                v.text
+            ),
+        )
+        .fix("Update macOS to 13 or newer for profile = \"macos\"."),
+        Err(error) => Check::new(
+            NAME,
+            Outcome::Warn,
+            format!("could not read macOS: {error}"),
+        )
+        .fix("Check `sw_vers -productVersion` by hand."),
+    }
 }
 
 fn sign_fix(exe: &std::path::Path) -> String {

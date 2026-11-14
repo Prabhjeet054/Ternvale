@@ -13,6 +13,7 @@ mod caps;
 pub mod conformance;
 mod error;
 mod macos;
+mod macos_limit;
 mod mock;
 mod native;
 mod opened;
@@ -26,8 +27,10 @@ pub use conformance::{
 };
 pub use error::BackendError;
 pub use macos::{
-    download_restore, inspect_restore, install_macos, persist_platform, require_supported,
+    clone_macos_platform, download_restore, inspect_restore, install_macos, new_machine_identifier,
+    persist_platform, require_supported,
 };
+pub use macos_limit::{refuse_if_at_limit, running_macos_guests, MACOS_CONCURRENT_LIMIT};
 pub use mock::MockBackend;
 pub use native::NativeBackend;
 pub use opened::Opened;

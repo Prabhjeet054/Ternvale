@@ -18,6 +18,8 @@ fn hooks(kicked: Arc<AtomicBool>, stopped: Arc<AtomicBool>) -> ControlHooks {
         kick: Box::new(move || kicked.store(true, Ordering::SeqCst)),
         stop: Box::new(move || stop_flag.store(true, Ordering::SeqCst)),
         stopping: Box::new(move || stopped.load(Ordering::SeqCst)),
+        snapshot_save: None,
+        snapshot_restore: None,
     }
 }
 

@@ -46,6 +46,7 @@ pub mod json_out;
 pub mod keychain;
 pub mod logfmt;
 pub mod logs;
+pub mod macos_clone;
 pub mod paths;
 pub mod peer;
 pub mod power;

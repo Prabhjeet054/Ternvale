@@ -35,6 +35,9 @@ pub fn clone_vm(source: &str, new_name: &str) -> Result<ExitCode> {
     }
     let source_config = VmConfig::from_path(&source_config_path)
         .with_context(|| format!("load source VM config {}", source_config_path.display()))?;
+    if source_config.profile == ternvale_config::Profile::Macos {
+        return crate::macos_clone::clone_macos_vm(source, new_name, &source_config);
+    }
     tracing::info!(
         target: "ternvale::cli",
         source,

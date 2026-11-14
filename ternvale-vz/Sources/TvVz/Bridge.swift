@@ -71,6 +71,7 @@ func tv_vz_create(
         vm.delegate = session
         vm.addObserver(session, forKeyPath: "state", options: [.new], context: nil)
         session.vm = vm
+        session.configuration = config
         session.udsDir = cString(udsDir)
         if let ports, portCount > 0 {
             session.vsockPorts = (0..<Int(portCount)).map { ports[$0] }

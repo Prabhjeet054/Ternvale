@@ -146,6 +146,12 @@ pub enum ControlError {
     },
 }
 
+/// VZ `saveMachineStateTo` hook (`label`, bundle dir).
+pub type SnapshotSaveHook =
+    Box<dyn Fn(&str, &std::path::Path) -> Result<std::path::PathBuf, String> + Send + Sync>;
+/// VZ `restoreMachineStateFrom` hook (bundle dir).
+pub type SnapshotRestoreHook = Box<dyn Fn(&std::path::Path) -> Result<(), String> + Send + Sync>;
+
 /// Callbacks into the running machine, installed by [`VmControl::bind`].
 pub struct ControlHooks {
     /// `hv_vcpus_exit` on every vCPU without stopping it.
@@ -154,6 +160,10 @@ pub struct ControlHooks {
     pub stop: Box<dyn Fn() + Send + Sync>,
     /// Whether the machine is stopping for any reason.
     pub stopping: Box<dyn Fn() -> bool + Send + Sync>,
+    /// VZ machine-state save (`saveMachineStateTo`). Native leaves this `None`.
+    pub snapshot_save: Option<SnapshotSaveHook>,
+    /// VZ machine-state restore. Native leaves this `None`.
+    pub snapshot_restore: Option<SnapshotRestoreHook>,
 }
 
 /// Point-in-time view for `status`.

@@ -52,6 +52,9 @@ int32_t tv_vz_state(int32_t handle);
 void tv_vz_destroy(int32_t handle);
 void tv_vz_nsapp_run(void);
 void tv_vz_nsapp_stop(void);
+int32_t tv_vz_save(int32_t handle, const char *path, char *err, size_t err_len);
+int32_t tv_vz_restore(int32_t handle, const char *path, char *err, size_t err_len);
+int32_t tv_vz_macos_new_machine_id(char *out, size_t out_len, char *err, size_t err_len);
 
 int32_t tv_vz_macos_inspect(
     const char *ipsw,
