@@ -41,6 +41,7 @@ pub mod doctor;
 pub mod events_sub;
 pub mod exec_cmd;
 pub mod export_cmd;
+pub mod fex_cmd;
 pub mod guest_setup;
 pub mod import_cmd;
 pub mod json_out;
@@ -211,6 +212,11 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             dry_run,
             undo,
         } => guest_setup::guest_setup(&name, dry_run, undo, json),
+        Command::X86 { action } => match action {
+            cli::X86Command::FetchRootfs { distro, dest } => {
+                fex_cmd::fetch_rootfs(&distro, dest.as_deref(), json)
+            }
+        },
         Command::WaitReady { name, timeout } => wait_cmd::wait_ready(&name, timeout, json),
         Command::Ssh { name } => ssh_cmd::ssh(&name, json),
         Command::Create {

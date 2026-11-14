@@ -113,6 +113,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     }
@@ -313,6 +314,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     }

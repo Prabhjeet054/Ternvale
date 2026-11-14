@@ -146,6 +146,7 @@ fn one_vm(
         power: Default::default(),
         encryption: encrypted,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     };

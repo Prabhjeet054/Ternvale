@@ -19,6 +19,7 @@ mod tpm;
 mod usb;
 mod vm;
 mod vsock;
+mod x86;
 
 pub use agent::AgentSection;
 pub use audio::AudioSection;
@@ -39,6 +40,7 @@ pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
 pub use usb::{UsbPassthroughEntry, UsbSection};
 pub use vm::{default_nvram_path, VmConfig};
 pub use vsock::{VsockSection, MAX_UDS_DIR};
+pub use x86::X86Emulation;
 
 #[cfg(test)]
 mod tests {

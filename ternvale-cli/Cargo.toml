@@ -41,6 +41,10 @@ serde_json = "1"
 ternvale-api = { path = "../ternvale-api" }
 # VmBackend selection and NativeBackend capabilities (Step 91).
 ternvale-backend = { path = "../ternvale-backend" }
+# Resolve `x86_emulation` / status engine (Step 98).
+ternvale-compat = { path = "../ternvale-compat" }
+# XXH3-64 of FEX RootFS images (`Hash` in RootFS_links.json). RootFS is never bundled.
+twox-hash = { version = "2.1", default-features = false, features = ["xxhash3_64"] }
 # Required project-wide logging facade (target ternvale::cli).
 tracing = "0.1"
 # Log files, panic hook, and the stderr layer.

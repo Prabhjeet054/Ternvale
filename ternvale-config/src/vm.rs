@@ -102,6 +102,10 @@ pub struct VmConfig {
     /// Honoured only by the VZ backend; native returns unsupported.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rosetta: bool,
+    /// Usermode x86 engine: `none`, `rosetta`, `fex`, `qemu-user`, `auto`.
+    /// Default `none`. `auto` is resolved per backend (see ternvale-compat).
+    #[serde(default, skip_serializing_if = "crate::X86Emulation::is_none")]
+    pub x86_emulation: crate::X86Emulation,
     /// Guest agent policy (`allow_exec`). Omitted: every flag off.
     #[serde(default, skip_serializing_if = "crate::AgentSection::is_default")]
     pub agent: crate::AgentSection,
@@ -265,6 +269,18 @@ impl VmConfig {
                     reason: format!("[{index}] {field}: {reason}"),
                 });
             }
+        }
+        if self.rosetta
+            && !matches!(
+                self.x86_emulation,
+                crate::X86Emulation::None
+                    | crate::X86Emulation::Auto
+                    | crate::X86Emulation::Rosetta
+            )
+        {
+            return Err(ConfigError::X86RosettaConflict {
+                got: self.x86_emulation.as_str().to_string(),
+            });
         }
         if !self.shares.is_empty() {
             let vsock_ok = self.vsock.as_ref().is_some_and(|section| section.agent);

@@ -41,6 +41,24 @@ pub enum BackendError {
 }
 
 impl BackendError {
+    /// Map [`ternvale_compat::CompatError`] to an unsupported option.
+    #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
+    pub fn from_compat(error: ternvale_compat::CompatError) -> Self {
+        match error {
+            ternvale_compat::CompatError::Unsupported {
+                requested,
+                capability,
+            } => Self::UnsupportedOption {
+                option: format!("x86_emulation={requested}"),
+                capability,
+            },
+            ternvale_compat::CompatError::NotLinux { requested } => Self::UnsupportedOption {
+                option: format!("x86_emulation={requested}"),
+                capability: "guest_linux",
+            },
+        }
+    }
+
     /// Map a lifecycle [`ControlError`] to [`BackendError`].
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
     pub fn from_control(error: ControlError) -> Self {

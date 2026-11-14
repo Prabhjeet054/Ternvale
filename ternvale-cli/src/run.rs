@@ -98,6 +98,7 @@ fn run_self_hosted(
     let agent = vsock.as_ref().and_then(|setup| setup.agent.clone());
     let backend_name = opened.kind().to_string();
     let capabilities = opened.capabilities();
+    let x86_engine = resolve_x86_engine(&config, capabilities)?;
     let _server = ControlServer::with_caps(
         &socket,
         Arc::clone(&control),
@@ -105,6 +106,7 @@ fn run_self_hosted(
         config.allow_exec(),
         backend_name,
         capabilities,
+        x86_engine,
     )
     .with_context(|| format!("start the control socket for vm {}", config.name))?;
 
@@ -279,6 +281,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     ));
     let tools_iso = config.iso.as_ref().and_then(|iso| iso.tools.clone());
     let power = crate::power::PowerState::new(config.power.clone());
+    let x86_engine = resolve_x86_engine(&config, opened.capabilities())?;
     let server = ControlServer::with_diag(
         &socket,
         Arc::clone(&control),
@@ -287,6 +290,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
         tools_iso,
         Some(Arc::clone(&power)),
         config.allow_exec(),
+        x86_engine,
     )
     .with_context(|| format!("start the control socket for vm {}", config.name))?;
     crate::crypto_cmd::deliver_over_control(&config, &socket)
@@ -676,6 +680,27 @@ fn spawn_reaper(
             }
         })
         .context("spawn the force-stop reaper thread")
+}
+
+/// Resolve `x86_emulation` / `rosetta` for `ternvale status` (`x86_engine`).
+#[tracing::instrument(level = "debug", target = "ternvale::compat", skip_all, fields(vm = %config.name))]
+fn resolve_x86_engine(
+    config: &VmConfig,
+    caps: ternvale_backend::BackendCapabilities,
+) -> Result<String> {
+    let engine = ternvale_compat::resolve(
+        ternvale_compat::requested(config.x86_emulation, config.rosetta),
+        caps.x86(),
+        config.profile,
+    )
+    .map_err(|error| anyhow::anyhow!("{error}"))?;
+    tracing::info!(
+        target: "ternvale::compat",
+        vm = %config.name,
+        engine = engine.as_str(),
+        "status x86 engine"
+    );
+    Ok(engine.as_str().to_string())
 }
 
 fn reap(control: &VmControl, state: VmState, socket: &Path) -> ! {

@@ -35,17 +35,15 @@ impl NativeBackend {
         fields(vm = %config.name, cpus = config.cpus)
     )]
     pub async fn create(config: VmConfig) -> Result<Self, BackendError> {
-        if config.rosetta {
-            tracing::warn!(
-                target: "ternvale::rosetta",
-                vm = %config.name,
-                "rosetta is a VZ capability; native backend refuses it"
-            );
-            return Err(BackendError::UnsupportedOption {
-                option: "rosetta".into(),
-                capability: "rosetta",
-            });
-        }
+        let want = ternvale_compat::requested(config.x86_emulation, config.rosetta);
+        let engine = ternvale_compat::resolve(want, ternvale_compat::native_caps(), config.profile)
+            .map_err(BackendError::from_compat)?;
+        tracing::info!(
+            target: "ternvale::compat",
+            vm = %config.name,
+            engine = engine.as_str(),
+            "native x86 engine"
+        );
         let control = Arc::new(VmControl::new(&config.name, config.cpus));
         tracing::info!(
             target: "ternvale::backend",

@@ -60,6 +60,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     }

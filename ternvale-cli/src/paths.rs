@@ -17,6 +17,8 @@ pub const VMS_DIR_ENV: &str = "TERNVALE_VMS_DIR";
 pub const TEMPLATES_DIR_ENV: &str = "TERNVALE_TEMPLATES_DIR";
 /// Overrides `~/Library/Caches/Ternvale/ipsw` (restore images; never bundled).
 pub const IPSW_CACHE_ENV: &str = "TERNVALE_IPSW_CACHE";
+/// Overrides `~/Library/Application Support/Ternvale/fex/RootFS`.
+pub const FEX_ROOTFS_DIR_ENV: &str = "TERNVALE_FEX_ROOTFS_DIR";
 
 /// The directory holding every VM's control socket.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
@@ -195,6 +197,17 @@ pub fn snapshot_bundle(vm: &str, label: &str) -> Result<PathBuf> {
     validate_snapshot_label(label)?;
     socket_path(vm)?;
     Ok(snapshots_root()?.join(vm).join(label))
+}
+
+/// Host directory for FEX x86 RootFS images (never bundled in git).
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn fex_rootfs_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os(FEX_ROOTFS_DIR_ENV) {
+        return Ok(PathBuf::from(dir));
+    }
+    let home = std::env::var_os("HOME")
+        .context("HOME is not set; cannot find the FEX RootFS directory")?;
+    Ok(PathBuf::from(home).join("Library/Application Support/Ternvale/fex/RootFS"))
 }
 
 #[cfg(test)]

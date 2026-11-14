@@ -208,6 +208,7 @@ mod tests {
             power: Default::default(),
             encryption: false,
             rosetta: false,
+            x86_emulation: Default::default(),
             agent: Default::default(),
         }
     }
@@ -224,6 +225,27 @@ mod tests {
             Err(error) => panic!("{error}"),
             Ok(_) => panic!("native must refuse rosetta"),
         }
+    }
+
+    #[test]
+    fn native_refuses_x86_emulation_rosetta() {
+        let mut config = dummy_config("native-x86-rosetta", 1);
+        config.x86_emulation = ternvale_config::X86Emulation::Rosetta;
+        match pollster::block_on(NativeBackend::create(config)) {
+            Err(BackendError::UnsupportedOption {
+                capability: "rosetta",
+                ..
+            }) => {}
+            Err(error) => panic!("{error}"),
+            Ok(_) => panic!("native must refuse x86_emulation=rosetta"),
+        }
+    }
+
+    #[test]
+    fn native_auto_selects_fex() {
+        let mut config = dummy_config("native-x86-auto", 1);
+        config.x86_emulation = ternvale_config::X86Emulation::Auto;
+        pollster::block_on(NativeBackend::create(config)).expect("fex auto");
     }
 
     #[test]

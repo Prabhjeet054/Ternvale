@@ -134,6 +134,15 @@ pub enum ConfigError {
         profile: crate::Profile,
     },
 
+    /// `rosetta = true` together with a non-Rosetta `x86_emulation`.
+    #[error(
+        "rosetta = true conflicts with x86_emulation = \"{got}\" (use \"auto\" or \"rosetta\", or drop rosetta)"
+    )]
+    X86RosettaConflict {
+        /// The `x86_emulation` value.
+        got: String,
+    },
+
     /// A setting contradicts what the profile selects.
     #[error("profile = \"{profile}\" conflicts with {field}: {reason}")]
     ProfileConflict {

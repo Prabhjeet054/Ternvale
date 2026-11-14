@@ -289,14 +289,24 @@ mod tests {
             power: Default::default(),
             encryption: false,
             rosetta: true,
+            x86_emulation: Default::default(),
             agent: Default::default(),
         };
         let plan = VzPlan::from_config(&config).expect("linux rosetta");
         assert!(plan.rosetta);
+        config.rosetta = false;
+        config.x86_emulation = ternvale_config::X86Emulation::Auto;
+        let auto = VzPlan::from_config(&config).expect("linux auto rosetta");
+        assert!(auto.rosetta);
+        config.x86_emulation = ternvale_config::X86Emulation::Fex;
+        let fex = VzPlan::from_config(&config).expect("linux fex");
+        assert!(!fex.rosetta);
         let blob = plan.devices_blob();
         assert!(blob.contains("rosetta=1"), "{blob}");
         assert!(blob.contains("rosetta_tag=rosetta"), "{blob}");
         assert!(blob.contains("rosetta_aot=1"), "{blob}");
+        config.rosetta = true;
+        config.x86_emulation = Default::default();
         config.profile = Profile::Macos;
         assert!(matches!(
             VzPlan::from_config(&config),

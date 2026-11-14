@@ -72,6 +72,11 @@ pub enum Command {
         #[arg(long)]
         undo: bool,
     },
+    /// x86 usermode helpers (FEX RootFS download; never bundled).
+    X86 {
+        #[command(subcommand)]
+        action: X86Command,
+    },
     /// Wait until the guest agent is connected.
     WaitReady {
         /// VM name.
@@ -427,6 +432,20 @@ pub enum DiskCommand {
         /// Disk index (`[[disks]]` order, default 0).
         #[arg(long)]
         disk: Option<u32>,
+    },
+}
+
+/// `ternvale x86 …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum X86Command {
+    /// Download a FEX-Emu x86 RootFS after typing `yes`. Never silent; never bundled.
+    FetchRootfs {
+        /// Key in `RootFS_links.json` (default `Ubuntu_24_04`).
+        #[arg(long, default_value = "Ubuntu_24_04")]
+        distro: String,
+        /// Destination squashfs (default Application Support `fex/RootFS/`).
+        #[arg(long)]
+        dest: Option<PathBuf>,
     },
 }
 

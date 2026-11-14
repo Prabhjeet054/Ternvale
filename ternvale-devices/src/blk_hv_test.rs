@@ -79,6 +79,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     };

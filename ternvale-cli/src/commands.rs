@@ -56,6 +56,12 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
     if config.rosetta {
         line("  rosetta     true (VZ Linux virtiofs tag `rosetta`; see docs/ROSETTA.md)".into());
     }
+    if !config.x86_emulation.is_none() {
+        line(format!(
+            "  x86         {} (see docs/X86.md)",
+            config.x86_emulation
+        ));
+    }
     if !config.profile.is_linux() {
         line(format!(
             "  profile     {} (disks on {})",
@@ -323,6 +329,9 @@ pub fn render(status: &StatusJson, stats: Option<&StatsJson>) -> String {
         lines.push(format!(
             "  tools: outdated (ISO agent {iso}; reinstall from ternvale-tools.iso)"
         ));
+    }
+    if let Some(engine) = &status.x86_engine {
+        lines.push(format!("  x86 engine: {engine}"));
     }
     if let Some(stats) = stats {
         if let Some(ms) = stats.process_cpu_ms {

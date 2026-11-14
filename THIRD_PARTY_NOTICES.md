@@ -35,6 +35,9 @@ guest installers. Review upstream terms before you redistribute them yourself.
 | virtio-win ISO | `scripts/fetch-virtio-win.sh` | BSD-3-Clause (kvm-guest-drivers-windows) | no | No |
 | WinFsp MSI | `scripts/fetch-winfsp.sh` | **GPLv3 + FLOSS exception** | **GPL** (exception for unmodified MSI + FLOSS host) | **No** |
 | virglrenderer / rutabaga_gfx | not linked (`gpu3d` is a local command surface) | BSD-3-Clause upstream; not vendored | no | No |
+| FEX-Emu | Guest usermode x86 (`scripts/build-fex.sh`); not linked into the VMM | **MIT** (Ryan Houdek, 2019+) | no | No |
+| FEX RootFS (typically Ubuntu squashfs) | `ternvale x86 fetch-rootfs` after typing `yes` | Canonical / distro terms (not FEX MIT) | n/a | **No** (never bundled) |
+| qemu-user-static | Step 99 guest packages only | **GPL** | **GPL** | **No** |
 
 ### WinFsp (GPL) — shipping rule
 
@@ -53,6 +56,13 @@ is in addition to Developer ID notarization.
 
 Firmware used for UEFI guests is the Alpine `aavmf` ArmVirtQemu build (EDK2).
 Ternvale does not compile EDK2 in this tree.
+
+### FEX-Emu
+
+https://github.com/FEX-Emu/FEX — MIT. Ternvale may build an aarch64 Linux
+`FEXInterpreter` for guest tools. It does **not** vendor FEX RootFS images
+(Ubuntu/Canonical). Fetch only with `ternvale x86 fetch-rootfs` and checksum
+(XXH3-64 seed 0). See `docs/X86.md`.
 
 ### GPU
 

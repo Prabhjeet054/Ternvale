@@ -232,6 +232,9 @@ pub struct StatusJson {
     /// Capability flags for `backend`. Optional for older clients.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<ternvale_backend::BackendCapabilities>,
+    /// Resolved x86 usermode engine (`none` / `rosetta` / `fex` / `qemu-user`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x86_engine: Option<String>,
 }
 
 /// Guest agent connection in `status`.
@@ -585,6 +588,7 @@ impl From<&VmStatus> for StatusJson {
             tools_iso_agent: None,
             backend: None,
             capabilities: None,
+            x86_engine: None,
         }
     }
 }

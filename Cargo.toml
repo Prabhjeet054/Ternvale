@@ -27,6 +27,7 @@ members = [
     "ternvale-client",
     "ternvale-backend",
     "ternvale-vz",
+    "ternvale-compat",
 ]
 
 [workspace.package]

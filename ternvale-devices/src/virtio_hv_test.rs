@@ -55,6 +55,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     };

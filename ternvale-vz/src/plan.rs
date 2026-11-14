@@ -136,6 +136,25 @@ impl VzPlan {
         };
         let audio_out = config.audio_enabled();
         let audio_in = macos && config.audio_input_enabled();
+        let want = ternvale_compat::requested(config.x86_emulation, config.rosetta);
+        let x86_caps = if macos {
+            ternvale_compat::macos_vz_caps()
+        } else {
+            ternvale_compat::linux_vz_caps()
+        };
+        let engine =
+            ternvale_compat::resolve(want, x86_caps, config.profile).map_err(
+                |error| match error {
+                    ternvale_compat::CompatError::Unsupported {
+                        requested,
+                        capability,
+                    } => unsupported(format!("x86_emulation={requested}"), capability),
+                    ternvale_compat::CompatError::NotLinux { requested } => {
+                        unsupported(format!("x86_emulation={requested}"), "guest_linux")
+                    }
+                },
+            )?;
+        let attach_rosetta = engine == ternvale_compat::X86Engine::Rosetta;
         tracing::info!(
             target: "ternvale::vz",
             vm = %config.name,
@@ -147,7 +166,8 @@ impl VzPlan {
             shares = shares.len(),
             audio_out,
             audio_in,
-            rosetta = config.rosetta,
+            rosetta = attach_rosetta,
+            x86 = engine.as_str(),
             "vz plan"
         );
         Ok(Self {
@@ -183,7 +203,7 @@ impl VzPlan {
             spice_clipboard: !macos,
             show_view: false,
             shares,
-            rosetta: config.rosetta,
+            rosetta: attach_rosetta,
         })
     }
 }
@@ -357,6 +377,7 @@ mod tests {
             power: Default::default(),
             encryption: false,
             rosetta: false,
+            x86_emulation: Default::default(),
             agent: Default::default(),
         }
     }

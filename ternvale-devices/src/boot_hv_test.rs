@@ -50,6 +50,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     };

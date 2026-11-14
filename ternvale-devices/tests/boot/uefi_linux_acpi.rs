@@ -116,6 +116,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
     };

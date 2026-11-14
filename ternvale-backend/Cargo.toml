@@ -14,6 +14,8 @@ tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
 # VmConfig, Profile, BackendKind.
 ternvale-config = { path = "../ternvale-config" }
+# x86 engine selection (no VZ types).
+ternvale-compat = { path = "../ternvale-compat" }
 # Existing orchestrator wrapped by NativeBackend (no behavior change).
 ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
 # Virtualization.framework host (C ABI). Only this crate may depend on it.

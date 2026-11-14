@@ -14,6 +14,12 @@ pub struct BackendCapabilities {
     pub snapshots_memory: bool,
     pub nested_virt: bool,
     pub rosetta: bool,
+    /// FEX-Emu in a Linux guest (native; also allowed on VZ Linux).
+    #[serde(default)]
+    pub fex: bool,
+    /// Distro qemu-user-static (not bundled).
+    #[serde(default)]
+    pub qemu_user: bool,
     pub gpu_2d: bool,
     pub gpu_3d: bool,
     pub usb_passthrough: bool,
@@ -38,6 +44,8 @@ impl BackendCapabilities {
             snapshots_memory: true,
             nested_virt: false,
             rosetta: false,
+            fex: true,
+            qemu_user: true,
             gpu_2d: true,
             gpu_3d: false,
             usb_passthrough: true,
@@ -64,6 +72,8 @@ impl BackendCapabilities {
             snapshots_memory: true,
             nested_virt: false,
             rosetta: true,
+            fex: true,
+            qemu_user: true,
             gpu_2d: false,
             gpu_3d: false,
             usb_passthrough: false,
@@ -89,6 +99,8 @@ impl BackendCapabilities {
             snapshots_memory: true,
             nested_virt: false,
             rosetta: false,
+            fex: false,
+            qemu_user: false,
             gpu_2d: false,
             gpu_3d: false,
             usb_passthrough: false,
@@ -98,6 +110,16 @@ impl BackendCapabilities {
             shared_folders: true,
             custom_display_pipeline: false,
             cpu_profiles: false,
+        }
+    }
+
+    /// x86 usermode bits for [`ternvale_compat::resolve`].
+    #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
+    pub fn x86(&self) -> ternvale_compat::EngineCaps {
+        ternvale_compat::EngineCaps {
+            rosetta: self.rosetta,
+            fex: self.fex,
+            qemu_user: self.qemu_user,
         }
     }
 }
@@ -124,14 +146,19 @@ mod tests {
         assert!(caps.custom_display_pipeline);
         assert!(!caps.guest_macos);
         assert!(!caps.rosetta);
+        assert!(caps.fex);
+        assert!(caps.qemu_user);
     }
 
     #[test]
     fn linux_vz_advertises_rosetta_only() {
         let linux = BackendCapabilities::linux_vz();
         assert!(linux.rosetta);
+        assert!(linux.fex);
         assert!(linux.guest_linux);
         assert!(!BackendCapabilities::macos_vz().rosetta);
+        assert!(!BackendCapabilities::macos_vz().fex);
         assert!(!BackendCapabilities::native().rosetta);
+        assert!(BackendCapabilities::native().fex);
     }
 }

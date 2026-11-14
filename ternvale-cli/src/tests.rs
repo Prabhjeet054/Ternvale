@@ -9,7 +9,7 @@ use std::time::Duration;
 use clap::{CommandFactory, Parser};
 use ternvale_vmm::{VmControl, VmState};
 
-use crate::cli::{Cli, Command, DiskCommand};
+use crate::cli::{Cli, Command, DiskCommand, X86Command};
 use crate::client::{self, Reach};
 use crate::display::DisplayMode;
 use crate::protocol::{Request, Response, MAX_LINE};
@@ -351,6 +351,21 @@ fn parses_every_subcommand() {
             name: "lab".into(),
             dry_run: true,
             undo: false,
+        }
+    );
+    assert_eq!(
+        parse(&[
+            "ternvale",
+            "x86",
+            "fetch-rootfs",
+            "--distro",
+            "Ubuntu_24_04"
+        ]),
+        Command::X86 {
+            action: X86Command::FetchRootfs {
+                distro: "Ubuntu_24_04".into(),
+                dest: None,
+            }
         }
     );
     assert_eq!(

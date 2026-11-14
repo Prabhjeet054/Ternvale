@@ -1,0 +1,17 @@
+[package]
+name = "ternvale-compat"
+description = "x86 usermode emulation engine selection (Rosetta / FEX / qemu-user)."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed resolve errors.
+thiserror = "2"
+# Required project-wide logging (target ternvale::compat).
+tracing = "0.1"
+# X86Emulation and Profile.
+ternvale-config = { path = "../ternvale-config" }
+
+[lints]
+workspace = true

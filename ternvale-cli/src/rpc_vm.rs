@@ -38,6 +38,7 @@ pub fn dispatch_vm_line(
     allow_exec: bool,
     backend: &str,
     capabilities: ternvale_backend::BackendCapabilities,
+    x86_engine: &str,
     handshook: &mut bool,
 ) -> Dispatch {
     if !is_jsonrpc_line(line) {
@@ -51,6 +52,7 @@ pub fn dispatch_vm_line(
             allow_exec,
             backend,
             capabilities,
+            x86_engine,
         );
         return encode_legacy(&response);
     }
@@ -129,6 +131,7 @@ pub fn dispatch_vm_line(
                 allow_exec,
                 backend,
                 capabilities,
+                x86_engine,
             );
             encode_rpc(JsonRpcResponse::result(
                 id,
