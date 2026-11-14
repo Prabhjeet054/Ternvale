@@ -27,4 +27,17 @@ pub enum VzError {
         /// Display text.
         detail: String,
     },
+    /// `rosetta = true` but `VZLinuxRosettaAvailability.notInstalled`.
+    #[error(
+        "Rosetta for Linux is not installed; run `ternvale doctor --install-rosetta` after accepting Apple's terms (Ternvale never installs Rosetta silently or redistributes it)"
+    )]
+    RosettaNotInstalled,
+    /// Host cannot offer Linux Rosetta (not Apple silicon / too old / VZ-only).
+    #[error(
+        "Rosetta for Linux is not available on this host (VZ backend only; Apple silicon, macOS 13+)"
+    )]
+    RosettaUnavailable,
+    /// User did not type `yes`; `installRosetta` was not called.
+    #[error("Rosetta install declined; nothing was downloaded or installed")]
+    RosettaInstallDeclined,
 }

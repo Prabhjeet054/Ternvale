@@ -119,6 +119,7 @@ fn dummy_config(name: &str) -> VmConfig {
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        rosetta: false,
         agent: Default::default(),
         backend: Default::default(),
     }

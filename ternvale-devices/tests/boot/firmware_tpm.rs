@@ -103,6 +103,7 @@ fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Re
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        rosetta: false,
         agent: Default::default(),
         backend: Default::default(),
     };

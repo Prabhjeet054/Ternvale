@@ -51,6 +51,8 @@ extern "C" {
     fn tv_vz_nsapp_stop();
     fn tv_vz_save(handle: i32, path: *const c_char, err: *mut c_char, err_len: usize) -> i32;
     fn tv_vz_restore(handle: i32, path: *const c_char, err: *mut c_char, err_len: usize) -> i32;
+    fn tv_vz_rosetta_availability() -> i32;
+    fn tv_vz_rosetta_install(err: *mut c_char, err_len: usize) -> i32;
 }
 
 extern "C" fn rust_log(level: i32, message: *const c_char) {
@@ -271,4 +273,32 @@ pub fn restore(handle: Handle, path: &str) -> Result<(), VzError> {
 pub fn destroy(handle: Handle) {
     // SAFETY: destroys the Swift session; handle must not be reused.
     unsafe { tv_vz_destroy(handle) };
+}
+
+/// `VZLinuxRosettaDirectoryShare.availability` (macOS 13.0). 0/1/2.
+#[tracing::instrument(level = "trace", target = "ternvale::rosetta", skip_all)]
+pub fn rosetta_availability() -> i32 {
+    install_logger();
+    // SAFETY: class method; no handle.
+    let raw = unsafe { tv_vz_rosetta_availability() };
+    tracing::trace!(
+        target: "ternvale::rosetta",
+        raw,
+        "tv_vz_rosetta_availability"
+    );
+    raw
+}
+
+/// `installRosetta` (macOS 13.0). Caller must already have user consent.
+#[tracing::instrument(level = "debug", target = "ternvale::rosetta", skip_all)]
+pub fn rosetta_install() -> Result<(), VzError> {
+    install_logger();
+    let mut err = [0 as c_char; ERR_LEN];
+    // SAFETY: err lives for the blocking install completion.
+    let rc = unsafe { tv_vz_rosetta_install(err.as_mut_ptr(), err.len()) };
+    tracing::trace!(target: "ternvale::rosetta", rc, "tv_vz_rosetta_install");
+    if rc != 0 {
+        tracing::error!(target: "ternvale::rosetta", rc, "installRosetta returned non-zero");
+    }
+    read_err(&err, rc, "rosetta_install")
 }

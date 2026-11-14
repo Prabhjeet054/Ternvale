@@ -275,6 +275,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        rosetta: false,
         agent: Default::default(),
         backend: Default::default(),
     };

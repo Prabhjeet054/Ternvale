@@ -63,7 +63,7 @@ impl BackendCapabilities {
             // VZ `saveMachineStateTo` (macOS 14+), not the native RAM/GIC bundle.
             snapshots_memory: true,
             nested_virt: false,
-            rosetta: false,
+            rosetta: true,
             gpu_2d: false,
             gpu_3d: false,
             usb_passthrough: false,
@@ -123,5 +123,15 @@ mod tests {
         assert!(caps.gpu_2d);
         assert!(caps.custom_display_pipeline);
         assert!(!caps.guest_macos);
+        assert!(!caps.rosetta);
+    }
+
+    #[test]
+    fn linux_vz_advertises_rosetta_only() {
+        let linux = BackendCapabilities::linux_vz();
+        assert!(linux.rosetta);
+        assert!(linux.guest_linux);
+        assert!(!BackendCapabilities::macos_vz().rosetta);
+        assert!(!BackendCapabilities::native().rosetta);
     }
 }

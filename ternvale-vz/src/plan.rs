@@ -40,6 +40,8 @@ pub struct VzPlan {
     pub show_view: bool,
     /// virtiofs shares: tag, host path, read-only.
     pub shares: Vec<(String, String, bool)>,
+    /// `VZLinuxRosettaDirectoryShare` for Linux guests (`rosetta = true`).
+    pub rosetta: bool,
 }
 
 impl VzPlan {
@@ -54,6 +56,10 @@ impl VzPlan {
             format!("audio_in={}", u8::from(self.audio_in)),
             format!("spice={}", u8::from(self.spice_clipboard)),
             format!("view={}", u8::from(self.show_view)),
+            format!("rosetta={}", u8::from(self.rosetta)),
+            format!("rosetta_aot={}", u8::from(self.rosetta)),
+            format!("rosetta_tag={}", crate::ROSETTA_FS_TAG),
+            format!("rosetta_aot_name={}", crate::ROSETTA_AOT_NAME),
         ];
         for (tag, path, ro) in &self.shares {
             lines.push(format!("share={tag}\t{path}\t{}", u8::from(*ro)));
@@ -64,6 +70,7 @@ impl VzPlan {
             bytes = blob.len(),
             shares = self.shares.len(),
             show_view = self.show_view,
+            rosetta = self.rosetta,
             "vz devices blob"
         );
         blob
@@ -140,6 +147,7 @@ impl VzPlan {
             shares = shares.len(),
             audio_out,
             audio_in,
+            rosetta = config.rosetta,
             "vz plan"
         );
         Ok(Self {
@@ -175,6 +183,7 @@ impl VzPlan {
             spice_clipboard: !macos,
             show_view: false,
             shares,
+            rosetta: config.rosetta,
         })
     }
 }
@@ -279,6 +288,9 @@ fn reject_unsupported(config: &VmConfig) -> Result<(), VzError> {
     if !config.shares.is_empty() && config.profile != Profile::Macos {
         return Err(unsupported("[[shares]]", "shared_folders"));
     }
+    if config.rosetta && config.profile != Profile::Linux {
+        return Err(unsupported("rosetta", "rosetta"));
+    }
     if config.encryption {
         return Err(unsupported("encryption", "none"));
     }
@@ -344,6 +356,7 @@ mod tests {
             shares: Vec::new(),
             power: Default::default(),
             encryption: false,
+            rosetta: false,
             agent: Default::default(),
         }
     }
@@ -357,6 +370,7 @@ mod tests {
         assert_eq!(plan.cpus, 2);
         assert_eq!(plan.ram_bytes, 256 * 1024 * 1024);
         assert!(plan.devices_blob().contains("spice=1"));
+        assert!(plan.devices_blob().contains("rosetta=0"));
         assert!(plan.cmdline.contains("console=hvc0"), "{}", plan.cmdline);
         assert!(
             !plan.cmdline.contains("ttyAMA"),

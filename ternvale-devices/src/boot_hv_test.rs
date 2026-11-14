@@ -49,6 +49,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        rosetta: false,
         agent: Default::default(),
         backend: Default::default(),
     };

@@ -17,6 +17,7 @@ mod macos_limit;
 mod mock;
 mod native;
 mod opened;
+mod rosetta;
 mod select;
 mod types;
 mod vz;
@@ -34,6 +35,11 @@ pub use macos_limit::{refuse_if_at_limit, running_macos_guests, MACOS_CONCURRENT
 pub use mock::MockBackend;
 pub use native::NativeBackend;
 pub use opened::Opened;
+pub use rosetta::{
+    install_after_consent as install_rosetta, require_rosetta_installed, rosetta_availability,
+    rosetta_user_consented, RosettaAvailability, BINFMT_MAGIC, BINFMT_MASK, ROSETTA_FS_TAG,
+    ROSETTA_GUEST_MOUNT, ROSETTA_RUNTIME,
+};
 pub use select::{resolve, select, Selection};
 pub use ternvale_vz::{DownloadResult, MacosIdentity, MacosRestoreInfo, AUX_NAME, IDENTITY_NAME};
 pub use types::{
@@ -201,7 +207,22 @@ mod tests {
             shares: Vec::new(),
             power: Default::default(),
             encryption: false,
+            rosetta: false,
             agent: Default::default(),
+        }
+    }
+
+    #[test]
+    fn native_refuses_rosetta_config() {
+        let mut config = dummy_config("native-rosetta", 1);
+        config.rosetta = true;
+        match pollster::block_on(NativeBackend::create(config)) {
+            Err(BackendError::UnsupportedOption {
+                capability: "rosetta",
+                ..
+            }) => {}
+            Err(error) => panic!("{error}"),
+            Ok(_) => panic!("native must refuse rosetta"),
         }
     }
 

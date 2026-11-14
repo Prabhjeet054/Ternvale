@@ -399,12 +399,69 @@ pub fn all_checks(config: Option<&std::path::Path>) -> Vec<Check> {
         }
         checks.extend(vm::checks_for_path(config));
     }
+    checks.push(check_rosetta(ternvale_backend::rosetta_availability()));
     checks
 }
 
-/// `ternvale doctor [--config vm.toml]`: exit 1 when any check fails.
-#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(json, config = ?config))]
-pub fn doctor(json: bool, config: Option<&std::path::Path>) -> Result<ExitCode> {
+/// Linux Rosetta is a VZ-backend property (`BackendCapabilities.rosetta`).
+#[tracing::instrument(level = "debug", target = "ternvale::rosetta", skip_all)]
+pub fn check_rosetta(availability: ternvale_backend::RosettaAvailability) -> Check {
+    const NAME: &str = "rosetta (vz linux)";
+    match availability {
+        ternvale_backend::RosettaAvailability::Installed => Check::new(
+            NAME,
+            Outcome::Pass,
+            "installed (VZ Linux guests only; Ternvale does not redistribute Rosetta)",
+        ),
+        ternvale_backend::RosettaAvailability::NotInstalled => Check::new(
+            NAME,
+            Outcome::Warn,
+            "not installed; Linux VZ `rosetta = true` will refuse to start",
+        )
+        .fix("Run `ternvale doctor --install-rosetta` and type yes to accept Apple's terms (never silent)."),
+        ternvale_backend::RosettaAvailability::NotSupported => Check::new(
+            NAME,
+            Outcome::Warn,
+            "not available on this host (needs Apple silicon, macOS 13+, VZ backend)",
+        ),
+    }
+}
+
+const ROSETTA_CONSENT_PROMPT: &str = "\
+Rosetta for Linux comes from Apple (Virtualization.framework). Ternvale never
+bundles or redistributes it. You must accept Apple's terms. Type yes to run
+Apple's installRosetta flow, or anything else to cancel (nothing is installed):";
+
+/// `installRosetta` only after stdin is exactly `yes`.
+#[tracing::instrument(level = "info", target = "ternvale::rosetta", skip_all)]
+pub fn install_rosetta_from_stdin() -> Result<ExitCode> {
+    println!("{ROSETTA_CONSENT_PROMPT}");
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .context("read Rosetta install consent")?;
+    match ternvale_backend::install_rosetta(&line) {
+        Ok(()) => {
+            println!("Rosetta install finished (Apple installer).");
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            Ok(ExitCode::FAILURE)
+        }
+    }
+}
+
+/// `ternvale doctor [--config vm.toml] [--install-rosetta]`: exit 1 when any check fails.
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(json, config = ?config, install_rosetta))]
+pub fn doctor(
+    json: bool,
+    config: Option<&std::path::Path>,
+    install_rosetta: bool,
+) -> Result<ExitCode> {
+    if install_rosetta {
+        return install_rosetta_from_stdin();
+    }
     let checks = all_checks(config);
     for check in &checks {
         tracing::info!(target: "ternvale::cli", check = %check.name, outcome = ?check.outcome, detail = %check.detail, "doctor check");

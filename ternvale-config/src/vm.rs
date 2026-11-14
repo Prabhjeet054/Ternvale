@@ -98,6 +98,10 @@ pub struct VmConfig {
     /// snapshots. The data key is never on the command line or in the environment.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub encryption: bool,
+    /// Attach Apple's Linux Rosetta share (`VZLinuxRosettaDirectoryShare`).
+    /// Honoured only by the VZ backend; native returns unsupported.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rosetta: bool,
     /// Guest agent policy (`allow_exec`). Omitted: every flag off.
     #[serde(default, skip_serializing_if = "crate::AgentSection::is_default")]
     pub agent: crate::AgentSection,
@@ -272,7 +276,12 @@ impl VmConfig {
                 });
             }
         }
-        tracing::debug!(target: "ternvale::config", name = %self.name, "VM config is valid");
+        tracing::debug!(
+            target: "ternvale::config",
+            name = %self.name,
+            rosetta = self.rosetta,
+            "VM config is valid"
+        );
         Ok(())
     }
 

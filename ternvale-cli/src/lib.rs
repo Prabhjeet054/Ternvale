@@ -140,7 +140,10 @@ pub fn dispatch(cli: Cli) -> Result<ExitCode> {
             };
             run::run(&config, mode, fps)
         }
-        Command::Doctor { config } => {
+        Command::Doctor {
+            config,
+            install_rosetta,
+        } => {
             // The log directory is one of the things doctor checks, so a
             // broken one must not stop it.
             let _guard = match cli_log() {
@@ -150,7 +153,7 @@ pub fn dispatch(cli: Cli) -> Result<ExitCode> {
                     None
                 }
             };
-            doctor::doctor(json, config.as_deref())
+            doctor::doctor(json, config.as_deref(), install_rosetta)
         }
         other => {
             let _guard = cli_log()?;
@@ -330,7 +333,10 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
         Command::Vm { action } => match action {
             cli::VmCommand::Delete { name } => clone_cmd::delete_vm(&name),
         },
-        Command::Doctor { config } => doctor::doctor(json, config.as_deref()),
+        Command::Doctor {
+            config,
+            install_rosetta,
+        } => doctor::doctor(json, config.as_deref(), install_rosetta),
         Command::Logs {
             name,
             follow,

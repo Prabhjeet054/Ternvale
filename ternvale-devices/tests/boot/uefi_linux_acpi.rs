@@ -115,6 +115,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        rosetta: false,
         agent: Default::default(),
         backend: Default::default(),
     };

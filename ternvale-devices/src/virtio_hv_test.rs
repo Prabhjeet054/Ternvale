@@ -54,6 +54,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,
+        rosetta: false,
         agent: Default::default(),
         backend: Default::default(),
     };

@@ -274,6 +274,9 @@ pub enum Command {
         /// Also check this VM config: kernel, initrd, disks, and cmdline.
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Download Rosetta from Apple after typing `yes`. Never silent.
+        #[arg(long)]
+        install_rosetta: bool,
     },
     /// Show a VM's newest host log, filtered by level and target.
     Logs {

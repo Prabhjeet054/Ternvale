@@ -22,6 +22,7 @@ fn main() {
         "Sources/TvVz/Devices.swift",
         "Sources/TvVz/View.swift",
         "Sources/TvVz/Save.swift",
+        "Sources/TvVz/Rosetta.swift",
     ]
     .into_iter()
     .map(|p| manifest.join(p))

@@ -53,6 +53,9 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
     };
     line(format!("{}: ok", path.display()));
     line(format!("  name        {}", config.name));
+    if config.rosetta {
+        line("  rosetta     true (VZ Linux virtiofs tag `rosetta`; see docs/ROSETTA.md)".into());
+    }
     if !config.profile.is_linux() {
         line(format!(
             "  profile     {} (disks on {})",

@@ -335,6 +335,7 @@ private func buildConfig(
 
     if !macos {
         attachLinuxSpiceIfRequested(config, devices: devices)
+        try attachLinuxRosettaIfRequested(config, devices: devices)
     }
 
     if attachVsock {

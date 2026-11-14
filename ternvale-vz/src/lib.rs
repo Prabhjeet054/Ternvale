@@ -18,6 +18,7 @@ mod host;
 mod macos;
 mod macos_host;
 mod plan;
+mod rosetta;
 mod tvzs;
 
 pub use error::VzError;
@@ -29,6 +30,13 @@ pub use macos_host::{
     MacosRestoreInfo,
 };
 pub use plan::VzPlan;
+pub use rosetta::{
+    availability as rosetta_availability, install_with_consent as install_rosetta,
+    require_installed as require_rosetta_installed, user_consented as rosetta_user_consented,
+    Availability as RosettaAvailability, AOT_ABSTRACT_NAME as ROSETTA_AOT_NAME, BINFMT_CREDENTIALS,
+    BINFMT_FIX_BINARY, BINFMT_MAGIC, BINFMT_MASK, BINFMT_PRESERVE, FS_TAG as ROSETTA_FS_TAG,
+    GUEST_MOUNT as ROSETTA_GUEST_MOUNT, GUEST_RUNTIME as ROSETTA_RUNTIME,
+};
 pub use tvzs::{
     unwrap_to as unwrap_tvzs, wrap as wrap_tvzs, MAGIC as TVZS_MAGIC, VERSION as TVZS_VERSION,
 };

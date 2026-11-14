@@ -11,6 +11,10 @@ struct TvVzDevices {
     var spice = false
     var showView = false
     var shares: [(tag: String, path: String, readOnly: Bool)] = []
+    var rosetta = false
+    var rosettaAot = false
+    var rosettaTag = "rosetta"
+    var rosettaAotName = "ternvale-rosetta"
 }
 
 func parseTvVzDevices(_ raw: String) -> TvVzDevices {
@@ -29,6 +33,10 @@ func parseTvVzDevices(_ raw: String) -> TvVzDevices {
         case "audio_in": out.audioIn = value == "1"
         case "spice": out.spice = value == "1"
         case "view": out.showView = value == "1"
+        case "rosetta": out.rosetta = value == "1"
+        case "rosetta_aot": out.rosettaAot = value == "1"
+        case "rosetta_tag": out.rosettaTag = value
+        case "rosetta_aot_name": out.rosettaAotName = value
         case "share":
             let parts = value.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             if parts.count >= 3 {

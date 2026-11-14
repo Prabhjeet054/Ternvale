@@ -70,11 +70,15 @@ impl VzBackend {
     }
 
     fn build(config: VmConfig, live: bool) -> Result<Self, BackendError> {
-        let _plan = VzPlan::from_config(&config).map_err(BackendError::from)?;
+        let plan = VzPlan::from_config(&config).map_err(BackendError::from)?;
+        if live && plan.rosetta {
+            ternvale_vz::require_rosetta_installed().map_err(BackendError::from)?;
+        }
         tracing::info!(
             target: "ternvale::backend",
             vm = %config.name,
             live,
+            rosetta = plan.rosetta,
             "vz backend created"
         );
         Ok(Self {
@@ -224,6 +228,9 @@ impl VzBackend {
             plan.uds_dir = dir.display().to_string();
         }
         plan.show_view = *self.show_view.lock().unwrap_or_else(|p| p.into_inner());
+        if plan.rosetta {
+            ternvale_vz::require_rosetta_installed().map_err(BackendError::from)?;
+        }
         tracing::info!(
             target: "ternvale::macos",
             vm = %self.config.name,
@@ -484,6 +491,15 @@ impl From<VzError> for BackendError {
             VzError::Host { op, detail } | VzError::Io { op, detail } => {
                 BackendError::Io { op, detail }
             }
+            VzError::RosettaUnavailable => BackendError::Unsupported { feature: "rosetta" },
+            VzError::RosettaNotInstalled => BackendError::Io {
+                op: "rosetta",
+                detail: error.to_string(),
+            },
+            VzError::RosettaInstallDeclined => BackendError::Io {
+                op: "rosetta_install",
+                detail: error.to_string(),
+            },
         }
     }
 }

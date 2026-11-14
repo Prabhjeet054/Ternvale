@@ -145,6 +145,7 @@ fn one_vm(
         shares: Vec::new(),
         power: Default::default(),
         encryption: encrypted,
+        rosetta: false,
         agent: Default::default(),
         backend: Default::default(),
     };

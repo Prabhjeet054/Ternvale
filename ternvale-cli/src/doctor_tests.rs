@@ -5,8 +5,8 @@ use ternvale_hv::MacosVersion;
 use super::probe::{disk_facts, log_dir_facts};
 use super::{
     check_disk, check_entitlement, check_gic, check_hypervisor, check_log_dir, check_macos,
-    check_vz_backend, evaluate, has_hv_entitlement, human, render, DiskFacts, Facts, LogDirFacts,
-    Outcome, VmProbe,
+    check_rosetta, check_vz_backend, evaluate, has_hv_entitlement, human, render, DiskFacts, Facts,
+    LogDirFacts, Outcome, VmProbe,
 };
 
 const SIGNED_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.hypervisor</key><true/><key>com.apple.security.virtualization</key><true/></dict></plist>"#;
@@ -76,6 +76,19 @@ fn old_macos_fails_with_an_update_fix() {
     );
     assert!(check.fix.expect("fix").contains("Software Update"));
     assert_eq!(check_macos(&Err("nope".into())).outcome, Outcome::Warn);
+}
+
+#[test]
+fn rosetta_doctor_does_not_install() {
+    let pass = check_rosetta(ternvale_backend::RosettaAvailability::Installed);
+    assert_eq!(pass.outcome, Outcome::Pass);
+    let missing = check_rosetta(ternvale_backend::RosettaAvailability::NotInstalled);
+    assert_eq!(missing.outcome, Outcome::Warn);
+    let fix = missing.fix.expect("fix");
+    assert!(fix.contains("--install-rosetta"), "{fix}");
+    assert!(fix.contains("yes"), "{fix}");
+    assert!(!ternvale_backend::rosetta_user_consented("no"));
+    assert!(!ternvale_backend::rosetta_user_consented("y"));
 }
 
 #[test]

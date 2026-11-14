@@ -158,6 +158,18 @@ backend = "user"
     }
 
     #[test]
+    fn rosetta_flag_parses_default_false() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&sample(&fix)).expect("parse");
+        assert!(!config.rosetta);
+        let text = format!("rosetta = true\n{}", sample(&fix));
+        let config = VmConfig::from_toml(&text).expect("rosetta");
+        assert!(config.rosetta);
+        let dumped = config.to_toml().expect("toml");
+        assert!(dumped.contains("rosetta = true"), "{dumped}");
+    }
+
+    #[test]
     fn encryption_flag_parses() {
         let fix = Fixture::new();
         let text = format!("encryption = true\n{}", sample(&fix));
