@@ -583,6 +583,31 @@ pub fn handle_line_with(
         Request::DiskCompact { .. } => {
             return Response::error("disk compact requires the VM to be stopped");
         }
+        Request::X86Metrics {
+            engine,
+            processes,
+            failures,
+        } => {
+            if ternvale_compat::X86Engine::parse(&engine).is_none() || engine == "none" {
+                return Response::error(format!(
+                    "x86-metrics: unknown engine {engine} (rosetta, fex, qemu-user)"
+                ));
+            }
+            if !control.metrics().record_x86(&engine, processes, failures) {
+                return Response::error(format!("x86-metrics: unknown engine {engine}"));
+            }
+            tracing::info!(
+                target: "ternvale::compat",
+                engine = engine.as_str(),
+                processes,
+                failures,
+                "x86 engine metrics recorded"
+            );
+            Ok(Response::stats(
+                &control.stats(),
+                diag.and_then(|diag| diag.balloon()),
+            ))
+        }
         Request::DumpDiagnostics => {
             let Some(diag) = diag else {
                 tracing::warn!(target: "ternvale::cli", "dump-diagnostics on a server without diagnostics");

@@ -8,6 +8,7 @@ mod histogram;
 mod kind;
 mod registry;
 mod snapshot;
+mod x86;
 
 pub use counter::Counter;
 pub use histogram::{HistSnapshot, Histogram, BUCKETS};
@@ -15,4 +16,6 @@ pub use kind::{ExitKind, EXIT_KINDS};
 pub use registry::{Metrics, MAX_BLK_DISKS, MAX_DEVICES, MAX_VCPUS, POLICY_RULES};
 pub use snapshot::{
     DeviceSnapshot, ExitCount, IoSnapshot, NamedCount, NamedIoSnapshot, Snapshot, VcpuSnapshot,
+    X86EngineSnapshot,
 };
+pub use x86::{X86Counters, X86_ENGINES};

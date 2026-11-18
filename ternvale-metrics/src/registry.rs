@@ -8,6 +8,7 @@ use crate::counter::Counter;
 use crate::histogram::Histogram;
 use crate::kind::{ExitKind, EXIT_KINDS};
 use crate::snapshot::{DeviceSnapshot, IoSnapshot, NamedCount, Snapshot, VcpuSnapshot};
+use crate::x86::X86Counters;
 
 /// Policy drop rule names, matching `ternvale-net` (`spoof_mac`, …).
 pub const POLICY_RULES: [&str; 7] = [
@@ -37,6 +38,7 @@ pub struct Metrics {
     net: IoCell,
     interrupts: Counter,
     policy: [AtomicU64; POLICY_RULES.len()],
+    x86: X86Counters,
 }
 
 #[derive(Debug)]
@@ -105,7 +107,19 @@ impl Metrics {
             net: IoCell::default(),
             interrupts: Counter::default(),
             policy: std::array::from_fn(|_| AtomicU64::new(0)),
+            x86: X86Counters::default(),
         }
+    }
+
+    /// Translated processes / failures for `rosetta`, `fex`, or `qemu-user`.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::metrics",
+        skip_all,
+        fields(engine, processes, failures)
+    )]
+    pub fn record_x86(&self, engine: &str, processes: u64, failures: u64) -> bool {
+        self.x86.add(engine, processes, failures)
     }
 
     /// Bind `name` to a device slot. Not a hot path.
@@ -255,6 +269,7 @@ impl Metrics {
             net: io_snapshot(&self.net),
             interrupts: self.interrupts.get(),
             net_policy: self.policy_snapshots(),
+            x86: self.x86.snapshot(),
         }
     }
 
@@ -281,6 +296,7 @@ impl Metrics {
             net_bytes = snap.net.bytes,
             net_p50_ns = snap.net.latency.p50_ns,
             policy_drops = snap.net_policy.iter().map(|row| row.count).sum::<u64>(),
+            x86_engines = snap.x86.len(),
             "vm metrics summary"
         );
     }
@@ -416,5 +432,12 @@ mod tests {
         assert_eq!(snap.interrupts, 1);
         assert_eq!(snap.net_policy[0].name, "allow_lan");
         assert_eq!(snap.net_policy[0].count, 2);
+        assert!(snap.x86.is_empty());
+        assert!(metrics.record_x86("qemu-user", 3, 1));
+        let snap = metrics.snapshot();
+        assert_eq!(snap.x86.len(), 1);
+        assert_eq!(snap.x86[0].engine, "qemu-user");
+        assert_eq!(snap.x86[0].processes, 3);
+        assert_eq!(snap.x86[0].failures, 1);
     }
 }

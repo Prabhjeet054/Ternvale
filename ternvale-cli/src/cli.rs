@@ -72,7 +72,7 @@ pub enum Command {
         #[arg(long)]
         undo: bool,
     },
-    /// x86 usermode helpers (FEX RootFS download; never bundled).
+    /// x86 usermode helpers (FEX RootFS, qemu-user-static; never bundled).
     X86 {
         #[command(subcommand)]
         action: X86Command,
@@ -446,6 +446,22 @@ pub enum X86Command {
         /// Destination squashfs (default Application Support `fex/RootFS/`).
         #[arg(long)]
         dest: Option<PathBuf>,
+    },
+    /// Install distro qemu-user-static in a guest (GPL; type yes; never bundled).
+    InstallQemuUser {
+        /// Running VM (agent copy + exec).
+        name: Option<String>,
+        /// Fake root for host tests (no apt/dnf/apk).
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// Log planned packages; do not apt-get.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Copy guest x86-metrics.json into `query-stats.metrics.x86`.
+    ScrapeMetrics {
+        /// Running VM.
+        name: String,
     },
 }
 

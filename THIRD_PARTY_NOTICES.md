@@ -37,7 +37,7 @@ guest installers. Review upstream terms before you redistribute them yourself.
 | virglrenderer / rutabaga_gfx | not linked (`gpu3d` is a local command surface) | BSD-3-Clause upstream; not vendored | no | No |
 | FEX-Emu | Guest usermode x86 (`scripts/build-fex.sh`); not linked into the VMM | **MIT** (Ryan Houdek, 2019+) | no | No |
 | FEX RootFS (typically Ubuntu squashfs) | `ternvale x86 fetch-rootfs` after typing `yes` | Canonical / distro terms (not FEX MIT) | n/a | **No** (never bundled) |
-| qemu-user-static | Step 99 guest packages only | **GPL** | **GPL** | **No** |
+| qemu-user-static | Guest distro package via `ternvale x86 install-qemu-user` | **GPL** | **GPL** | **No** |
 
 ### WinFsp (GPL) — shipping rule
 
@@ -63,6 +63,14 @@ https://github.com/FEX-Emu/FEX — MIT. Ternvale may build an aarch64 Linux
 `FEXInterpreter` for guest tools. It does **not** vendor FEX RootFS images
 (Ubuntu/Canonical). Fetch only with `ternvale x86 fetch-rootfs` and checksum
 (XXH3-64 seed 0). See `docs/X86.md`.
+
+### qemu-user-static
+
+GPL (QEMU). Last-resort x86 usermode engine. Ternvale **must not** statically
+or dynamically link QEMU, and **must not** ship `qemu-*-static` inside
+Ternvale.app. Guests install the distro package (`qemu-user-static` /
+`qemu-x86_64`) only after the user types `yes`. QEMU runs as a **separate**
+`binfmt` interpreter process. See `docs/X86.md` and `guest-tools/qemu-user/`.
 
 ### GPU
 

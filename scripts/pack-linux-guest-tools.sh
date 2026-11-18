@@ -10,6 +10,7 @@ rm -rf "$dest"
 mkdir -p "$dest/usr/local/sbin" \
   "$dest/usr/local/lib/ternvale/guest-setup" \
   "$dest/usr/local/lib/ternvale/fex" \
+  "$dest/usr/local/lib/ternvale/qemu-user" \
   "$dest/usr/share/doc/ternvale"
 
 cp "$root/guest-tools/ternvale-guest-setup" "$dest/usr/local/sbin/"
@@ -18,7 +19,13 @@ cp "$root/guest-tools/lib/guest-setup/"*.sh "$dest/usr/local/lib/ternvale/guest-
 cp "$root/guest-tools/fex/register-binfmt.sh" "$dest/usr/local/lib/ternvale/fex/"
 chmod 0755 "$dest/usr/local/lib/ternvale/fex/register-binfmt.sh"
 cp "$root/guest-tools/fex/README.md" "$dest/usr/share/doc/ternvale/FEX.md"
+cp "$root/guest-tools/qemu-user/install-qemu-user.sh" "$dest/usr/local/lib/ternvale/qemu-user/"
+cp "$root/guest-tools/qemu-user/metrics.sh" "$dest/usr/local/lib/ternvale/qemu-user/"
+chmod 0755 "$dest/usr/local/lib/ternvale/qemu-user/"*.sh
+cp "$root/guest-tools/qemu-user/README.md" "$dest/usr/share/doc/ternvale/QEMU-USER.md"
 cp "$root/docs/X86.md" "$dest/usr/share/doc/ternvale/X86.md"
+cp "$root/docs/TSO.md" "$dest/usr/share/doc/ternvale/TSO.md"
+# Never pack qemu-user-static binaries (GPL, distro packages only).
 
 mkdir -p "$dest/usr/bin"
 copied=0
@@ -33,6 +40,11 @@ if [ "$copied" -eq 0 ]; then
   printf 'pack-linux-guest-tools: no FEX/FEXInterpreter at %s (PPA or scripts/build-fex.sh)\n' "$prefix" >&2
 fi
 
+# Explicitly omit RootFS / squashfs and any accidental QEMU binaries.
+find "$dest" \( -name 'qemu-*-static' -o -name 'qemu-x86_64' -o -name 'qemu-i386' \) \
+  -print -delete | while read -r gone; do
+  printf 'pack-linux-guest-tools: removed QEMU binary %s\n' "$gone" >&2
+done
 # Explicitly omit RootFS / squashfs.
 find "$dest" -name '*.sqsh' -print -delete | while read -r gone; do
   printf 'pack-linux-guest-tools: removed bundled squashfs %s\n' "$gone" >&2

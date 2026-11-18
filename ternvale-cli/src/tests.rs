@@ -369,6 +369,29 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(
+        parse(&[
+            "ternvale",
+            "x86",
+            "install-qemu-user",
+            "--root",
+            "/tmp/root",
+            "--dry-run"
+        ]),
+        Command::X86 {
+            action: X86Command::InstallQemuUser {
+                name: None,
+                root: Some("/tmp/root".into()),
+                dry_run: true,
+            }
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "x86", "scrape-metrics", "lab"]),
+        Command::X86 {
+            action: X86Command::ScrapeMetrics { name: "lab".into() }
+        }
+    );
+    assert_eq!(
         parse(&["ternvale", "wait-ready", "win11", "--timeout", "30"]),
         Command::WaitReady {
             name: "win11".into(),

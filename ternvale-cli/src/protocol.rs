@@ -144,6 +144,17 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         disk: Option<u32>,
     },
+    /// Add usermode x86 translation counters (`query-stats.metrics.x86`).
+    X86Metrics {
+        /// `rosetta` / `fex` / `qemu-user`.
+        engine: String,
+        /// Translated processes to add.
+        #[serde(default)]
+        processes: u64,
+        /// Translator failures to add.
+        #[serde(default)]
+        failures: u64,
+    },
 }
 
 impl Request {
@@ -172,6 +183,7 @@ impl Request {
             Self::Copy { .. } => "copy",
             Self::DiskResize { .. } => "disk-resize",
             Self::DiskCompact { .. } => "disk-compact",
+            Self::X86Metrics { .. } => "x86-metrics",
         }
     }
 
@@ -199,6 +211,7 @@ impl Request {
             Self::Copy { .. } => "copy for",
             Self::DiskResize { .. } => "resize disk for",
             Self::DiskCompact { .. } => "compact disk for",
+            Self::X86Metrics { .. } => "record x86 metrics for",
         }
     }
 }
@@ -666,6 +679,14 @@ mod tests {
                 r#"{"cmd":"disk-compact"}"#,
                 Request::DiskCompact { disk: None },
             ),
+            (
+                r#"{"cmd":"x86-metrics","engine":"qemu-user","processes":2,"failures":1}"#,
+                Request::X86Metrics {
+                    engine: "qemu-user".into(),
+                    processes: 2,
+                    failures: 1,
+                },
+            ),
         ];
         for (line, want) in cases {
             let got: Request = serde_json::from_str(line).expect(line);
@@ -759,6 +780,14 @@ mod tests {
         assert_golden(
             "cmd-disk-compact.json",
             &Request::DiskCompact { disk: None },
+        );
+        assert_golden(
+            "cmd-x86-metrics.json",
+            &Request::X86Metrics {
+                engine: "qemu-user".into(),
+                processes: 2,
+                failures: 1,
+            },
         );
     }
 

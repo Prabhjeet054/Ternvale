@@ -53,6 +53,7 @@ pub mod paths;
 pub mod peer;
 pub mod power;
 pub mod protocol;
+pub mod qemu_cmd;
 pub mod qemu_img;
 pub mod release_verify;
 pub mod report;
@@ -216,6 +217,12 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             cli::X86Command::FetchRootfs { distro, dest } => {
                 fex_cmd::fetch_rootfs(&distro, dest.as_deref(), json)
             }
+            cli::X86Command::InstallQemuUser {
+                name,
+                root,
+                dry_run,
+            } => qemu_cmd::install_qemu_user(name.as_deref(), root.as_deref(), dry_run, json),
+            cli::X86Command::ScrapeMetrics { name } => qemu_cmd::scrape_metrics(&name, json),
         },
         Command::WaitReady { name, timeout } => wait_cmd::wait_ready(&name, timeout, json),
         Command::Ssh { name } => ssh_cmd::ssh(&name, json),

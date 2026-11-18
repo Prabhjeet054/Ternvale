@@ -26,6 +26,20 @@ pub struct Snapshot {
     /// Guest-TX policy drops by rule name. Empty when none have fired.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub net_policy: Vec<NamedCount>,
+    /// Usermode x86 engines: translated process counts and failures.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub x86: Vec<X86EngineSnapshot>,
+}
+
+/// One x86 translation engine in [`Snapshot::x86`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct X86EngineSnapshot {
+    /// `rosetta` / `fex` / `qemu-user`.
+    pub engine: String,
+    /// Guest processes started through this translator (host-reported).
+    pub processes: u64,
+    /// Translator or binfmt failures reported for this engine.
+    pub failures: u64,
 }
 
 /// One vCPU in [`Snapshot::vcpus`].

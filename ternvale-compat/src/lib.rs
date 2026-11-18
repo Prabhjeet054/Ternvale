@@ -25,6 +25,9 @@ pub enum X86Engine {
     QemuUser,
 }
 
+/// `auto` preference: Rosetta, then FEX, then qemu-user-static (last resort).
+pub const AUTO_ORDER: [X86Engine; 3] = [X86Engine::Rosetta, X86Engine::Fex, X86Engine::QemuUser];
+
 impl X86Engine {
     #[tracing::instrument(level = "trace", target = "ternvale::compat", skip_all)]
     pub fn as_str(self) -> &'static str {
@@ -33,6 +36,27 @@ impl X86Engine {
             Self::Rosetta => "rosetta",
             Self::Fex => "fex",
             Self::QemuUser => "qemu-user",
+        }
+    }
+
+    /// Parse a status / metrics engine name (`none` included).
+    #[tracing::instrument(level = "debug", target = "ternvale::compat", skip_all, fields(name))]
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "none" => Some(Self::None),
+            "rosetta" => Some(Self::Rosetta),
+            "fex" => Some(Self::Fex),
+            "qemu-user" => Some(Self::QemuUser),
+            _ => None,
+        }
+    }
+
+    fn auto_allowed(self, caps: EngineCaps) -> bool {
+        match self {
+            Self::None => true,
+            Self::Rosetta => caps.rosetta,
+            Self::Fex => caps.fex,
+            Self::QemuUser => caps.qemu_user,
         }
     }
 }
@@ -81,14 +105,13 @@ pub fn resolve(
     let engine = match want {
         X86Emulation::None => X86Engine::None,
         X86Emulation::Auto => {
-            if linux && caps.rosetta {
-                X86Engine::Rosetta
-            } else if linux && caps.fex {
-                X86Engine::Fex
-            } else if linux && caps.qemu_user {
-                X86Engine::QemuUser
-            } else {
+            if !linux {
                 X86Engine::None
+            } else {
+                AUTO_ORDER
+                    .into_iter()
+                    .find(|engine| engine.auto_allowed(caps))
+                    .unwrap_or(X86Engine::None)
             }
         }
         X86Emulation::Rosetta => X86Engine::Rosetta,
@@ -201,5 +224,61 @@ mod tests {
     fn rosetta_flag_upgrades_none() {
         assert_eq!(requested(X86Emulation::None, true), X86Emulation::Rosetta);
         assert_eq!(requested(X86Emulation::Fex, true), X86Emulation::Fex);
+    }
+
+    #[test]
+    fn auto_order_is_rosetta_then_fex_then_qemu() {
+        assert_eq!(
+            AUTO_ORDER,
+            [X86Engine::Rosetta, X86Engine::Fex, X86Engine::QemuUser]
+        );
+        assert_eq!(AUTO_ORDER.last().copied(), Some(X86Engine::QemuUser));
+    }
+
+    #[test]
+    fn auto_with_only_qemu_picks_qemu_user() {
+        let caps = EngineCaps {
+            qemu_user: true,
+            ..EngineCaps::default()
+        };
+        let engine = resolve(X86Emulation::Auto, caps, Profile::Linux).unwrap();
+        assert_eq!(engine, X86Engine::QemuUser);
+        assert_eq!(engine.as_str(), "qemu-user");
+    }
+
+    #[test]
+    fn auto_skips_missing_rosetta_to_fex() {
+        let caps = EngineCaps {
+            fex: true,
+            qemu_user: true,
+            ..EngineCaps::default()
+        };
+        assert_eq!(
+            resolve(X86Emulation::Auto, caps, Profile::Linux).unwrap(),
+            X86Engine::Fex
+        );
+    }
+
+    #[test]
+    fn explicit_qemu_user_needs_cap() {
+        let err = resolve(
+            X86Emulation::QemuUser,
+            EngineCaps::default(),
+            Profile::Linux,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            CompatError::Unsupported {
+                capability: "qemu-user",
+                ..
+            }
+        ));
+        assert_eq!(
+            resolve(X86Emulation::QemuUser, native_caps(), Profile::Linux).unwrap(),
+            X86Engine::QemuUser
+        );
+        assert_eq!(X86Engine::parse("qemu-user"), Some(X86Engine::QemuUser));
+        assert_eq!(X86Engine::parse("box64"), None);
     }
 }

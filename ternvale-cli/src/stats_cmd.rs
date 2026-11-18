@@ -116,6 +116,12 @@ pub fn render_metrics(metrics: &Snapshot) -> String {
     for drop in &metrics.net_policy {
         lines.push(format!("  net policy {}: {}", drop.name, drop.count));
     }
+    for engine in &metrics.x86 {
+        lines.push(format!(
+            "  x86 {}: {} processes, {} failures",
+            engine.engine, engine.processes, engine.failures
+        ));
+    }
     lines.push(String::new());
     lines.join("\n")
 }
