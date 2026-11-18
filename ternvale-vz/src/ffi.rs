@@ -53,6 +53,7 @@ extern "C" {
     fn tv_vz_restore(handle: i32, path: *const c_char, err: *mut c_char, err_len: usize) -> i32;
     fn tv_vz_rosetta_availability() -> i32;
     fn tv_vz_rosetta_install(err: *mut c_char, err_len: usize) -> i32;
+    fn tv_vz_nested_supported() -> i32;
 }
 
 extern "C" fn rust_log(level: i32, message: *const c_char) {
@@ -286,6 +287,17 @@ pub fn rosetta_availability() -> i32 {
         raw,
         "tv_vz_rosetta_availability"
     );
+    raw
+}
+
+/// `VZGenericPlatformConfiguration.isNestedVirtualizationSupported` (macOS 15.0).
+/// `1` yes, `0` no, `-1` API not present.
+#[tracing::instrument(level = "debug", target = "ternvale::nested", skip_all)]
+pub fn nested_supported() -> i32 {
+    install_logger();
+    // SAFETY: class property; no VM handle.
+    let raw = unsafe { tv_vz_nested_supported() };
+    tracing::trace!(target: "ternvale::nested", raw, "tv_vz_nested_supported");
     raw
 }
 

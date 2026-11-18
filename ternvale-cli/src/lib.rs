@@ -52,6 +52,7 @@ pub mod macos_clone;
 pub mod paths;
 pub mod peer;
 pub mod power;
+pub mod probe_el2;
 pub mod protocol;
 pub mod qemu_cmd;
 pub mod qemu_img;
@@ -356,6 +357,7 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
         Command::Vm { action } => match action {
             cli::VmCommand::Delete { name } => clone_cmd::delete_vm(&name),
         },
+        Command::ProbeEl2 => probe_el2::run(json),
         Command::Doctor {
             config,
             install_rosetta,

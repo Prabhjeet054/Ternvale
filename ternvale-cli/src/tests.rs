@@ -80,6 +80,7 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(parse(&["ternvale", "serve"]), Command::Serve);
+    assert_eq!(parse(&["ternvale", "probe-el2"]), Command::ProbeEl2);
     assert_eq!(
         parse(&[
             "ternvale",

@@ -285,6 +285,9 @@ pub enum Command {
         #[arg(long)]
         no_wait: bool,
     },
+    /// Probe Hypervisor.framework EL2 and Virtualization.framework nested virt
+    /// (research only; does not enable nested guests).
+    ProbeEl2,
     /// Check this Mac can run VMs: macOS version, hypervisor, entitlement,
     /// GIC, disk space, and the log directory. Exits 1 if a check fails.
     Doctor {

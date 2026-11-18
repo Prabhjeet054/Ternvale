@@ -16,6 +16,7 @@ mod macos;
 mod macos_limit;
 mod mock;
 mod native;
+mod nested;
 mod opened;
 mod rosetta;
 mod select;
@@ -34,6 +35,7 @@ pub use macos::{
 pub use macos_limit::{refuse_if_at_limit, running_macos_guests, MACOS_CONCURRENT_LIMIT};
 pub use mock::MockBackend;
 pub use native::NativeBackend;
+pub use nested::{probe_vz_nested, VzNestedProbe, VZ_NESTED_API_MACOS, VZ_NESTED_PROPERTY};
 pub use opened::Opened;
 pub use rosetta::{
     install_after_consent as install_rosetta, require_rosetta_installed, rosetta_availability,

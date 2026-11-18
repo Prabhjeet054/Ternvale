@@ -22,7 +22,7 @@ mod rosetta;
 mod tvzs;
 
 pub use error::VzError;
-pub use ffi::{nsapp_run, nsapp_stop};
+pub use ffi::{nested_supported, nsapp_run, nsapp_stop};
 pub use host::VzHost;
 pub use macos::{parse_hex, MacosIdentity, AUX_NAME, IDENTITY_NAME};
 pub use macos_host::{

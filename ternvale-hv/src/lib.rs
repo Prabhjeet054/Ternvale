@@ -4,6 +4,7 @@
 //! process-wide VM from `hv_vm_create` until `hv_vm_destroy`.
 
 mod clock;
+mod el2;
 mod entropy;
 mod error;
 mod ffi;
@@ -25,6 +26,7 @@ mod vmnet;
 mod vmnet_mode;
 
 pub use clock::{host_ticks, ticks_to_duration, ticks_to_duration_scaled};
+pub use el2::{probe as probe_el2, El2Probe, API_AVAILABLE_MACOS as EL2_API_AVAILABLE_MACOS};
 pub use entropy::{fill_entropy, GETENTROPY_MAX};
 pub use error::{
     HvError, HV_BAD_ARGUMENT, HV_BUSY, HV_DENIED, HV_ERROR, HV_EXISTS, HV_ILLEGAL_GUEST_STATE,
@@ -32,7 +34,7 @@ pub use error::{
 };
 pub use footprint::phys_footprint;
 pub use gic::{raise_ppi, Gic, IccReg, VTIMER_PPI};
-pub use host::{hypervisor_supported, macos_version, MacosVersion};
+pub use host::{host_chip, hypervisor_supported, macos_version, HostChip, MacosVersion};
 pub use host_power::{watch_host_power, HostPowerEvent, HostPowerWatch};
 pub use map::{
     map_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX, HV_MEMORY_WRITE,

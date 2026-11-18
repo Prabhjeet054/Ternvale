@@ -29,6 +29,37 @@ pub fn macos_version() -> Result<MacosVersion, HvError> {
     Ok(MacosVersion { major, minor, text })
 }
 
+/// Chip strings from sysctl (this Mac only).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostChip {
+    /// `hw.model` (for example `Mac15,6`).
+    pub model: String,
+    /// `machdep.cpu.brand_string` (for example `Apple M3 Pro`).
+    pub brand: String,
+    /// `hw.cpufamily` as reported by the kernel.
+    pub cpu_family: u32,
+}
+
+/// `hw.model`, `machdep.cpu.brand_string`, `hw.cpufamily`.
+#[tracing::instrument(level = "debug", target = "ternvale::nested", skip_all)]
+pub fn host_chip() -> Result<HostChip, HvError> {
+    let model = sysctl_string(c"hw.model")?;
+    let brand = sysctl_string(c"machdep.cpu.brand_string").unwrap_or_default();
+    let cpu_family = u32::from_ne_bytes(sysctl_i32(c"hw.cpufamily")?.to_ne_bytes());
+    tracing::info!(
+        target: "ternvale::nested",
+        model = %model,
+        brand = %brand,
+        cpu_family,
+        "host chip"
+    );
+    Ok(HostChip {
+        model,
+        brand,
+        cpu_family,
+    })
+}
+
 /// `kern.hv_support`: 1 when the CPU and kernel support Hypervisor.framework.
 /// It is 0 inside most VMs (no nested virtualization) and on unsupported Macs.
 #[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all)]
@@ -116,6 +147,13 @@ mod tests {
             error.to_string().contains("kern.ternvale_nonexistent"),
             "{error}"
         );
+    }
+
+    #[test]
+    #[test]
+    fn host_chip_reads_hw_model() {
+        let chip = host_chip().expect("hw.model");
+        assert!(!chip.model.is_empty(), "{chip:?}");
     }
 
     #[test]
