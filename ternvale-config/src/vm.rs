@@ -98,6 +98,10 @@ pub struct VmConfig {
     /// snapshots. The data key is never on the command line or in the environment.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub encryption: bool,
+    /// Guest hypervisor at EL2 (`hv_vm_config_set_el2_enabled`). Off by default.
+    /// Native only; the host must report EL2 support (`ternvale probe-el2`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nested_virt: bool,
     /// Attach Apple's Linux Rosetta share (`VZLinuxRosettaDirectoryShare`).
     /// Honoured only by the VZ backend; native returns unsupported.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

@@ -83,6 +83,11 @@ pub fn verify(tables: &[DumpedTable], expected: &AcpiConfig) -> Result<(), AcpiE
                 gicc.flags,
             );
             p.expect(&format!("APIC GICC {index} GICR base"), 0, gicc.gicr_base);
+            p.expect(
+                &format!("APIC GICC {index} VGIC maintenance"),
+                expected.gic.vgic_maintenance_gsiv,
+                gicc.vgic_maintenance,
+            );
         }
     }
     if let Some(gtdt) = bytes("GTDT").and_then(|b| p.decoded("GTDT", decode_gtdt(b))) {

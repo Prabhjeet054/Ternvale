@@ -17,6 +17,7 @@ fn sample() -> GuestFdt {
         fw_cfg: false,
         tpm: false,
         usb: false,
+        nested_virt: false,
     }
 }
 
@@ -267,6 +268,26 @@ fn cpu_nodes_use_the_mpidr_affinity_as_reg() {
         );
     }
     assert!(!dts.contains("cpu@10 "), "no seventeenth cpu: {dts}");
+}
+
+#[test]
+fn nested_virt_adds_the_gic_maintenance_ppi() {
+    let plain = dtc_dts(&build_fdt(&sample()).expect("dtb"));
+    let start = plain.find("intc@8000000 {").expect("gic");
+    let node = &plain[start..start + plain[start..].find("};").expect("end")];
+    assert!(
+        !node.contains("interrupts ="),
+        "maintenance PPI is opt-in:\n{node}"
+    );
+    let mut fdt = sample();
+    fdt.nested_virt = true;
+    let nested = dtc_dts(&build_fdt(&fdt).expect("dtb"));
+    let start = nested.find("intc@8000000 {").expect("gic");
+    let node = &nested[start..start + nested[start..].find("};").expect("end")];
+    assert!(
+        node.contains("interrupts = <0x01 0x09 0x04>"),
+        "PPI 9 / GSIV 25:\n{node}"
+    );
 }
 
 #[test]

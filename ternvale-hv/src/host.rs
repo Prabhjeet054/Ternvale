@@ -150,7 +150,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn host_chip_reads_hw_model() {
         let chip = host_chip().expect("hw.model");
         assert!(!chip.model.is_empty(), "{chip:?}");

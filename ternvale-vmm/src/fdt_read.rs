@@ -118,6 +118,7 @@ mod tests {
             fw_cfg: false,
             tpm: false,
             usb: false,
+            nested_virt: false,
         };
         let all = nodes(&build_fdt(&fdt).expect("dtb"));
         let root = node(&all, "");

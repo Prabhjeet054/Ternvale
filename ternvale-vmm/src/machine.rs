@@ -241,12 +241,13 @@ impl Machine {
             cpus = config.cpus,
             ram_mib = config.ram_mib,
             boot_disk = config.boot_disk,
+            nested_virt = config.nested_virt,
             "starting vm"
         );
         let inputs = Inputs::read(config)?;
         let nvram = config.nvram_path()?;
         let ram_size = config.ram_mib << 20;
-        let vm = ternvale_hv::Vm::create()?;
+        let vm = ternvale_hv::Vm::create_el2(config.nested_virt)?;
         let gic = Arc::new(vm.create_gic(GIC_DIST_BASE, GIC_REDIST_BASE)?);
         let memory = Arc::new(Mutex::new(crate::memory::GuestMemory::new()?));
         let fw_cfg = {
@@ -381,6 +382,7 @@ impl Machine {
             images: &images,
             vtimer_offset: &vtimer_offset,
             control,
+            nested_virt: config.nested_virt,
         };
         let outcome = run_vcpus(config.cpus, &shared);
         control.mark_stopping(power.stop_reason().unwrap_or(ExitReason::Canceled));

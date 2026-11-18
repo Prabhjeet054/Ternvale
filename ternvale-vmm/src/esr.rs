@@ -108,6 +108,17 @@ pub fn decode(esr: u64, gpa: u64) -> ExitEvent {
     event
 }
 
+/// EL2 system registers use `op0 = 3`, `op1 = 4` (`S3_4_*` / `*_EL2`).
+#[tracing::instrument(
+    level = "trace",
+    target = "ternvale::nested",
+    skip_all,
+    fields(op0, op1)
+)]
+pub fn is_el2_sysreg(op0: u8, op1: u8) -> bool {
+    op0 == 3 && op1 == 4
+}
+
 fn decode_sysreg(iss: u32) -> ExitEvent {
     // Direction bit 0: 0 is MSR (write to the system register), 1 is MRS.
     ExitEvent::SysReg {
@@ -216,7 +227,7 @@ impl fmt::Display for DisplayEvent<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, ExitEvent};
+    use super::{decode, is_el2_sysreg, ExitEvent};
 
     fn esr(ec: u64, iss: u64) -> u64 {
         (ec << 26) | (1 << 25) | (iss & 0x1ff_ffff)
@@ -311,5 +322,8 @@ mod tests {
         for (name, syndrome, gpa, expected) in cases {
             assert_eq!(decode(syndrome, gpa), expected, "{name}");
         }
+        assert!(is_el2_sysreg(3, 4));
+        assert!(!is_el2_sysreg(3, 0));
+        assert!(!is_el2_sysreg(2, 4));
     }
 }

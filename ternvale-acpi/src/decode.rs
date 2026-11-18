@@ -23,6 +23,8 @@ pub struct GiccInfo {
     pub gicr_base: u64,
     /// MPIDR.
     pub mpidr: u64,
+    /// VGIC maintenance GSIV (0 if unused).
+    pub vgic_maintenance: u32,
 }
 
 /// The MADT structures Ternvale emits.
@@ -164,6 +166,7 @@ pub fn decode_madt(bytes: &[u8]) -> Result<MadtInfo, AcpiError> {
                 flags: u32_at(s, gicc::FLAGS, "gicc flags")?,
                 gicr_base: u64_at(s, gicc::GICR_BASE, "gicc gicr base")?,
                 mpidr: u64_at(s, gicc::MPIDR, "gicc mpidr")?,
+                vgic_maintenance: u32_at(s, gicc::VGIC_MAINT, "gicc vgic maintenance")?,
             }),
             GICD_TYPE => info.gicds.push((
                 u64_at(s, 8, "gicd base")?,

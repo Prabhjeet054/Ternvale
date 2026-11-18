@@ -18,7 +18,7 @@ struct Report {
     cpu_family: u32,
     hv_el2: HvEl2Json,
     vz_nested: VzNestedJson,
-    /// Ternvale does not boot guests at EL2 in this step.
+    /// Native backend can enable `nested_virt = true` (still off by default).
     nested_implemented: bool,
 }
 
@@ -95,12 +95,12 @@ fn collect() -> Result<Report> {
             api_available_macos: vz.api_available_macos,
             supported: vz.supported,
         },
-        nested_implemented: false,
+        nested_implemented: true,
     })
 }
 
 fn print_human(report: &Report) {
-    println!("ternvale probe-el2 (research; nested guests are not implemented)");
+    println!("ternvale probe-el2 (nested_virt = true is opt-in; off by default)");
     println!("  macos           {}", report.macos);
     println!("  kern.hv_support {}", report.hv_support);
     println!(
@@ -130,7 +130,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn report_always_says_not_implemented() {
+    fn report_marks_opt_in_implementation() {
         let report = Report {
             macos: "15.0".into(),
             macos_major: 15,
@@ -154,9 +154,9 @@ mod tests {
                 api_available_macos: "15.0",
                 supported: Some(true),
             },
-            nested_implemented: false,
+            nested_implemented: true,
         };
-        assert!(!report.nested_implemented);
+        assert!(report.nested_implemented);
         assert_eq!(report.hv_el2.set_enabled, "hv_vm_config_set_el2_enabled");
     }
 }

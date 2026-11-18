@@ -314,6 +314,9 @@ fn reject_unsupported(config: &VmConfig) -> Result<(), VzError> {
     if config.encryption {
         return Err(unsupported("encryption", "none"));
     }
+    if config.nested_virt {
+        return Err(unsupported("nested_virt", "nested_virt"));
+    }
     for (index, nic) in config.nics.iter().enumerate() {
         if nic.backend != "user" {
             return Err(unsupported(
@@ -377,8 +380,22 @@ mod tests {
             power: Default::default(),
             encryption: false,
             rosetta: false,
+            nested_virt: false,
             x86_emulation: Default::default(),
             agent: Default::default(),
+        }
+    }
+
+    #[test]
+    fn nested_virt_is_unsupported_on_vz() {
+        let mut config = linux();
+        config.nested_virt = true;
+        match VzPlan::from_config(&config) {
+            Err(VzError::UnsupportedOption {
+                option,
+                capability: "nested_virt",
+            }) => assert_eq!(option, "nested_virt"),
+            other => panic!("{other:?}"),
         }
     }
 

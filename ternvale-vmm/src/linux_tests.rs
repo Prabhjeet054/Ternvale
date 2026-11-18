@@ -105,6 +105,8 @@ fn load_writes_images_and_boot_registers() {
     assert_eq!(cpu.x[3].get(), 0);
     assert_eq!(cpu.pc.get(), layout.kernel);
     assert_eq!(cpu.cpsr.get(), CPSR_EL1H_MASKED);
+    assert_eq!(boot_cpsr(true), CPSR_EL2H_MASKED);
+    assert_eq!(boot_cpsr(false), CPSR_EL1H_MASKED);
     let mut got = vec![0u8; kernel.len()];
     memory.read_bytes(layout.kernel, &mut got).expect("kernel");
     assert_eq!(got, kernel);

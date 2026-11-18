@@ -83,7 +83,7 @@ pub async fn unsupported_features<B: VmBackend>(backend: &B) {
             .await
             .expect_err("snapshot");
         assert!(matches!(error, BackendError::Unsupported { .. }), "{error}");
-    } else if !caps.nested_virt {
+    } else if caps.snapshots_disk && caps.snapshots_memory {
         // Native advertises snapshots but has no snapshot host in unit tests.
         let error = backend
             .snapshot_save("x", Path::new("/tmp/x.snap"))

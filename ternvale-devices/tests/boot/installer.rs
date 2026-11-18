@@ -113,6 +113,7 @@ fn boot(
         power: Default::default(),
         encryption: false,
         rosetta: false,
+        nested_virt: false,
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),

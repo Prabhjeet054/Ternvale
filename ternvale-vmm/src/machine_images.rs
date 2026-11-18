@@ -91,7 +91,15 @@ impl Inputs {
         let usb = config.usb_enabled();
         match self {
             Self::Linux { kernel, initrd } => {
-                let (dtb, layout) = boot_images(cmdline, cpus, ram_size, kernel, initrd, usb)?;
+                let (dtb, layout) = boot_images(
+                    cmdline,
+                    cpus,
+                    ram_size,
+                    kernel,
+                    initrd,
+                    usb,
+                    config.nested_virt,
+                )?;
                 tracing::debug!(
                     target: "ternvale::boot",
                     kernel = format!("{:#x}", layout.kernel),
@@ -112,6 +120,7 @@ impl Inputs {
                     fw_cfg: *fw_cfg,
                     tpm: *tpm,
                     usb,
+                    nested_virt: config.nested_virt,
                 })?;
                 crate::firmware::check_layout(ram_size, dtb.len() as u64)?;
                 Ok(dtb)
@@ -152,6 +161,7 @@ fn boot_images(
     kernel: &[u8],
     initrd: &[u8],
     usb: bool,
+    nested_virt: bool,
 ) -> Result<(Vec<u8>, LinuxLayout), MachineError> {
     let header = crate::linux::parse_header(kernel)?;
     let mut dtb;
@@ -176,6 +186,7 @@ fn boot_images(
             fw_cfg: false,
             tpm: false,
             usb,
+            nested_virt,
         })?;
         let next = place(
             RAM_BASE,

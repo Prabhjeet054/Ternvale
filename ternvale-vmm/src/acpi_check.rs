@@ -55,6 +55,7 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
             dist_base: GIC_DIST_BASE,
             redist_base: GIC_REDIST_BASE,
             redist_len: GIC_REDIST_SIZE as u32,
+            vgic_maintenance_gsiv: 0,
         },
         timer: TimerConfig {
             ppis: TIMER_PPIS,
@@ -98,6 +99,15 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
 #[tracing::instrument(level = "debug", target = "ternvale::acpi", skip_all, fields(name = %config.name, cpus = config.cpus))]
 pub fn vm_acpi_config(config: &VmConfig) -> AcpiConfig {
     let mut acpi = acpi_config(config.cpus);
+    if config.nested_virt {
+        // HV_GIC_INT_MAINTENANCE = 25; DTB PPI index 9 (INTID = 16 + 9).
+        acpi.gic.vgic_maintenance_gsiv = crate::fdt::MAINTENANCE_GSIV;
+        tracing::info!(
+            target: "ternvale::nested",
+            gsiv = acpi.gic.vgic_maintenance_gsiv,
+            "MADT VGIC maintenance GSIV for nested_virt"
+        );
+    }
     if !config.tpm_enabled() {
         tracing::debug!(target: "ternvale::acpi", "tpm disabled; no TPM2 table or \\_SB.TPM2");
         acpi.tpm = None;

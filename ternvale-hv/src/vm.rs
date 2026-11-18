@@ -29,9 +29,23 @@ impl std::fmt::Debug for Vm {
 }
 
 impl Vm {
-    /// Create the only VM in this process.
+    /// Create the only VM in this process (EL2 off).
     #[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all)]
     pub fn create() -> Result<Self, HvError> {
+        Self::create_el2(false)
+    }
+
+    /// Create the process VM. `el2` sets `hv_vm_config_set_el2_enabled` before
+    /// `hv_vm_create` (macOS 15.0). Must be true before any vCPU exists.
+    #[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all, fields(el2))]
+    pub fn create_el2(el2: bool) -> Result<Self, HvError> {
+        if el2 && !crate::el2::host_supports_el2() {
+            tracing::error!(
+                target: "ternvale::nested",
+                "nested_virt requested but EL2 is not supported on this host"
+            );
+            return Err(HvError::El2Unavailable);
+        }
         if VM_EXISTS.swap(true, Ordering::AcqRel) {
             tracing::error!(
                 target: "ternvale::hv",
@@ -39,12 +53,27 @@ impl Vm {
             );
             return Err(HvError::AlreadyExists);
         }
-        tracing::debug!(target: "ternvale::hv", "creating VM with default config");
-        // SAFETY: `config` is NULL, which hv_vm.h documents as the default
-        // configuration. The atomic flag guarantees no other Vm is alive, so
-        // this is the process's single hv_vm_create.
-        let raw = unsafe { hv_vm_create(std::ptr::null_mut()) };
-        let code = ternvale_log::log_hv_call!("hv_vm_create", "config=null", raw);
+        let (raw, args) = if el2 {
+            tracing::info!(target: "ternvale::nested", "creating VM with EL2 enabled");
+            let config = match crate::el2::new_vm_config(true) {
+                Ok(config) => config,
+                Err(error) => {
+                    VM_EXISTS.store(false, Ordering::Release);
+                    return Err(error);
+                }
+            };
+            // SAFETY: `config` is a live hv_vm_config_t from `new_vm_config`.
+            let raw = unsafe { hv_vm_create(config) };
+            // SAFETY: the VM retains the config; this drops our create reference.
+            unsafe { crate::ffi::os_release(config) };
+            (raw, "el2=true")
+        } else {
+            tracing::debug!(target: "ternvale::hv", "creating VM with default config");
+            // SAFETY: NULL is the default configuration (`hv_vm.h`).
+            let raw = unsafe { hv_vm_create(std::ptr::null_mut()) };
+            (raw, "config=null")
+        };
+        let code = ternvale_log::log_hv_call!("hv_vm_create", args, raw);
         if code != HV_SUCCESS {
             VM_EXISTS.store(false, Ordering::Release);
             let error = HvError::from_code(code);
@@ -52,11 +81,12 @@ impl Vm {
                 target: "ternvale::hv",
                 code = format!("{:#x}", code),
                 error = %error,
+                el2,
                 "hv_vm_create failed"
             );
             return Err(error);
         }
-        tracing::info!(target: "ternvale::hv", "VM created");
+        tracing::info!(target: "ternvale::hv", el2, "VM created");
         crate::gic::note_vm_created();
         Ok(Self { _private: () })
     }

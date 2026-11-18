@@ -210,8 +210,27 @@ mod tests {
             power: Default::default(),
             encryption: false,
             rosetta: false,
+            nested_virt: false,
             x86_emulation: Default::default(),
             agent: Default::default(),
+        }
+    }
+
+    #[test]
+    fn native_accepts_nested_virt_when_the_host_has_el2() {
+        let mut config = dummy_config("native-el2", 1);
+        config.nested_virt = true;
+        if ternvale_vmm::host_supports_el2() {
+            pollster::block_on(NativeBackend::create(config)).expect("el2 host");
+        } else {
+            match pollster::block_on(NativeBackend::create(config)) {
+                Err(BackendError::UnsupportedOption {
+                    capability: "nested_virt",
+                    ..
+                }) => {}
+                Err(error) => panic!("{error}"),
+                Ok(_) => panic!("host without EL2 must refuse nested_virt"),
+            }
         }
     }
 

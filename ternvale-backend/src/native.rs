@@ -35,6 +35,17 @@ impl NativeBackend {
         fields(vm = %config.name, cpus = config.cpus)
     )]
     pub async fn create(config: VmConfig) -> Result<Self, BackendError> {
+        if config.nested_virt && !ternvale_vmm::host_supports_el2() {
+            tracing::error!(
+                target: "ternvale::nested",
+                vm = %config.name,
+                "nested_virt = true but this Mac has no Hypervisor.framework EL2"
+            );
+            return Err(BackendError::UnsupportedOption {
+                option: "nested_virt".into(),
+                capability: "nested_virt",
+            });
+        }
         let want = ternvale_compat::requested(config.x86_emulation, config.rosetta);
         let engine = ternvale_compat::resolve(want, ternvale_compat::native_caps(), config.profile)
             .map_err(BackendError::from_compat)?;

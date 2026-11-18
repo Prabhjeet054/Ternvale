@@ -49,6 +49,11 @@ const XHCI_MMIO_LEN: u64 = 0x5000;
 pub const TIMER_PPIS: [u32; 4] = [13, 14, 11, 10];
 /// The timer node's `always-on` property (GTDT always-on flag).
 pub const TIMER_ALWAYS_ON: bool = true;
+/// DTB PPI index for the GICv3 maintenance interrupt (`HV_GIC_INT_MAINTENANCE`
+/// = 25 = 16 + 9).
+pub const MAINTENANCE_PPI: u32 = 9;
+/// GIC INTID / ACPI GSIV for [`MAINTENANCE_PPI`].
+pub const MAINTENANCE_GSIV: u32 = 16 + MAINTENANCE_PPI;
 /// DT interrupt specifier flag: level-high.
 const IRQ_LEVEL_HIGH: u32 = 4;
 
@@ -78,6 +83,8 @@ pub struct GuestFdt {
     pub tpm: bool,
     /// Platform `generic-xhci` node. False when `[usb] enabled = false`.
     pub usb: bool,
+    /// GICv3 maintenance PPI on the `intc` node (`nested_virt = true`).
+    pub nested_virt: bool,
 }
 
 /// Building or installing the DTB failed.
@@ -134,7 +141,7 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     cpus(&mut w, fdt.cpu_count)?;
     psci(&mut w)?;
     timer(&mut w)?;
-    intc(&mut w, gic)?;
+    intc(&mut w, gic, fdt.nested_virt)?;
     uart(&mut w, clock)?;
     firmware_node::rtc(&mut w, clock)?;
     apb_clock(&mut w, clock)?;
@@ -283,7 +290,7 @@ fn timer(w: &mut FdtWriter) -> FdtWriterResult<()> {
     w.end_node(node)
 }
 
-fn intc(w: &mut FdtWriter, phandle: u32) -> FdtWriterResult<()> {
+fn intc(w: &mut FdtWriter, phandle: u32, nested_virt: bool) -> FdtWriterResult<()> {
     let node = w.begin_node(&format!("intc@{:x}", GIC_DIST_BASE))?;
     w.property_phandle(phandle)?;
     w.property_string("compatible", "arm,gic-v3")?;
@@ -296,6 +303,15 @@ fn intc(w: &mut FdtWriter, phandle: u32) -> FdtWriterResult<()> {
     let mut cells = reg(GIC_DIST_BASE, GIC_DIST_SIZE).to_vec();
     cells.extend_from_slice(&reg(GIC_REDIST_BASE, GIC_REDIST_SIZE));
     w.property_array_u32("reg", &cells)?;
+    if nested_virt {
+        w.property_array_u32("interrupts", &[1, MAINTENANCE_PPI, IRQ_LEVEL_HIGH])?;
+        tracing::debug!(
+            target: "ternvale::nested",
+            ppi = MAINTENANCE_PPI,
+            gsiv = MAINTENANCE_GSIV,
+            "dtb gic-v3 maintenance interrupt"
+        );
+    }
     w.end_node(node)
 }
 

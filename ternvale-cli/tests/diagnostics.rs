@@ -70,6 +70,7 @@ fn doctor_passes_signed_and_fails_without_the_entitlement() {
         "hypervisor",
         "entitlement",
         "GICv3",
+        "nested virt (EL2)",
         "disk space",
         "log directory",
     ] {
@@ -92,7 +93,7 @@ fn doctor_passes_signed_and_fails_without_the_entitlement() {
         )
     };
     assert!(
-        signed.stdout.ends_with(&totals(6, 0, 0)),
+        signed.stdout.ends_with(&totals(7, 0, 0)),
         "{}",
         signed.stdout
     );
@@ -129,7 +130,7 @@ fn doctor_passes_signed_and_fails_without_the_entitlement() {
     );
     assert!(stdout.contains(&format!("fix: Sign it: `codesign --sign - --force --entitlements entitlements/ternvale.entitlements {}`", bare.display())), "{stdout}");
     assert!(stdout.contains("SKIP  GICv3"), "{stdout}");
-    assert!(stdout.ends_with(&totals(3, 2, 1)), "{stdout}");
+    assert!(stdout.ends_with(&totals(4, 2, 1)), "{stdout}");
 }
 
 #[test]

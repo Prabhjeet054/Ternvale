@@ -47,8 +47,8 @@ pub use fdt::{
 pub use firmware::{FirmwareError, RomdWindow, VarsFlash};
 pub use fw_cfg::{FwCfg, FW_CFG_REG_SIZE};
 pub use linux::{
-    load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
-    CPSR_EL1H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
+    boot_cpsr, load_linux, parse_header, place, BootRegs, ImageHeader, LinuxBootError, LinuxLayout,
+    CPSR_EL1H_MASKED, CPSR_EL2H_MASKED, HEADER_LEN, IMAGE_MAGIC, KERNEL_ALIGN,
 };
 pub use machine::cmdline::resolve_cmdline;
 pub use machine::{
@@ -68,6 +68,8 @@ pub use psci::{call as psci_call, PowerRequest, PsciAction, TRAP_PC_ADVANCE};
 pub use rtc::{Pl031, PL031_REG_SIZE, RTC_SPI};
 pub use serial::SerialDevice;
 pub use smp::{dt_cpu_reg, mpidr, CpuPower, MPIDR_AFFINITY_MASK, MPIDR_RES1};
+/// Host EL2 for `nested_virt` (Hypervisor.framework probe).
+pub use ternvale_hv::host_supports_el2;
 /// The deadlock detector every mutex in this crate and `ternvale-devices` goes through.
 pub use ternvale_log::lockwatch;
 pub use tpm::TPM_DEVICE_NAME;

@@ -39,6 +39,14 @@ pub fn gather() -> Facts {
         log_dir: log_dir.and_then(|dir| log_dir_facts(&dir)),
         swtpm: ternvale_tpm::find_swtpm(None),
         qemu_img: crate::qemu_img::find(),
+        el2_supported: {
+            let probe = ternvale_hv::probe_el2();
+            match (probe.supported, probe.error) {
+                (Some(flag), _) => Ok(flag),
+                (None, Some(error)) => Err(error),
+                (None, None) => Ok(false),
+            }
+        },
     }
 }
 

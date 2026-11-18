@@ -125,6 +125,8 @@ pub struct Facts {
     pub swtpm: Result<ternvale_tpm::SwtpmInfo, ternvale_tpm::SwtpmError>,
     /// `qemu-img` for qcow2/vmdk/vhdx import (optional).
     pub qemu_img: Result<PathBuf, String>,
+    /// `hv_vm_config_get_el2_supported`. `Err` if the probe failed.
+    pub el2_supported: Result<bool, String>,
 }
 
 /// macOS 15 or newer (the in-kernel GICv3 needs it).
@@ -194,6 +196,27 @@ pub fn check_entitlement(facts: &Facts) -> Check {
             format!("could not read the signature of {exe}: {error}"),
         )
         .fix(format!("Run `codesign -d --entitlements - {exe}` by hand.")),
+    }
+}
+
+/// Hypervisor.framework EL2 for `nested_virt = true` (opt-in).
+#[tracing::instrument(level = "debug", target = "ternvale::nested", skip_all)]
+pub fn check_nested_virt(el2: &Result<bool, String>) -> Check {
+    const NAME: &str = "nested virt (EL2)";
+    match el2 {
+        Ok(true) => Check::new(
+            NAME,
+            Outcome::Pass,
+            "Hypervisor.framework EL2 is available; nested_virt = true is opt-in (native only)",
+        ),
+        Ok(false) => Check::new(
+            NAME,
+            Outcome::Warn,
+            "this Mac cannot run nested_virt = true (no Hypervisor.framework EL2)",
+        )
+        .fix("Use a host that reports EL2 (`ternvale probe-el2`); nested guests stay off by default."),
+        Err(error) => Check::new(NAME, Outcome::Warn, format!("could not probe EL2: {error}"))
+            .fix("Run `ternvale probe-el2` and see docs/NESTED_VIRT.md."),
     }
 }
 
@@ -336,6 +359,7 @@ pub fn evaluate(facts: &Facts) -> Vec<Check> {
         check_entitlement(facts),
         check_vz_backend(facts),
         check_gic(&facts.gic),
+        check_nested_virt(&facts.el2_supported),
         check_disk(&facts.disk),
         check_macos_guest_space(&facts.disk),
         check_log_dir(&facts.log_dir),

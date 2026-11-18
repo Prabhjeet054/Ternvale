@@ -163,6 +163,7 @@ fn dtb_and_acpi_agree() {
         fw_cfg: false,
         tpm: false,
         usb: false,
+        nested_virt: false,
     };
     let dts = dtc_dts(&build_fdt(&fdt).expect("dtb"));
 

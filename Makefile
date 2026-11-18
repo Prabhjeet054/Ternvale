@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale-hv-only.entitlements
 
-.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run fuzz-install audit-unsafe miri sanitize-stress loom compat compat-x86 compat-test x86-engines x86-engines-test updates-test crash-ingest-test step89-test notices book rc-check rc-zip rc-tag
+.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run fuzz-install audit-unsafe miri sanitize-stress loom compat compat-x86 compat-test x86-engines x86-engines-test nested-virt-test updates-test crash-ingest-test step89-test notices book rc-check rc-zip rc-tag
 
 build:
 	$(CARGO) build --workspace
@@ -109,6 +109,10 @@ x86-engines:
 
 x86-engines-test:
 	cd scripts/x86_suite && python3 -m unittest discover -p 'test_*.py' -v
+
+# Step 102: Linux nested_virt=true vs false (needs HV + docker).
+nested-virt-test:
+	./scripts/nested-virt-live-check.sh
 
 # Step 89: Sparkle appcast generator + crash ingest (no network).
 updates-test:

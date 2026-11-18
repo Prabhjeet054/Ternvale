@@ -53,6 +53,9 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
     };
     line(format!("{}: ok", path.display()));
     line(format!("  name        {}", config.name));
+    if config.nested_virt {
+        line("  nested_virt true (EL2h boot; native only; see docs/NESTED_VIRT.md)".into());
+    }
     if config.rosetta {
         line("  rosetta     true (VZ Linux virtiofs tag `rosetta`; see docs/ROSETTA.md)".into());
     }

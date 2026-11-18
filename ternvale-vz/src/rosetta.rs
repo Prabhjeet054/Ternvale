@@ -289,6 +289,7 @@ mod tests {
             power: Default::default(),
             encryption: false,
             rosetta: true,
+            nested_virt: false,
             x86_emulation: Default::default(),
             agent: Default::default(),
         };

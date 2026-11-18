@@ -14,7 +14,7 @@ use super::images::Boot;
 use super::{Images, MachineError};
 use crate::control::VmControl;
 use crate::gic_redist::RedistMap;
-use crate::linux::{load_linux, CPSR_EL1H_MASKED};
+use crate::linux::{boot_cpsr, load_linux};
 use crate::memory::GuestMemory;
 use crate::mmio::MmioBus;
 use crate::platform::RAM_BASE;
@@ -41,6 +41,8 @@ pub(super) struct Shared<'a> {
     pub vtimer_offset: &'a OnceLock<u64>,
     /// Lifecycle and pause gate around every `hv_vcpu_run`.
     pub control: &'a VmControl,
+    /// Guest entered at EL2h (`nested_virt = true`).
+    pub nested_virt: bool,
 }
 
 enum Leave {
@@ -193,6 +195,14 @@ fn setup(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<bool, MachineEr
                 crate::firmware::enter(&mut mem, vcpu, images.dtb, images.ram_size)?;
             }
         }
+        let cpsr = boot_cpsr(shared.nested_virt);
+        vcpu.set_cpsr(cpsr).map_err(op(index, "set boot cpsr"))?;
+        tracing::info!(
+            target: "ternvale::nested",
+            cpsr = format!("{cpsr:#x}"),
+            el2 = shared.nested_virt,
+            "boot cpu CPSR"
+        );
     }
     shared.power.mark_ready(index);
     tracing::info!(
@@ -212,7 +222,7 @@ fn setup(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<bool, MachineEr
     Ok(true)
 }
 
-/// PSCI `CPU_ON` state: PC = entry, x0 = context, EL1h with DAIF masked, MMU
+/// PSCI `CPU_ON` state: PC = entry, x0 = context, EL1h or EL2h with DAIF masked, MMU
 /// and data cache off (they may still be on from before a `CPU_OFF`). The
 /// vtimer offset goes back to CPU 0's boot value; [`run_loop`] then adds the
 /// time the VM has spent paused.
@@ -240,7 +250,7 @@ fn enter_at(
     vcpu.set_x(0, context)
         .map_err(op(index, "set x0 context"))?;
     vcpu.set_pc(entry).map_err(op(index, "set entry pc"))?;
-    vcpu.set_cpsr(CPSR_EL1H_MASKED)
+    vcpu.set_cpsr(boot_cpsr(shared.nested_virt))
         .map_err(op(index, "set entry cpsr"))?;
     tracing::info!(
         target: "ternvale::psci",
@@ -367,15 +377,36 @@ fn dispatch_exit(
             vcpu.set_pc(pc + 4)?;
             Ok(true)
         }
-        crate::esr::ExitEvent::SysReg { reg, write, .. } => {
-            // The guest PC stays on the MSR/MRS, as it does for a data abort.
-            tracing::debug!(
-                target: "ternvale::vcpu",
-                vcpu_id = vcpu.id(),
-                reg,
-                write,
-                "sysreg trap"
-            );
+        crate::esr::ExitEvent::SysReg {
+            op0,
+            op1,
+            crn,
+            crm,
+            op2,
+            reg,
+            write,
+        } => {
+            if shared.nested_virt && crate::esr::is_el2_sysreg(op0, op1) {
+                tracing::error!(
+                    target: "ternvale::nested",
+                    vcpu_id = vcpu.id(),
+                    op0,
+                    op1,
+                    crn,
+                    crm,
+                    op2,
+                    write,
+                    "unimplemented EL2 sysreg trap"
+                );
+            } else {
+                tracing::debug!(
+                    target: "ternvale::vcpu",
+                    vcpu_id = vcpu.id(),
+                    reg,
+                    write,
+                    "sysreg trap"
+                );
+            }
             if !write && reg <= 30 {
                 vcpu.set_x(reg, 0)?;
             }
@@ -384,12 +415,21 @@ fn dispatch_exit(
             Ok(true)
         }
         other => {
-            tracing::error!(
-                target: "ternvale::vcpu",
-                vcpu_id = vcpu.id(),
-                ?other,
-                "unhandled guest exit"
-            );
+            if shared.nested_virt {
+                tracing::error!(
+                    target: "ternvale::nested",
+                    vcpu_id = vcpu.id(),
+                    ?other,
+                    "unhandled guest exit with nested_virt"
+                );
+            } else {
+                tracing::error!(
+                    target: "ternvale::vcpu",
+                    vcpu_id = vcpu.id(),
+                    ?other,
+                    "unhandled guest exit"
+                );
+            }
             Ok(false)
         }
     }

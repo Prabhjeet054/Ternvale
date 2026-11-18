@@ -107,6 +107,9 @@ pub struct GicConfig {
     pub redist_base: u64,
     /// Redistributor discovery range length.
     pub redist_len: u32,
+    /// VGIC maintenance GSIV (INTID 25) when nested virt is on; 0 otherwise.
+    /// ACPI 6.5 §5.2.12.14 GICC field at offset 56.
+    pub vgic_maintenance_gsiv: u32,
 }
 
 /// Timer PPIs in DTB order: secure physical, non-secure physical, virtual,
@@ -269,6 +272,7 @@ pub(crate) mod tests {
                 dist_base: 0x0800_0000,
                 redist_base: 0x080a_0000,
                 redist_len: 0x00f6_0000,
+                vgic_maintenance_gsiv: 0,
             },
             timer: TimerConfig {
                 ppis: [13, 14, 11, 10],

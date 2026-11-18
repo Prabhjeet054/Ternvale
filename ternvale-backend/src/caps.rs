@@ -43,7 +43,7 @@ impl BackendCapabilities {
             tpm: true,
             snapshots_disk: true,
             snapshots_memory: true,
-            nested_virt: false,
+            nested_virt: true,
             rosetta: false,
             fex: true,
             qemu_user: true,
@@ -163,6 +163,7 @@ mod tests {
         assert!(caps.gpu_2d);
         assert!(caps.custom_display_pipeline);
         assert!(!caps.guest_macos);
+        assert!(caps.nested_virt);
         assert!(!caps.rosetta);
         assert!(caps.fex);
         assert!(caps.qemu_user);
@@ -174,6 +175,8 @@ mod tests {
         assert!(linux.rosetta);
         assert!(linux.fex);
         assert!(linux.guest_linux);
+        assert!(!linux.nested_virt);
+        assert!(!BackendCapabilities::macos_vz().nested_virt);
         assert!(!BackendCapabilities::macos_vz().rosetta);
     }
 

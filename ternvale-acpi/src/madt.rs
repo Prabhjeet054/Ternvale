@@ -10,8 +10,9 @@
 //!   63:40 zero, so not its RES1 bit 31), flags = Enabled. The
 //!   CPU Interface Number, GICC/GICV/GICH bases, and GICR base are 0: GICv3
 //!   uses system registers, and the GICR structure describes the
-//!   redistributors. Performance (PMU) and VGIC maintenance interrupts are 0
-//!   because the DTB has no PMU node and no maintenance interrupt.
+//!   redistributors. Performance (PMU) interrupt is 0 (no PMU node). VGIC
+//!   maintenance is the GIC config's `vgic_maintenance_gsiv` (INTID 25 / PPI 9
+//!   when `nested_virt`, else 0).
 //! - One GICD (type 0x0C, §5.2.12.15), 24 bytes, GIC version 3.
 //! - One GICR (type 0x0E, §5.2.12.17), 16 bytes: the redistributor discovery
 //!   range, the same window as the DTB `intc` node's second `reg` entry.
@@ -53,6 +54,8 @@ pub mod gicc {
     pub const UID: usize = 8;
     /// Flags (u32).
     pub const FLAGS: usize = 12;
+    /// VGIC Maintenance interrupt GSIV (u32). ACPI 6.5 §5.2.12.14.
+    pub const VGIC_MAINT: usize = 56;
     /// GICR base address (u64).
     pub const GICR_BASE: usize = 60;
     /// MPIDR (u64).
@@ -73,6 +76,8 @@ pub fn madt(config: &AcpiConfig) -> Result<Vec<u8>, AcpiError> {
         gicc[1] = GICC_LEN as u8;
         gicc[gicc::UID..gicc::UID + 4].copy_from_slice(&uid.to_le_bytes());
         gicc[gicc::FLAGS..gicc::FLAGS + 4].copy_from_slice(&GICC_ENABLED.to_le_bytes());
+        gicc[gicc::VGIC_MAINT..gicc::VGIC_MAINT + 4]
+            .copy_from_slice(&config.gic.vgic_maintenance_gsiv.to_le_bytes());
         gicc[gicc::MPIDR..gicc::MPIDR + 8].copy_from_slice(&mpidr.to_le_bytes());
         body.extend_from_slice(&gicc);
         tracing::debug!(target: "ternvale::acpi", uid, mpidr = %format!("{mpidr:#x}"), "madt gicc");
@@ -128,6 +133,7 @@ mod tests {
                 u64::from_le_bytes(s[68..76].try_into().unwrap()),
                 u64::from(cpu)
             );
+            assert_eq!(&s[56..60], &[0; 4], "vgic maintenance off by default");
             assert_eq!(&s[60..68], &[0; 8], "gicr base");
             at += GICC_LEN;
         }
@@ -168,5 +174,15 @@ mod tests {
     #[test]
     fn invalid_config_is_rejected() {
         assert!(madt(&sample(0)).is_err());
+    }
+
+    #[test]
+    fn nested_virt_writes_vgic_maintenance_gsiv_25() {
+        let mut config = sample(1);
+        config.gic.vgic_maintenance_gsiv = 25;
+        let bytes = madt(&config).expect("madt");
+        let at = SDT_HEADER_LEN + MADT_FIXED_LEN;
+        let s = &bytes[at..at + GICC_LEN];
+        assert_eq!(u32::from_le_bytes(s[56..60].try_into().unwrap()), 25);
     }
 }

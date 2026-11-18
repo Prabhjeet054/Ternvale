@@ -5,8 +5,8 @@ use ternvale_hv::MacosVersion;
 use super::probe::{disk_facts, log_dir_facts};
 use super::{
     check_disk, check_entitlement, check_gic, check_hypervisor, check_log_dir, check_macos,
-    check_rosetta, check_vz_backend, evaluate, has_hv_entitlement, human, render, DiskFacts, Facts,
-    LogDirFacts, Outcome, VmProbe,
+    check_nested_virt, check_rosetta, check_vz_backend, evaluate, has_hv_entitlement, human,
+    render, DiskFacts, Facts, LogDirFacts, Outcome, VmProbe,
 };
 
 const SIGNED_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.hypervisor</key><true/><key>com.apple.security.virtualization</key><true/></dict></plist>"#;
@@ -43,6 +43,7 @@ fn healthy() -> Facts {
             features: ternvale_tpm::REQUIRED_FEATURES.map(String::from).to_vec(),
         }),
         qemu_img: Ok(PathBuf::from("/opt/homebrew/bin/qemu-img")),
+        el2_supported: Ok(true),
     }
 }
 
@@ -59,10 +60,22 @@ fn a_healthy_host_passes_everything() {
     assert!(text.contains("macOS guest space"), "{text}");
     assert!(text.contains("vz backend"), "{text}");
     assert!(
-        text.ends_with("10 passed, 0 warnings, 0 failed, 0 skipped"),
+        text.ends_with("11 passed, 0 warnings, 0 failed, 0 skipped"),
         "{text}"
     );
     assert!(!text.contains("fix:"));
+}
+
+#[test]
+fn nested_virt_doctor_warns_when_the_host_has_no_el2() {
+    let check = check_nested_virt(&Ok(false));
+    assert_eq!(check.outcome, Outcome::Warn);
+    assert!(
+        check.detail.contains("nested_virt = true"),
+        "{}",
+        check.detail
+    );
+    assert_eq!(check_nested_virt(&Ok(true)).outcome, Outcome::Pass);
 }
 
 #[test]
@@ -135,7 +148,7 @@ fn unsigned_binary_fails_hypervisor_and_entitlement_with_codesign_fix() {
     );
     assert!(text.contains("fix: Sign it:"), "{text}");
     assert!(
-        text.ends_with("6 passed, 0 warnings, 3 failed, 1 skipped"),
+        text.ends_with("7 passed, 0 warnings, 3 failed, 1 skipped"),
         "{text}"
     );
 }

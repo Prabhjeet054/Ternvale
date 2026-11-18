@@ -25,6 +25,22 @@ pub const DTB_MAX: u64 = 2 * 1024 * 1024;
 const INITRD_WINDOW_MAX: u64 = 32 * 1024 * 1024 * 1024;
 /// `PSTATE`: EL1h (`M = 0b0101`) with DAIF masked (`0x3c0`).
 pub const CPSR_EL1H_MASKED: u64 = 0x3c5;
+/// `PSTATE`: EL2h (`M = 0b1001`) with DAIF masked. Linux
+/// `Documentation/arch/arm64/booting.rst` (Primary CPU general-purpose
+/// register settings): enter at EL2h when the Image is called in EL2; `x0`
+/// is still the DTB. TODO(verify) against the kernel tree on this machine.
+pub const CPSR_EL2H_MASKED: u64 = 0x3c9;
+
+/// CPSR for the boot CPU / PSCI `CPU_ON` entry.
+#[tracing::instrument(level = "debug", target = "ternvale::boot", skip_all, fields(el2))]
+pub fn boot_cpsr(el2: bool) -> u64 {
+    if el2 {
+        CPSR_EL2H_MASKED
+    } else {
+        CPSR_EL1H_MASKED
+    }
+}
+
 /// `flags` bit 0: kernel is big-endian.
 const FLAG_BE: u64 = 1;
 
@@ -294,12 +310,13 @@ pub fn load_linux(
     cpu.set_gpr(2, 0)?;
     cpu.set_gpr(3, 0)?;
     cpu.set_pc(layout.kernel)?;
-    cpu.set_cpsr(CPSR_EL1H_MASKED)?;
+    let cpsr = boot_cpsr(false);
+    cpu.set_cpsr(cpsr)?;
     tracing::info!(
         target: "ternvale::boot",
         x0 = format!("{:#x}", layout.dtb),
         pc = format!("{:#x}", layout.kernel),
-        cpsr = format!("{:#x}", CPSR_EL1H_MASKED),
+        cpsr = format!("{:#x}", cpsr),
         "set linux boot registers"
     );
     Ok(layout)

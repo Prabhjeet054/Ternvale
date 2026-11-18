@@ -155,6 +155,12 @@ pub enum HvError {
         /// `errno` after the call.
         errno: i32,
     },
+    /// EL2 was requested but Hypervisor.framework does not expose it.
+    #[error("Hypervisor.framework EL2 is not available on this host")]
+    El2Unavailable,
+    /// `hv_vm_config_create` returned NULL.
+    #[error("Hypervisor.framework returned a null VM config")]
+    VmConfigNull,
 }
 
 impl HvError {

@@ -160,6 +160,18 @@ backend = "user"
     }
 
     #[test]
+    fn nested_virt_defaults_off() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&sample(&fix)).expect("parse");
+        assert!(!config.nested_virt);
+        let text = format!("nested_virt = true\n{}", sample(&fix));
+        let config = VmConfig::from_toml(&text).expect("nested");
+        assert!(config.nested_virt);
+        let dumped = config.to_toml().expect("toml");
+        assert!(dumped.contains("nested_virt = true"), "{dumped}");
+    }
+
+    #[test]
     fn rosetta_flag_parses_default_false() {
         let fix = Fixture::new();
         let config = VmConfig::from_toml(&sample(&fix)).expect("parse");

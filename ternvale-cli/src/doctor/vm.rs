@@ -73,6 +73,9 @@ pub fn checks_for_path(path: &Path) -> Vec<Check> {
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm = %config.name))]
 pub fn checks(config: &VmConfig) -> Vec<Check> {
     let mut out = Vec::new();
+    if config.nested_virt {
+        out.push(check_nested_virt_config(config));
+    }
     let cmdline = match &config.firmware {
         Some(firmware) => {
             out.push(check_firmware(firmware));
@@ -98,6 +101,35 @@ pub fn checks(config: &VmConfig) -> Vec<Check> {
         tracing::debug!(target: "ternvale::cli", check = %check.name, outcome = ?check.outcome, detail = %check.detail, "vm config problem");
     }
     out
+}
+
+/// `nested_virt = true` needs the native backend and host EL2.
+#[tracing::instrument(level = "debug", target = "ternvale::nested", skip_all, fields(vm = %config.name))]
+fn check_nested_virt_config(config: &VmConfig) -> Check {
+    const NAME: &str = "nested_virt";
+    let resolved = ternvale_backend::resolve(config).resolved;
+    let caps = ternvale_backend::BackendCapabilities::for_guest(resolved, config.profile);
+    if !caps.nested_virt {
+        return Check::new(
+            NAME,
+            Outcome::Fail,
+            "nested_virt = true is not supported by this backend",
+        )
+        .fix("Use backend = \"native\" (see docs/NESTED_VIRT.md).");
+    }
+    if !ternvale_hv::host_supports_el2() {
+        return Check::new(
+            NAME,
+            Outcome::Fail,
+            "nested_virt = true but this Mac has no Hypervisor.framework EL2",
+        )
+        .fix("Run `ternvale probe-el2`; nested virt needs macOS 15+ and a supported chip.");
+    }
+    Check::new(
+        NAME,
+        Outcome::Pass,
+        "nested_virt = true: guest boots at EL2h (native)",
+    )
 }
 
 /// The disk `root=` names, when it is a whole virtio disk or one of its partitions.

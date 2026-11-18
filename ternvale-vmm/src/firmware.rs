@@ -197,7 +197,8 @@ pub fn check_layout(ram: u64, dtb: u64) -> Result<(), FirmwareError> {
 /// Copy the DTB to [`RAM_BASE`] and point the boot CPU at the firmware reset
 /// vector: `PC = 0`, EL1h with DAIF masked, MMU off. `x0` holds the DTB
 /// address as for Linux; ArmVirtQemu reads the fixed PCD instead, so this is
-/// only a convenience.
+/// only a convenience. The vCPU thread overwrites CPSR with EL2h when
+/// `nested_virt` is on. EDK2 at EL2 is TODO(verify).
 #[tracing::instrument(level = "debug", target = "ternvale::firmware", skip_all, fields(dtb = dtb.len()))]
 pub fn enter(
     memory: &mut GuestMemory,
@@ -212,12 +213,13 @@ pub fn enter(
         cpu.set_gpr(index, 0)?;
     }
     cpu.set_pc(FLASH_CODE_BASE)?;
-    cpu.set_cpsr(crate::linux::CPSR_EL1H_MASKED)?;
+    let cpsr = crate::linux::boot_cpsr(false);
+    cpu.set_cpsr(cpsr)?;
     tracing::info!(
         target: "ternvale::firmware",
         pc = format!("{FLASH_CODE_BASE:#x}"),
         x0 = format!("{RAM_BASE:#x}"),
-        cpsr = format!("{:#x}", crate::linux::CPSR_EL1H_MASKED),
+        cpsr = format!("{:#x}", cpsr),
         "boot cpu enters the firmware reset vector"
     );
     Ok(())
