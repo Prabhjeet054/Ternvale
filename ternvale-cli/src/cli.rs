@@ -446,6 +446,9 @@ pub enum X86Command {
         /// Destination squashfs (default Application Support `fex/RootFS/`).
         #[arg(long)]
         dest: Option<PathBuf>,
+        /// Same as typing `yes` (app one-click after the user confirms in UI).
+        #[arg(long)]
+        yes: bool,
     },
     /// Install distro qemu-user-static in a guest (GPL; type yes; never bundled).
     InstallQemuUser {
@@ -457,6 +460,24 @@ pub enum X86Command {
         /// Log planned packages; do not apt-get.
         #[arg(long)]
         dry_run: bool,
+        /// Same as typing `yes` (app one-click after the user confirms in UI).
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Resolve which x86 engine a config will use (no hypervisor).
+    Plan {
+        /// VM config (TOML).
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Run Step 97/98 tooling for the engine `plan` selected (FEX RootFS, guest-setup, qemu-user).
+    Setup {
+        /// VM config (TOML).
+        #[arg(long)]
+        config: PathBuf,
+        /// Confirm licenses (`yes`); required for FEX RootFS and qemu-user.
+        #[arg(long)]
+        yes: bool,
     },
     /// Copy guest x86-metrics.json into `query-stats.metrics.x86`.
     ScrapeMetrics {

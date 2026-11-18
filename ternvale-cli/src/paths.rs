@@ -199,6 +199,14 @@ pub fn snapshot_bundle(vm: &str, label: &str) -> Result<PathBuf> {
     Ok(snapshots_root()?.join(vm).join(label))
 }
 
+/// Host log directory (`~/Library/Logs/Ternvale`).
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+pub fn host_log_dir() -> Result<PathBuf> {
+    let home =
+        std::env::var_os("HOME").context("HOME is not set; cannot find the host log directory")?;
+    Ok(PathBuf::from(home).join("Library/Logs/Ternvale"))
+}
+
 /// Host directory for FEX x86 RootFS images (never bundled in git).
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
 pub fn fex_rootfs_dir() -> Result<PathBuf> {

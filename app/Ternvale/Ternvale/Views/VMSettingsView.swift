@@ -59,13 +59,16 @@ struct VMSettingsView: View {
             Button("Add NIC") {
                 nics.append(NicConfig.user(id: nics.count))
             }
+            Section("x86 programs") {
+                X86SettingsSection(configURL: configURL)
+            }
             if let error {
                 Text(error).foregroundStyle(.red).font(.caption)
             }
         }
         .formStyle(.grouped)
         .frame(minWidth: 480, minHeight: 360)
-        .navigationTitle("VM network")
+        .navigationTitle("VM settings")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }

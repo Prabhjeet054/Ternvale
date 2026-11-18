@@ -365,6 +365,7 @@ fn parses_every_subcommand() {
             action: X86Command::FetchRootfs {
                 distro: "Ubuntu_24_04".into(),
                 dest: None,
+                yes: false,
             }
         }
     );
@@ -382,6 +383,7 @@ fn parses_every_subcommand() {
                 name: None,
                 root: Some("/tmp/root".into()),
                 dry_run: true,
+                yes: false,
             }
         }
     );
@@ -389,6 +391,30 @@ fn parses_every_subcommand() {
         parse(&["ternvale", "x86", "scrape-metrics", "lab"]),
         Command::X86 {
             action: X86Command::ScrapeMetrics { name: "lab".into() }
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "x86", "plan", "--config", "/tmp/c.toml"]),
+        Command::X86 {
+            action: X86Command::Plan {
+                config: PathBuf::from("/tmp/c.toml"),
+            }
+        }
+    );
+    assert_eq!(
+        parse(&[
+            "ternvale",
+            "x86",
+            "setup",
+            "--config",
+            "/tmp/c.toml",
+            "--yes"
+        ]),
+        Command::X86 {
+            action: X86Command::Setup {
+                config: PathBuf::from("/tmp/c.toml"),
+                yes: true,
+            }
         }
     );
     assert_eq!(

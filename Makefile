@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale-hv-only.entitlements
 
-.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run fuzz-install audit-unsafe miri sanitize-stress loom compat compat-test x86-engines x86-engines-test updates-test crash-ingest-test step89-test notices book rc-check rc-zip rc-tag
+.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run fuzz-install audit-unsafe miri sanitize-stress loom compat compat-x86 compat-test x86-engines x86-engines-test updates-test crash-ingest-test step89-test notices book rc-check rc-zip rc-tag
 
 build:
 	$(CARGO) build --workspace
@@ -98,6 +98,10 @@ compat:
 
 compat-test:
 	cd scripts/compat && python3 -m unittest discover -p 'test_*.py' -v
+
+# Step 100: amd64 / Windows x64 workload table → docs/X86_COMPAT.md (skip, not fail).
+compat-x86:
+	python3 scripts/compat/x86_run.py --auto
 
 # Step 99: Rosetta / FEX / qemu-user det + TSO litmus (needs HV + docker).
 x86-engines:

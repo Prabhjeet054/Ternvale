@@ -180,6 +180,73 @@ enum VMConfigParser {
         return Int(text[capture])
     }
 
+    /// True when the guest should try an x86 usermode engine (`auto` or a named engine, or `rosetta = true`).
+    static func parseRunX86(in text: String) -> Bool {
+        if bool(in: text, key: "rosetta") == true {
+            return true
+        }
+        guard let value = optionalString(in: text, key: "x86_emulation") else {
+            return false
+        }
+        return value != "none"
+    }
+
+    /// Toggle on → `x86_emulation = "auto"`; off → `none` and `rosetta = false`.
+    static func replacingRunX86(in text: String, enabled: Bool) -> String {
+        var out = upsertString(in: text, key: "x86_emulation", value: enabled ? "auto" : "none")
+        if enabled {
+            if bool(in: out, key: "rosetta") == false {
+                out = removeKey(in: out, key: "rosetta")
+            }
+        } else {
+            out = upsertBool(in: out, key: "rosetta", value: false)
+        }
+        return out
+    }
+
+    private static func bool(in text: String, key: String) -> Bool? {
+        let pattern = #"^\s*"# + key + #"\s*=\s*(true|false)\s*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              let capture = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[capture]) == "true"
+    }
+
+    private static func upsertString(in text: String, key: String, value: String) -> String {
+        upsertLine(in: text, key: key, line: "\(key) = \"\(value)\"")
+    }
+
+    private static func upsertBool(in text: String, key: String, value: Bool) -> String {
+        upsertLine(in: text, key: key, line: "\(key) = \(value ? "true" : "false")")
+    }
+
+    private static func upsertLine(in text: String, key: String, line: String) -> String {
+        let pattern = #"^\s*"# + NSRegularExpression.escapedPattern(for: key) + #"\s*=.*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else {
+            return text + "\n" + line + "\n"
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        if regex.firstMatch(in: text, range: range) != nil {
+            return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: line)
+        }
+        let trimmed = text.trimmingCharacters(in: .newlines)
+        return trimmed + "\n" + line + "\n"
+    }
+
+    private static func removeKey(in text: String, key: String) -> String {
+        let pattern = #"^\s*"# + NSRegularExpression.escapedPattern(for: key) + #"\s*=.*\n?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else {
+            return text
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+    }
+
     enum ParseError: LocalizedError {
         case missing(String)
 

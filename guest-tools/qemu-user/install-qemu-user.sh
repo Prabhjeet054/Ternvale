@@ -150,6 +150,9 @@ write_metrics_stub() {
 }
 
 install_live() {
+    if [ "${TERNVALE_X86_BREAK_GUEST_NET:-}" = "1" ]; then
+        die "reason=guest-network-unreachable hint='no route or DNS in the guest'"
+    fi
     if [ -n "$ROOT" ]; then
         log INFO "action=pkg skipped=root hint='host tests do not apt-get'"
         return 0
@@ -158,20 +161,30 @@ install_live() {
         log INFO "action=pkg dry_run=true family=$FAMILY pkg=$PKG"
         return 0
     fi
+    # Fail fast when the guest has no network (do not hang the app spinner).
     case "$FAMILY" in
     debian)
-        DEBIAN_FRONTEND=noninteractive apt-get update -y
-        DEBIAN_FRONTEND=noninteractive apt-get install -y "$PKG"
+        DEBIAN_FRONTEND=noninteractive apt-get \
+            -o Acquire::Retries=0 \
+            -o Acquire::http::Timeout=10 \
+            -o Acquire::https::Timeout=10 \
+            -o Acquire::ftp::Timeout=10 \
+            update -y
+        DEBIAN_FRONTEND=noninteractive apt-get \
+            -o Acquire::Retries=0 \
+            -o Acquire::http::Timeout=10 \
+            -o Acquire::https::Timeout=10 \
+            install -y "$PKG"
         ;;
     fedora)
         if command -v dnf >/dev/null 2>&1; then
-            dnf install -y "$PKG"
+            dnf install -y --setopt=timeout=10 --setopt=retries=0 "$PKG"
         else
-            yum install -y "$PKG"
+            yum install -y --setopt=timeout=10 "$PKG"
         fi
         ;;
     alpine)
-        apk add --no-cache "$PKG"
+        apk add --no-cache --timeout 10 "$PKG" 2>/dev/null || apk add --no-cache "$PKG"
         ;;
     esac
     log INFO "action=pkg result=ok pkg=$PKG interpreter=$INTERPRETER"

@@ -29,16 +29,16 @@ const GUEST_METRICS: &str = "/var/lib/ternvale/x86-metrics.json";
     level = "info",
     target = "ternvale::compat",
     skip_all,
-    fields(vm = ?vm, root = ?root, dry_run)
+    fields(vm = ?vm, root = ?root, dry_run, yes)
 )]
 pub fn install_qemu_user(
     vm: Option<&str>,
     root: Option<&Path>,
     dry_run: bool,
+    yes: bool,
     json: bool,
 ) -> Result<ExitCode> {
-    println!("{LICENSE_NOTE}");
-    if !read_consent()? {
+    if !read_consent(yes)? {
         tracing::warn!(target: "ternvale::compat", "qemu-user install cancelled");
         bail!("qemu-user install cancelled (type yes; QEMU is GPL and is not bundled)");
     }
@@ -52,13 +52,18 @@ pub fn install_qemu_user(
 }
 
 #[tracing::instrument(level = "debug", target = "ternvale::compat", skip_all)]
-fn read_consent() -> Result<bool> {
+fn read_consent(yes: bool) -> Result<bool> {
+    if yes {
+        tracing::debug!(target: "ternvale::compat", "qemu-user consent from --yes");
+        return Ok(true);
+    }
     if std::env::var_os("TERNVALE_QEMU_USER_CONSENT").as_deref()
         == Some(std::ffi::OsStr::new("yes"))
     {
         tracing::debug!(target: "ternvale::compat", "qemu-user consent from TERNVALE_QEMU_USER_CONSENT");
         return Ok(true);
     }
+    println!("{LICENSE_NOTE}");
     let mut line = String::new();
     std::io::stdin()
         .read_line(&mut line)
@@ -101,6 +106,7 @@ fn install_on_root(root: &Path, dry_run: bool, json: bool) -> Result<ExitCode> {
 pub fn run_script(root: &Path, dry_run: bool) -> Result<std::process::Output> {
     let script = host_install_script()?;
     let mut cmd = Command::new("sh");
+    cmd.env_remove("TERNVALE_X86_BREAK_GUEST_NET");
     cmd.arg(&script).arg("--root").arg(root);
     if dry_run {
         cmd.arg("--dry-run");
@@ -113,6 +119,19 @@ pub fn run_script(root: &Path, dry_run: bool) -> Result<std::process::Output> {
         "running install-qemu-user.sh"
     );
     cmd.output()
+        .with_context(|| format!("run {}", script.display()))
+}
+
+#[cfg(test)]
+#[tracing::instrument(level = "debug", target = "ternvale::compat", skip_all)]
+fn run_script_break_guest_net(root: &Path) -> Result<std::process::Output> {
+    let script = host_install_script()?;
+    Command::new("sh")
+        .env("TERNVALE_X86_BREAK_GUEST_NET", "1")
+        .arg(&script)
+        .arg("--root")
+        .arg(root)
+        .output()
         .with_context(|| format!("run {}", script.display()))
 }
 
@@ -166,7 +185,7 @@ fn install_in_guest(vm: &str, dry_run: bool, json: bool) -> Result<ExitCode> {
         "running guest qemu-user installer"
     );
     let code =
-        exec_cmd::exec(vm, Some(300), &argv, false).context("run guest qemu-user installer")?;
+        exec_cmd::exec(vm, Some(45), &argv, false).context("run guest qemu-user installer")?;
     json_out::emit(
         json,
         serde_json::json!({
@@ -286,6 +305,25 @@ mod tests {
         assert!(!td.join("usr/bin/qemu-x86_64-static").exists());
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(err.contains("skipped=root"), "{err}");
+        let _ = fs::remove_dir_all(td);
+    }
+
+    #[test]
+    fn guest_network_break_fails_without_hanging() {
+        let td = std::env::temp_dir().join(format!(
+            "ternvale-qemu-netbreak-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(td.join("etc")).unwrap();
+        fs::write(td.join("etc/os-release"), "ID=debian\nID_LIKE=debian\n").unwrap();
+        let out = run_script_break_guest_net(&td).unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{err}");
+        assert!(err.contains("guest-network-unreachable"), "{err}");
         let _ = fs::remove_dir_all(td);
     }
 }

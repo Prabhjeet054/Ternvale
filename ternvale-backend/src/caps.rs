@@ -1,6 +1,7 @@
 //! Feature flags advertised by a backend.
 
 use serde::{Deserialize, Serialize};
+use ternvale_config::{BackendKind, Profile};
 
 /// Explicit capability bits. A false flag must surface as
 /// [`crate::BackendError::Unsupported`], never a silent no-op.
@@ -113,6 +114,23 @@ impl BackendCapabilities {
         }
     }
 
+    /// Caps for a resolved backend + guest profile (callers use flags, not names).
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::backend",
+        skip_all,
+        fields(resolved = %resolved, profile = %profile)
+    )]
+    pub fn for_guest(resolved: BackendKind, profile: Profile) -> Self {
+        match (resolved, profile) {
+            (BackendKind::Native, _) => Self::native(),
+            (BackendKind::Vz, Profile::Macos) => Self::macos_vz(),
+            (BackendKind::Vz, _) => Self::linux_vz(),
+            (BackendKind::Auto, Profile::Macos) => Self::macos_vz(),
+            (BackendKind::Auto, _) => Self::native(),
+        }
+    }
+
     /// x86 usermode bits for [`ternvale_compat::resolve`].
     #[tracing::instrument(level = "debug", target = "ternvale::backend", skip_all)]
     pub fn x86(&self) -> ternvale_compat::EngineCaps {
@@ -157,6 +175,19 @@ mod tests {
         assert!(linux.fex);
         assert!(linux.guest_linux);
         assert!(!BackendCapabilities::macos_vz().rosetta);
+    }
+
+    #[test]
+    fn for_guest_uses_profile_not_a_silent_no_op() {
+        use ternvale_config::{BackendKind, Profile};
+        let native = BackendCapabilities::for_guest(BackendKind::Native, Profile::Linux);
+        assert!(native.fex);
+        assert!(!native.rosetta);
+        let linux_share = BackendCapabilities::for_guest(BackendKind::Vz, Profile::Linux);
+        assert!(linux_share.rosetta);
+        let macos = BackendCapabilities::for_guest(BackendKind::Vz, Profile::Macos);
+        assert!(!macos.fex);
+        assert!(!macos.rosetta);
         assert!(!BackendCapabilities::macos_vz().fex);
         assert!(!BackendCapabilities::native().rosetta);
         assert!(BackendCapabilities::native().fex);

@@ -139,10 +139,19 @@ struct AgentPayload: Decodable {
 struct BackendCapabilitiesPayload: Decodable {
     let customDisplayPipeline: Bool?
     let guestMacos: Bool?
+    let guestLinux: Bool?
+    let guestWindows: Bool?
+    let rosetta: Bool?
+    let fex: Bool?
+    let qemuUser: Bool?
 
     enum CodingKeys: String, CodingKey {
         case customDisplayPipeline = "custom_display_pipeline"
         case guestMacos = "guest_macos"
+        case guestLinux = "guest_linux"
+        case guestWindows = "guest_windows"
+        case rosetta, fex
+        case qemuUser = "qemu_user"
     }
 }
 

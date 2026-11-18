@@ -81,6 +81,7 @@ pub mod unattend_xml;
 pub mod update_check;
 pub mod vsock;
 pub mod wait_cmd;
+pub mod x86_plan;
 
 use std::process::ExitCode;
 
@@ -214,15 +215,18 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             undo,
         } => guest_setup::guest_setup(&name, dry_run, undo, json),
         Command::X86 { action } => match action {
-            cli::X86Command::FetchRootfs { distro, dest } => {
-                fex_cmd::fetch_rootfs(&distro, dest.as_deref(), json)
+            cli::X86Command::FetchRootfs { distro, dest, yes } => {
+                fex_cmd::fetch_rootfs(&distro, dest.as_deref(), yes, json)
             }
             cli::X86Command::InstallQemuUser {
                 name,
                 root,
                 dry_run,
-            } => qemu_cmd::install_qemu_user(name.as_deref(), root.as_deref(), dry_run, json),
+                yes,
+            } => qemu_cmd::install_qemu_user(name.as_deref(), root.as_deref(), dry_run, yes, json),
             cli::X86Command::ScrapeMetrics { name } => qemu_cmd::scrape_metrics(&name, json),
+            cli::X86Command::Plan { config } => x86_plan::plan(&config, json),
+            cli::X86Command::Setup { config, yes } => x86_plan::setup(&config, yes, json),
         },
         Command::WaitReady { name, timeout } => wait_cmd::wait_ready(&name, timeout, json),
         Command::Ssh { name } => ssh_cmd::ssh(&name, json),

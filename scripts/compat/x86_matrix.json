@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "linux": [
+    {
+      "id": "docker-nginx",
+      "name": "nginx (amd64)",
+      "kind": "docker",
+      "image": "nginx:latest"
+    },
+    {
+      "id": "docker-postgres",
+      "name": "postgres (amd64)",
+      "kind": "docker",
+      "image": "postgres:16"
+    },
+    {
+      "id": "docker-redis",
+      "name": "redis (amd64)",
+      "kind": "docker",
+      "image": "redis:7"
+    },
+    {
+      "id": "docker-python",
+      "name": "python (amd64)",
+      "kind": "docker",
+      "image": "python:3.12-slim"
+    },
+    {
+      "id": "docker-node",
+      "name": "node (amd64)",
+      "kind": "docker",
+      "image": "node:22-slim"
+    },
+    {
+      "id": "cli-busybox",
+      "name": "busybox x86_64 (static CLI)",
+      "kind": "cli",
+      "image": "busybox:1.36"
+    },
+    {
+      "id": "go-hello",
+      "name": "Go linux/amd64 hello",
+      "kind": "go",
+      "image": "golang:1.23-alpine"
+    },
+    {
+      "id": "java-hello",
+      "name": "Java x86_64 (Temurin)",
+      "kind": "java",
+      "image": "eclipse-temurin:21-jre"
+    }
+  ],
+  "windows": [
+    {
+      "id": "win-7zip",
+      "name": "7-Zip x64"
+    },
+    {
+      "id": "win-editor",
+      "name": "portable editor x64 (Notepad++)"
+    },
+    {
+      "id": "win-dotnet",
+      "name": ".NET x64 app"
+    }
+  ]
+}

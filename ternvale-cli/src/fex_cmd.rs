@@ -25,14 +25,9 @@ shipped with Ternvale. Review Canonical's terms before you download. Type yes
 to fetch, or anything else to cancel:";
 
 /// `ternvale x86 fetch-rootfs`.
-#[tracing::instrument(level = "info", target = "ternvale::compat", skip_all, fields(distro, dest = ?dest))]
-pub fn fetch_rootfs(distro: &str, dest: Option<&Path>, json: bool) -> Result<ExitCode> {
-    println!("{LICENSE_NOTE}");
-    let mut line = String::new();
-    std::io::stdin()
-        .read_line(&mut line)
-        .context("read FEX RootFS download consent")?;
-    if !consented(&line) {
+#[tracing::instrument(level = "info", target = "ternvale::compat", skip_all, fields(distro, dest = ?dest, yes))]
+pub fn fetch_rootfs(distro: &str, dest: Option<&Path>, yes: bool, json: bool) -> Result<ExitCode> {
+    if !fex_consent(yes)? {
         tracing::warn!(target: "ternvale::compat", "FEX RootFS download cancelled");
         bail!("FEX RootFS download cancelled (type yes to accept the license note)");
     }
@@ -53,6 +48,26 @@ pub fn fetch_rootfs(distro: &str, dest: Option<&Path>, json: bool) -> Result<Exi
 #[tracing::instrument(level = "debug", target = "ternvale::compat", skip_all)]
 pub fn consented(line: &str) -> bool {
     line.trim() == "yes"
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::compat", skip_all, fields(yes))]
+fn fex_consent(yes: bool) -> Result<bool> {
+    if yes {
+        tracing::debug!(target: "ternvale::compat", "FEX RootFS consent from --yes");
+        return Ok(true);
+    }
+    if std::env::var_os("TERNVALE_FEX_ROOTFS_CONSENT").as_deref()
+        == Some(std::ffi::OsStr::new("yes"))
+    {
+        tracing::debug!(target: "ternvale::compat", "FEX RootFS consent from TERNVALE_FEX_ROOTFS_CONSENT");
+        return Ok(true);
+    }
+    println!("{LICENSE_NOTE}");
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .context("read FEX RootFS download consent")?;
+    Ok(consented(&line))
 }
 
 #[tracing::instrument(level = "debug", target = "ternvale::compat", skip_all, fields(distro))]

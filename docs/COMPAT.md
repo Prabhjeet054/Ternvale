@@ -31,3 +31,9 @@ Cells are pass / fail / skip. Skip means the guest does not support the feature 
 ## Review
 
 Every **fail** must have a reason in Notes (or a tracking issue). Skip is not a failure: missing images, unsupported guest features, or the host killing the boot harness before serial (AMFI SIGKILL).
+
+## x86 / amd64 / Windows x64
+
+See [X86_COMPAT.md](X86_COMPAT.md) (`make compat-x86`). Linux amd64 images need a
+usermode engine (Rosetta / FEX / qemu-user). Windows x64 apps use **Windows on
+ARM’s own emulator**; Ternvale does not control that path.

@@ -21,6 +21,10 @@ final class VMProcessManager {
     private var userRequestedStop: Set<String> = []
 
     func helperURL() throws -> URL {
+        try Self.helperBinaryURL()
+    }
+
+    static func helperBinaryURL() throws -> URL {
         if let override = ProcessInfo.processInfo.environment["TERNVALE_HELPER_PATH"],
            FileManager.default.isExecutableFile(atPath: override) {
             return URL(fileURLWithPath: override)
