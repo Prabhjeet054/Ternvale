@@ -386,7 +386,21 @@ fn dispatch_exit(
             reg,
             write,
         } => {
-            if shared.nested_virt && crate::esr::is_el2_sysreg(op0, op1) {
+            if shared.nested_virt && crate::esr::is_el2_sysreg(op0, op1, crn, crm, op2) {
+                let trap = crate::nested::El2SysTrap {
+                    op0,
+                    op1,
+                    crn,
+                    crm,
+                    op2,
+                    rt: reg,
+                    write,
+                };
+                if crate::nested::apply_el2_sysreg(vcpu, shared.gic, trap)? {
+                    let pc = vcpu.get_pc()?;
+                    vcpu.set_pc(pc + 4)?;
+                    return Ok(true);
+                }
                 tracing::error!(
                     target: "ternvale::nested",
                     vcpu_id = vcpu.id(),

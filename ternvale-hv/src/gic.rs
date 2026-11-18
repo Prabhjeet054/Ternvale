@@ -479,7 +479,7 @@ fn query_usize(name: &CStr) -> Result<usize, HvError> {
     Ok(value)
 }
 
-fn gic_fn<T>(name: &CStr) -> Result<T, HvError> {
+pub(crate) fn gic_fn<T>(name: &CStr) -> Result<T, HvError> {
     // RTLD_DEFAULT is `((void *) -2)` in `<dlfcn.h>`.
     const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
     // SAFETY: `name` is a NUL-terminated literal. `dlsym` returns the process-wide
@@ -492,11 +492,11 @@ fn gic_fn<T>(name: &CStr) -> Result<T, HvError> {
     Ok(unsafe { std::mem::transmute_copy(&symbol) })
 }
 
-fn name_str(name: &CStr) -> &str {
+pub(crate) fn name_str(name: &CStr) -> &str {
     name.to_str().unwrap_or("hv_gic")
 }
 
-fn check(code: i32, what: &str) -> Result<(), HvError> {
+pub(crate) fn check(code: i32, what: &str) -> Result<(), HvError> {
     if code == HV_SUCCESS {
         return Ok(());
     }

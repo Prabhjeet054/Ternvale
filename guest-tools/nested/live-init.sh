@@ -2,6 +2,7 @@
 # L1 probe for scripts/nested-virt-live-check.sh. Always prints NESTED_PROBE_DONE.
 set -eu
 bb=/bin/busybox
+$bb mkdir -p /tmp /proc /sys /dev
 echo "NESTED_PROBE_START"
 echo "--- cmdline ---"
 $bb cat /proc/cmdline
@@ -29,13 +30,28 @@ else
   echo "NO_DEV_KVM"
   echo "DEV_KVM=no"
 fi
-if [ -e /dev/kvm ] && [ -x /bin/lkvm ] && [ -f /l2/Image ] && [ -f /l2/initrd ]; then
+if [ -e /dev/kvm ] && [ -x /bin/lkvm ] && [ -f /l2/Image ] && [ -f /l2/initrd ] \
+    && $bb grep -q 'ternvale.l2=1' /proc/cmdline; then
   echo "L2_START"
   t0=$($bb date +%s)
   set +e
-  /bin/lkvm run --name l2 --cpus 1 --mem 64 --kernel /l2/Image --initrd /l2/initrd \
-    --console serial --irqchip gicv3 --transport mmio --params "console=ttyAMA0 rdinit=/init" \
-    >/tmp/l2.out 2>/tmp/l2.err
+  /bin/lkvm run --name l2 --cpus 1 --mem 128 --kernel /l2/Image --initrd /l2/initrd \
+    --console serial --irqchip gicv3 --virtio-transport mmio \
+    --params "console=ttyAMA0 rdinit=/init" >/tmp/l2.out 2>/tmp/l2.err &
+  l2pid=$!
+  i=0
+  while [ "$i" -lt 15 ]; do
+    if ! $bb kill -0 "$l2pid" 2>/dev/null; then
+      break
+    fi
+    $bb sleep 1
+    i=$((i + 1))
+  done
+  if $bb kill -0 "$l2pid" 2>/dev/null; then
+    echo "L2_TIMEOUT"
+    $bb kill -9 "$l2pid" 2>/dev/null
+  fi
+  wait "$l2pid"
   rc=$?
   set -e
   t1=$($bb date +%s)

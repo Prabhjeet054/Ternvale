@@ -182,16 +182,38 @@ pub fn set_reg(id: u64, reg: Reg, value: u64) -> Result<(), HvError> {
     finish(code, ())
 }
 
+/// Pack MRS/MSR fields into `hv_sys_reg_t` (`hv_vcpu_types.h`).
+///
+/// Layout: `(op0 << 14) | (op1 << 11) | (CRn << 7) | (CRm << 3) | op2`.
+#[must_use]
+pub fn sys_reg_encoding(op0: u8, op1: u8, crn: u8, crm: u8, op2: u8) -> u16 {
+    (u16::from(op0) << 14)
+        | (u16::from(op1) << 11)
+        | (u16::from(crn) << 7)
+        | (u16::from(crm) << 3)
+        | u16::from(op2)
+}
+
 /// Read a system register.
 #[tracing::instrument(level = "debug", target = "ternvale::hv", skip_all, fields(vcpu_id = id, reg = ?reg))]
 pub fn get_sys_reg(id: u64, reg: SysReg) -> Result<u64, HvError> {
-    let code_reg = reg.code();
+    get_sys_reg_enc(id, reg.code())
+}
+
+/// Read a system register by `hv_sys_reg_t` encoding.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::hv",
+    skip_all,
+    fields(vcpu_id = id, enc = format!("{:#x}", enc))
+)]
+pub fn get_sys_reg_enc(id: u64, enc: u16) -> Result<u64, HvError> {
     let mut value = 0u64;
     // SAFETY: `value` is a writable local. `id` is a live vCPU on this thread.
-    let raw = unsafe { hv_vcpu_get_sys_reg(id, code_reg, &mut value) };
+    let raw = unsafe { hv_vcpu_get_sys_reg(id, enc, &mut value) };
     let code = ternvale_log::log_hv_call!(
         "hv_vcpu_get_sys_reg",
-        format!("id={id:#x} reg={code_reg:#x}"),
+        format!("id={id:#x} reg={enc:#x}"),
         raw
     );
     finish(code, value)
@@ -205,12 +227,22 @@ pub fn get_sys_reg(id: u64, reg: SysReg) -> Result<u64, HvError> {
     fields(vcpu_id = id, reg = ?reg, value = format!("{:#x}", value))
 )]
 pub fn set_sys_reg(id: u64, reg: SysReg, value: u64) -> Result<(), HvError> {
-    let code_reg = reg.code();
+    set_sys_reg_enc(id, reg.code(), value)
+}
+
+/// Write a system register by `hv_sys_reg_t` encoding.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::hv",
+    skip_all,
+    fields(vcpu_id = id, enc = format!("{:#x}", enc), value = format!("{:#x}", value))
+)]
+pub fn set_sys_reg_enc(id: u64, enc: u16, value: u64) -> Result<(), HvError> {
     // SAFETY: `id` is a live vCPU on this thread. `value` is copied by the kernel.
-    let raw = unsafe { hv_vcpu_set_sys_reg(id, code_reg, value) };
+    let raw = unsafe { hv_vcpu_set_sys_reg(id, enc, value) };
     let code = ternvale_log::log_hv_call!(
         "hv_vcpu_set_sys_reg",
-        format!("id={id:#x} reg={code_reg:#x} value={value:#x}"),
+        format!("id={id:#x} reg={enc:#x} value={value:#x}"),
         raw
     );
     finish(code, ())
@@ -292,4 +324,21 @@ fn finish<T>(code: i32, value: T) -> Result<T, HvError> {
         return Err(error);
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sys_reg_encoding;
+
+    #[test]
+    fn packs_hv_sys_reg_t_like_the_sdk() {
+        // HV_SYS_REG_SCTLR_EL1 = 0xc080 (S3_0_C1_C0_0).
+        assert_eq!(sys_reg_encoding(3, 0, 1, 0, 0), 0xc080);
+        // HV_SYS_REG_CNTHCTL_EL2 = 0xe708 (S3_4_C14_C1_0).
+        assert_eq!(sys_reg_encoding(3, 4, 14, 1, 0), 0xe708);
+        // HV_SYS_REG_SP_EL2 = 0xf208 (S3_6_C4_C1_0).
+        assert_eq!(sys_reg_encoding(3, 6, 4, 1, 0), 0xf208);
+        // HV_GIC_ICH_REG_HCR_EL2 = 0xe658 (S3_4_C12_C11_0).
+        assert_eq!(sys_reg_encoding(3, 4, 12, 11, 0), 0xe658);
+    }
 }

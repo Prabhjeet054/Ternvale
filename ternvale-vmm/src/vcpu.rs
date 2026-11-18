@@ -260,6 +260,31 @@ impl Vcpu {
         Ok(())
     }
 
+    /// Read a system register by `hv_sys_reg_t` encoding.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::vcpu",
+        skip_all,
+        fields(vcpu_id = self.id, enc = format!("{:#x}", enc))
+    )]
+    pub fn get_sys_reg_enc(&self, enc: u16) -> Result<u64, VcpuError> {
+        self.on_owner_thread()?;
+        Ok(ternvale_hv::get_sys_reg_enc(self.id, enc)?)
+    }
+
+    /// Write a system register by `hv_sys_reg_t` encoding.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::vcpu",
+        skip_all,
+        fields(vcpu_id = self.id, enc = format!("{:#x}", enc), value = format!("{:#x}", value))
+    )]
+    pub fn set_sys_reg_enc(&self, enc: u16, value: u64) -> Result<(), VcpuError> {
+        self.on_owner_thread()?;
+        ternvale_hv::set_sys_reg_enc(self.id, enc, value)?;
+        Ok(())
+    }
+
     /// Run until the next exit the caller must handle.
     ///
     /// A virtual-timer exit is masked and injected as PPI 27, then the guest

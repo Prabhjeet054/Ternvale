@@ -21,7 +21,7 @@ export TERNVALE_LOG="${TERNVALE_LOG:-info,ternvale::nested=debug,ternvale::boot=
 export TERNVALE_ENTITLEMENTS="${TERNVALE_ENTITLEMENTS:-$root/entitlements/ternvale-hv-only.entitlements}"
 
 cleanup() {
-  for n in nested-el2 nested-el1; do
+  for n in nested-el2 nested-el1 nested-kvm; do
     TERNVALE_LOG=warn "$root/scripts/sign-and-run.sh" "$bin" stop "$n" --force \
       >/dev/null 2>&1 || true
   done
@@ -102,10 +102,41 @@ for spec in "linux-lts:${lts}" "busybox:${bb}" "musl:${musl}"; do
       "${alpine}/main/aarch64/${name}"
   fi
 done
-log "unpack Alpine linux-lts Image (EL2 probe; this kernel has no kvm.ko)"
+log "unpack Alpine linux-lts Image (EL2 boot probe)"
 tar -xOf "$cache/linux-lts.apk" boot/vmlinuz-lts >"$cache/vmlinuz-lts"
 unpack_zboot "$cache/vmlinuz-lts" "$out/Image-alpine"
 : >"$cache/kvm-order"
+
+ubuntu_url="${UBUNTU_VMLINUZ_URL:-https://cloud-images.ubuntu.com/noble/current/unpacked/noble-server-cloudimg-arm64-vmlinuz-generic}"
+if [[ ! -f "$cache/vmlinuz-ubuntu-generic" ]]; then
+  log "download Ubuntu 24.04 arm64 generic vmlinuz (CONFIG_KVM=y)"
+  curl -fsSL --retry 3 -A Ternvale -o "$cache/vmlinuz-ubuntu-generic" "$ubuntu_url"
+fi
+log "unpack Ubuntu generic Image"
+unpack_zboot "$cache/vmlinuz-ubuntu-generic" "$out/Image-ubuntu"
+
+ensure_lkvm() {
+  if [[ -x "$cache/lkvm" ]] && file "$cache/lkvm" | grep -q 'statically linked'; then
+    return 0
+  fi
+  rm -f "$cache/lkvm"
+  log "build static kvmtool lkvm (linux/arm64 docker)"
+  docker run --rm --platform linux/arm64 \
+    -v "$cache:/out" ubuntu:24.04 bash -c '
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq gcc make git libfdt-dev libc6-dev pkg-config >/dev/null
+git clone --depth 1 https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git /tmp/kvmtool
+make -C /tmp/kvmtool -j"$(nproc)" LDFLAGS=-static lkvm
+cp /tmp/kvmtool/lkvm /out/lkvm
+' || log "WARN: lkvm build failed; L2 will be skipped"
+  if [[ -x "$cache/lkvm" ]]; then
+    chmod 755 "$cache/lkvm"
+    log "lkvm: $(file "$cache/lkvm")"
+  fi
+}
+ensure_lkvm
 
 log "L2 micro initramfs"
 mkdir -p "$out/l2root/bin"
@@ -168,6 +199,7 @@ chmod 755 "$out/l1/init"
 boot_one() {
   local tag=$1 nested=$2 kernel=$3
   local must=${4:-must}
+  local extra=${5:-}
   local serial="$out/${tag}-serial.log"
   local stderr="$out/${tag}.stderr"
   local stdout="$out/${tag}.stdout"
@@ -180,7 +212,7 @@ cpus = 2
 ram_mib = 1024
 kernel = "${kernel}"
 initrd = "$out/l1.cpio"
-cmdline = "console=ttyAMA0 rdinit=/init ternvale.nested=1"
+cmdline = "console=ttyAMA0 rdinit=/init ternvale.nested=1 ${extra}"
 serial_log = "${serial}"
 nested_virt = ${nested}
 [tpm]
@@ -196,15 +228,13 @@ EOF
   t0=$(python3 -c 'import time; print(time.time())')
   "$root/scripts/sign-and-run.sh" "$bin" run "$toml" </dev/null >"$stdout" 2>"$stderr" &
   local pid=$!
-  local timeout=90
-  [[ "$nested" = true ]] && timeout=12
+  local timeout=180
   if wait_serial "$serial" "NESTED_PROBE_DONE" "$timeout"; then
     :
-  elif [[ "$nested" = true ]] && grep -q "unimplemented EL2 sysreg trap" "$stderr" 2>/dev/null; then
-    log "${tag}: guest hung on unimplemented EL2 sysreg traps (no userspace)"
   else
-    log "serial ${tag}:"; tail -40 "$serial" >&2 || true
-    log "stderr ${tag}:"; tail -40 "$stderr" >&2 || true
+    log "serial ${tag}:"; tail -80 "$serial" >&2 || true
+    log "stderr ${tag}:"; grep -E "unimplemented EL2|EL2 MSR|EL2 MRS|boot cpu CPSR|el2=" "$stderr" | tail -40 >&2 || true
+    tail -20 "$stderr" >&2 || true
     TERNVALE_LOG=warn "$root/scripts/sign-and-run.sh" "$bin" stop "$tag" --force >/dev/null 2>&1 || true
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
@@ -228,13 +258,8 @@ EOF
 }
 
 boot_one nested-el1 false "$out/Image-alpine" must
-boot_one nested-el2 true "$out/Image-alpine" optional
-
-if grep -q "NESTED_PROBE_DONE" "$out/nested-el2-serial.log" 2>/dev/null; then
-  log "nested_virt=true reached userspace; KVM/L2 would run here"
-else
-  log "skip Ubuntu/KVM L2 boot; L1 nested_virt=true did not reach init"
-fi
+boot_one nested-el2 true "$out/Image-alpine" must
+boot_one nested-kvm true "$out/Image-ubuntu" must "ternvale.l2=1"
 
 el2=$(grep -E "CPU: All CPU" "$out/nested-el2-serial.log" 2>/dev/null || true)
 el1=$(grep -E "CPU: All CPU" "$out/nested-el1-serial.log" 2>/dev/null || true)
@@ -250,13 +275,32 @@ traps=$(grep -c "unimplemented EL2 sysreg trap" "$out/nested-el2.stderr" 2>/dev/
 traps=${traps:-0}
 cpsr=$(grep "boot cpu CPSR" "$out/nested-el2.stderr" | tail -1 || true)
 log "nested_virt=true host: ${cpsr:-no cpsr log} traps=${traps}"
-[[ "$traps" -gt 0 ]] || grep -q "el2=true" "$out/nested-el2.stderr" || fail "nested_virt=true did not enable EL2"
+grep -qE '0x3c9' "$out/nested-el2.stderr" || fail "nested_virt=true did not log EL2h CPSR 0x3c9"
+if echo "$el2" | grep -q "EL2"; then
+  log "nested_virt=true started at EL2"
+else
+  log "WARN: nested_virt=true had no 'started at EL2' line"
+fi
+if [[ "$traps" -gt 0 ]]; then
+  log "WARN: ${traps} unimplemented EL2 sysreg traps (see stderr)"
+fi
 
 if grep -q "DEV_KVM=yes" "$out/nested-el1-serial.log"; then
   fail "nested_virt=false unexpectedly has /dev/kvm"
 fi
-if ! grep -q "NESTED_PROBE_DONE" "$out/nested-el2-serial.log" 2>/dev/null; then
-  log "KVM/L2 skipped: nested_virt=true never reached userspace (EL2 traps)"
+grep -q "NESTED_PROBE_DONE" "$out/nested-el2-serial.log" || fail "nested_virt=true Alpine never reached userspace"
+grep -q "NESTED_PROBE_DONE" "$out/nested-kvm-serial.log" || fail "Ubuntu nested_virt=true never reached userspace"
+if ! grep -q "DEV_KVM=yes" "$out/nested-kvm-serial.log"; then
+  log "Ubuntu serial kvm/hyp:"; grep -iE "kvm|hyp|DEV_KVM" "$out/nested-kvm-serial.log" | tail -40 >&2 || true
+  fail "Ubuntu nested_virt=true has no /dev/kvm (need a KVM-capable kernel at EL2)"
+fi
+log "Ubuntu /dev/kvm present"
+if grep -q "L2_BOOTED_OK" "$out/nested-kvm-serial.log"; then
+  log "L2 lkvm booted"
+elif grep -q "L2_SKIPPED" "$out/nested-kvm-serial.log"; then
+  log "WARN: L2 skipped (no lkvm in initramfs)"
+else
+  log "WARN: /dev/kvm present but L2 did not print L2_BOOTED_OK"
 fi
 
 el2_ms=$(cat "$out/nested-el2.boot_ms")

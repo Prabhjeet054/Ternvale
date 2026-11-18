@@ -10,6 +10,7 @@ mod error;
 mod ffi;
 mod footprint;
 mod gic;
+mod gic_el2;
 mod gic_order;
 mod host;
 mod host_power;
@@ -49,10 +50,10 @@ pub use sec::{
 };
 pub use unix::{host_uid, unix_peek, unix_peer_is_same_user, unix_peer_pid, unix_peer_uid};
 pub use vcpu::{
-    get_reg, get_sys_reg, get_vtimer_offset, set_reg, set_sys_reg, set_vtimer_mask,
-    set_vtimer_offset, vcpu_create, vcpu_destroy, vcpu_run, vcpus_exit, Reg, SysReg, VcpuExit,
-    HV_EXIT_REASON_CANCELED, HV_EXIT_REASON_EXCEPTION, HV_EXIT_REASON_UNKNOWN,
-    HV_EXIT_REASON_VTIMER_ACTIVATED,
+    get_reg, get_sys_reg, get_sys_reg_enc, get_vtimer_offset, set_reg, set_sys_reg,
+    set_sys_reg_enc, set_vtimer_mask, set_vtimer_offset, sys_reg_encoding, vcpu_create,
+    vcpu_destroy, vcpu_run, vcpus_exit, Reg, SysReg, VcpuExit, HV_EXIT_REASON_CANCELED,
+    HV_EXIT_REASON_EXCEPTION, HV_EXIT_REASON_UNKNOWN, HV_EXIT_REASON_VTIMER_ACTIVATED,
 };
 pub use vm::Vm;
 #[cfg(feature = "vmnet")]

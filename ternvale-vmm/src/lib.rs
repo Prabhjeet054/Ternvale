@@ -18,6 +18,7 @@ mod linux;
 mod machine;
 mod memory;
 mod mmio;
+mod nested;
 pub mod pci;
 mod platform;
 mod pmu;

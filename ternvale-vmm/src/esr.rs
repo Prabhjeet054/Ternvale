@@ -108,15 +108,19 @@ pub fn decode(esr: u64, gpa: u64) -> ExitEvent {
     event
 }
 
-/// EL2 system registers use `op0 = 3`, `op1 = 4` (`S3_4_*` / `*_EL2`).
+/// EL2 system registers: `op0 = 3`, `op1 = 4` (`S3_4_*`), plus `SP_EL2`
+/// (`S3_6_C4_C1_0`, `HV_SYS_REG_SP_EL2`).
 #[tracing::instrument(
     level = "trace",
     target = "ternvale::nested",
     skip_all,
-    fields(op0, op1)
+    fields(op0, op1, crn, crm, op2)
 )]
-pub fn is_el2_sysreg(op0: u8, op1: u8) -> bool {
-    op0 == 3 && op1 == 4
+pub fn is_el2_sysreg(op0: u8, op1: u8, crn: u8, crm: u8, op2: u8) -> bool {
+    if op0 != 3 {
+        return false;
+    }
+    op1 == 4 || (op1 == 6 && crn == 4 && crm == 1 && op2 == 0)
 }
 
 fn decode_sysreg(iss: u32) -> ExitEvent {
@@ -322,8 +326,9 @@ mod tests {
         for (name, syndrome, gpa, expected) in cases {
             assert_eq!(decode(syndrome, gpa), expected, "{name}");
         }
-        assert!(is_el2_sysreg(3, 4));
-        assert!(!is_el2_sysreg(3, 0));
-        assert!(!is_el2_sysreg(2, 4));
+        assert!(is_el2_sysreg(3, 4, 14, 1, 0));
+        assert!(is_el2_sysreg(3, 6, 4, 1, 0));
+        assert!(!is_el2_sysreg(3, 0, 1, 0, 0));
+        assert!(!is_el2_sysreg(2, 4, 14, 1, 0));
     }
 }
