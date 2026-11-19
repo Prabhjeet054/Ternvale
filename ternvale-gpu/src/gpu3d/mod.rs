@@ -1,15 +1,10 @@
-//! Venus-oriented virtio-gpu 3D path (feature `gpu3d`, off by default).
+//! Venus-oriented virtio-gpu 3D path (feature `gpu3d`).
 //!
-//! Upstream [`rutabaga_gfx`](https://chromium.googlesource.com/chromiumos/platform/crosvm/+/refs/heads/main/rutabaga_gfx/)
-//! from crosvm is **BSD-3-Clause** (Chromium OS Authors) and is license-compatible with
-//! Ternvale reuse (see `docs/GPU_ACCELERATION.md`). It is not linked in-tree yet because it
-//! pulls `virglrenderer` through pkg-config; this module implements the same virtio-gpu 3D
-//! command surface so a future build can delegate to `Rutabaga::handle_*` without changing
-//! the guest contract.
+//! Per-VM `[gpu] gpu3d = false` keeps this path off even in a `gpu-3d` build.
+//! Host rendering lives in `ternvale-gpu3d-host` (virglrenderer → MoltenVK).
 
 mod backend;
 mod capset;
-mod virgl;
 
 pub use backend::Gpu3d;
 #[cfg(test)]

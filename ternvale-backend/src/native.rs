@@ -46,6 +46,13 @@ impl NativeBackend {
                 capability: "nested_virt",
             });
         }
+        if config.gpu3d() {
+            tracing::info!(
+                target: "ternvale::gpu3d",
+                vm = %config.name,
+                "native backend enabling Venus gpu3d"
+            );
+        }
         let want = ternvale_compat::requested(config.x86_emulation, config.rosetta);
         let engine = ternvale_compat::resolve(want, ternvale_compat::native_caps(), config.profile)
             .map_err(BackendError::from_compat)?;

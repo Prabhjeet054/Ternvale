@@ -48,7 +48,7 @@ impl BackendCapabilities {
             fex: true,
             qemu_user: true,
             gpu_2d: true,
-            gpu_3d: false,
+            gpu_3d: true,
             usb_passthrough: true,
             bridged_net: true,
             disk_discard: true,
@@ -161,6 +161,7 @@ mod tests {
         let caps = BackendCapabilities::native();
         assert!(caps.guest_linux);
         assert!(caps.gpu_2d);
+        assert!(caps.gpu_3d);
         assert!(caps.custom_display_pipeline);
         assert!(!caps.guest_macos);
         assert!(caps.nested_virt);

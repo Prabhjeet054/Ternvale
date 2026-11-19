@@ -1,0 +1,27 @@
+[package]
+name = "ternvale-gpu3d-host"
+description = "Host-side virtio-gpu Venus renderer: command decoder, blobs, fences, MoltenVK path."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed Gpu3dError (library crates use thiserror).
+thiserror = "2"
+# Required project-wide logging facade (target ternvale::gpu3d).
+tracing = "0.1"
+# Optional: hv_vm_map of host-visible blob pages into a guest IPA BAR window.
+ternvale-hv = { path = "../ternvale-hv" }
+# Optional: load libvirglrenderer at runtime for Venus SUBMIT_3D.
+libloading = { version = "0.8", optional = true }
+
+[features]
+default = []
+# Runtime dlopen of virglrenderer (MIT). Not vendored.
+virgl = ["dep:libloading"]
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[lints]
+workspace = true

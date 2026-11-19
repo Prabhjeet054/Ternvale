@@ -146,3 +146,10 @@ path = "fuzz_targets/crypto.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "gpu3d_decoder"
+path = "fuzz_targets/gpu3d_decoder.rs"
+test = false
+doc = false
+bench = false

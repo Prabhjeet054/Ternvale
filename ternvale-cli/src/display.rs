@@ -275,15 +275,26 @@ pub fn attach_gpu(
     attach: &DeviceAttach,
     transport: VirtioTransport,
     slot: u32,
+    gpu3d: bool,
 ) -> Result<(Option<Mapped>, GpuDisplay), MachineError> {
+    let config = GpuConfig {
+        gpu3d,
+        ..GpuConfig::default()
+    };
+    if gpu3d {
+        tracing::info!(
+            target: "ternvale::gpu3d",
+            "attaching virtio-gpu with Venus 3D (gpu3d = true)"
+        );
+    }
     if transport == VirtioTransport::Pci {
-        let gpu = VirtioGpu::attach_pci(attach, GpuConfig::default())?;
+        let gpu = VirtioGpu::attach_pci(attach, config)?;
         tracing::info!(target: "ternvale::cli", bdf = %gpu.bdf, "attached virtio-gpu");
         return Ok((None, gpu.display));
     }
     let gpu = VirtioGpu::attach(
         slot,
-        GpuConfig::default(),
+        config,
         Arc::clone(&attach.memory),
         attach.virtio_irq_hook(slot),
     )

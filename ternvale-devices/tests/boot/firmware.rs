@@ -96,6 +96,7 @@ fn boot_once(
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     tracing::info!(target: "ternvale::boot", serial = %serial_log.display(), nvram = %nvram.display(), "firmware boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

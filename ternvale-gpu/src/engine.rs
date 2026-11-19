@@ -12,26 +12,30 @@ use std::sync::Arc;
 
 use crate::gpu2d::GpuStats;
 
-/// 2D virtio-gpu state and, when compiled with `gpu3d`, the Venus command path.
+/// 2D virtio-gpu state and, when compiled with `gpu3d` and enabled, the Venus path.
 pub struct GpuEngine {
     #[cfg(feature = "gpu3d")]
     stats: Arc<GpuStats>,
     /// Scanout / 2D resources.
     pub two_d: Gpu2d,
     #[cfg(feature = "gpu3d")]
-    three_d: Gpu3d,
+    three_d: Option<Gpu3d>,
 }
 
 impl GpuEngine {
-    /// New device state for `display`.
-    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
-    pub fn new(display: GpuDisplay, stats: Arc<GpuStats>) -> Self {
+    /// New device state for `display`. `gpu3d` is the per-VM flag (default false).
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all, fields(gpu3d))]
+    pub fn new(display: GpuDisplay, stats: Arc<GpuStats>, gpu3d: bool) -> Self {
+        #[cfg(feature = "gpu3d")]
+        let three_d = gpu3d.then(|| Gpu3d::new(Arc::clone(&stats)));
+        #[cfg(not(feature = "gpu3d"))]
+        let _ = gpu3d;
         Self {
             #[cfg(feature = "gpu3d")]
             stats: Arc::clone(&stats),
             two_d: Gpu2d::new(display, Arc::clone(&stats)),
             #[cfg(feature = "gpu3d")]
-            three_d: Gpu3d::new(Arc::clone(&stats)),
+            three_d,
         }
     }
 
@@ -40,7 +44,9 @@ impl GpuEngine {
     pub fn reset(&mut self) {
         self.two_d.reset();
         #[cfg(feature = "gpu3d")]
-        self.three_d.reset();
+        if let Some(three_d) = self.three_d.as_mut() {
+            three_d.reset();
+        }
     }
 
     /// Answer one control-queue request.
@@ -48,9 +54,11 @@ impl GpuEngine {
     pub fn handle(&mut self, mem: &GuestMemory, request: &[u8]) -> Vec<u8> {
         #[cfg(feature = "gpu3d")]
         {
-            if let Ok((hdr, command)) = protocol::parse(request) {
-                if is_3d_command(&command) {
-                    return self.handle_3d(mem, &hdr, &command);
+            if self.three_d.is_some() {
+                if let Ok((hdr, command)) = protocol::parse(request) {
+                    if is_3d_command(&command) {
+                        return self.handle_3d(mem, &hdr, &command);
+                    }
                 }
             }
         }
@@ -77,7 +85,10 @@ impl GpuEngine {
             ?command,
             "virtio-gpu 3d command"
         );
-        match self.three_d.handle(mem, hdr, command) {
+        let Some(three_d) = self.three_d.as_mut() else {
+            return protocol::response_hdr(hdr, protocol::RESP_ERR_UNSPEC).to_vec();
+        };
+        match three_d.handle(mem, hdr, command) {
             Ok(bytes) if !bytes.is_empty() => bytes,
             Ok(_) => protocol::response_hdr(hdr, protocol::RESP_OK_NODATA).to_vec(),
             Err((kind, reason)) => {

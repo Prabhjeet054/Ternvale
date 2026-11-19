@@ -95,6 +95,15 @@ impl Grants {
         } else {
             add(std::env::temp_dir(), true, true);
         }
+        if let Ok(exe) = std::env::current_exe() {
+            add(exe.clone(), false, false);
+            if let Some(parent) = exe.parent() {
+                add(parent.to_path_buf(), true, false);
+            }
+        }
+        for path in host_graphics_roots(config.gpu3d()) {
+            add(path, true, false);
+        }
 
         let helper_sock = vmnet_socket();
         if let Some(parent) = helper_sock.parent() {
@@ -129,6 +138,32 @@ impl Grants {
             helper_sock,
         }
     }
+}
+
+/// Homebrew / MoltenVK / locally built virglrenderer trees (`dlopen` + Vulkan ICD).
+#[tracing::instrument(level = "debug", target = "ternvale::sandbox", skip_all, fields(gpu3d))]
+fn host_graphics_roots(gpu3d: bool) -> Vec<PathBuf> {
+    if !gpu3d {
+        return Vec::new();
+    }
+    let mut roots = Vec::new();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+    for path in [
+        PathBuf::from("/opt/homebrew"),
+        PathBuf::from("/usr/local"),
+        PathBuf::from(&home).join("Library/Application Support/Ternvale/host-gfx"),
+        PathBuf::from(&home).join("Library/Application Support/vulkan"),
+    ] {
+        if path.exists() {
+            roots.push(path);
+        }
+    }
+    tracing::debug!(
+        target: "ternvale::sandbox",
+        n = roots.len(),
+        "gpu3d host graphics path grants"
+    );
+    roots
 }
 
 #[cfg(test)]
@@ -172,6 +207,23 @@ mod tests {
         let config = VmConfig::parse(text).unwrap();
         let grants = Grants::from_config(&config, Path::new("/tmp/vm.toml"));
         assert!(!grants.network_client);
+    }
+
+    #[test]
+    fn gpu3d_grants_homebrew_when_enabled() {
+        let text = "name = \"g\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\n[gpu]\ngpu3d = true\n";
+        let config = VmConfig::parse(text).unwrap();
+        let grants = Grants::from_config(&config, Path::new("/tmp/vm.toml"));
+        let homebrew = Path::new("/opt/homebrew");
+        if homebrew.exists() {
+            assert!(
+                grants
+                    .paths
+                    .iter()
+                    .any(|g| g.path == homebrew && g.directory && !g.write),
+                "gpu3d must allow reading Homebrew dylibs"
+            );
+        }
     }
 
     #[test]

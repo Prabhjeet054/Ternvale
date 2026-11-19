@@ -44,6 +44,13 @@ else
     log "opengl_renderer=missing-glxinfo"
 fi
 
+if command -v vkcube >/dev/null 2>&1; then
+    log "vkcube=starting"
+    timeout 8 vkcube >/dev/null 2>&1 && log "vkcube=exited" || log "vkcube=timeout_or_fail"
+else
+    log "vkcube=missing"
+fi
+
 if command -v glxgears >/dev/null 2>&1; then
     log "glxgears=starting"
     timeout 8 glxgears -info 2>/dev/null | while read -r line; do

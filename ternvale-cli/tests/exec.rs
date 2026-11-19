@@ -125,6 +125,7 @@ fn dummy_config(name: &str) -> VmConfig {
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     }
 }
 

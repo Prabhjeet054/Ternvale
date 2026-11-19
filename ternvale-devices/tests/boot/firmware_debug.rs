@@ -102,6 +102,7 @@ fn boot(firmware: &Path, serial_log: &Path, log_dir: &Path, host_log: &Path) -> 
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     tracing::info!(
         target: "ternvale::boot",

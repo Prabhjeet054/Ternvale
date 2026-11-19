@@ -317,6 +317,9 @@ fn reject_unsupported(config: &VmConfig) -> Result<(), VzError> {
     if config.nested_virt {
         return Err(unsupported("nested_virt", "nested_virt"));
     }
+    if config.gpu3d() {
+        return Err(unsupported("[gpu].gpu3d", "gpu_3d"));
+    }
     if !config.cpu_profile.is_host() {
         return Err(unsupported("cpu_profile", "cpu_profiles"));
     }
@@ -387,6 +390,7 @@ mod tests {
             cpu_profile: Default::default(),
             x86_emulation: Default::default(),
             agent: Default::default(),
+            gpu: None,
         }
     }
 
@@ -412,6 +416,19 @@ mod tests {
                 option,
                 capability: "nested_virt",
             }) => assert_eq!(option, "nested_virt"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn gpu3d_is_unsupported_on_vz() {
+        let mut config = linux();
+        config.gpu = Some(ternvale_config::GpuSection { gpu3d: true });
+        match VzPlan::from_config(&config) {
+            Err(VzError::UnsupportedOption {
+                option,
+                capability: "gpu_3d",
+            }) => assert_eq!(option, "[gpu].gpu3d"),
             other => panic!("{other:?}"),
         }
     }

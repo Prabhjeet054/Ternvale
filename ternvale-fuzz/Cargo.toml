@@ -16,6 +16,8 @@ ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
 ternvale-metrics = { path = "../ternvale-metrics" }
 # virtio-gpu control queue.
 ternvale-gpu = { path = "../ternvale-gpu", default-features = false }
+# Venus SUBMIT_3D command-stream decoder (no virglrenderer).
+ternvale-gpu3d-host = { path = "../ternvale-gpu3d-host", default-features = false }
 # virtio-fs FUSE server and device.
 ternvale-virtiofs = { path = "../ternvale-virtiofs", default-features = false }
 # xHCI TRB / MMIO.

@@ -84,6 +84,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

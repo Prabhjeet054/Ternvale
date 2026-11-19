@@ -24,7 +24,7 @@ trace-hot = ["ternvale-vmm/trace-hot", "ternvale-devices/trace-hot"]
 # Test builds only: lets TERNVALE_ACPI_CORRUPT=<SIG> corrupt one table's checksum in
 # `acpi-dump` (src/acpi_fault.rs), so scripts/acpi-check.sh can be shown to catch it.
 acpi-fault-injection = []
-# Build the VMM with virtio-gpu Venus capsets and 3D control commands (host renderer still WIP).
+# Build the VMM with virtio-gpu Venus + ternvale-gpu3d-host. Per-VM `[gpu] gpu3d` still defaults off.
 gpu-3d = ["ternvale-gpu/gpu3d"]
 # Unprivileged virtio-net client of ternvale-vmnetd (shared/NAT). See docs/NETWORKING.md.
 vmnet = ["ternvale-devices/vmnet"]

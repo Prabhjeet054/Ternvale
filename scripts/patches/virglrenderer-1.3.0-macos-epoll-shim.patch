@@ -1,0 +1,14 @@
+--- a/meson.build
++++ b/meson.build
+@@ -357,9 +357,8 @@
+       venus_dep = dependency('vulkan')
+    endif
+ 
+-   if host_machine.system() in ['freebsd', 'openbsd']
+-      # When building for FreeBSD, epoll(7) is provided by a userspace
+-      # wrapper around kqueue(2).
++   if host_machine.system() in ['freebsd', 'openbsd', 'darwin']
++      # FreeBSD/OpenBSD/macOS: epoll(7)/signalfd via libepoll-shim (kqueue).
+       epoll_dep = dependency('epoll-shim')
+    else
+       epoll_dep = []

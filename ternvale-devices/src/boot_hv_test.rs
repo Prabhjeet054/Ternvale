@@ -55,6 +55,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

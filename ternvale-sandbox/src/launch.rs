@@ -37,7 +37,7 @@ pub fn maybe_relaunch(
         ));
     }
     let grants = Grants::from_config(config, config_path);
-    let profile_text = profile::render(&grants);
+    let profile_text = profile::render_for_child(&grants, Some(exe));
     let dir = std::env::temp_dir().join(format!(
         "ternvale-sandbox-{}-{}",
         std::process::id(),

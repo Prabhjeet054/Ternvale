@@ -8,6 +8,7 @@ members = [
     "ternvale-acpi",
     "ternvale-tpm",
     "ternvale-gpu",
+    "ternvale-gpu3d-host",
     "ternvale-usb",
     "ternvale-usb-host",
     "ternvale-audio-host",

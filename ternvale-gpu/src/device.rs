@@ -62,12 +62,15 @@ const INT_CONFIG: u32 = 2;
 pub struct GpuConfig {
     /// (width, height) of each scanout, 1 to 16 of them.
     pub modes: Vec<(u32, u32)>,
+    /// Runtime Venus 3D. Default false; the `gpu3d` cargo feature is also required.
+    pub gpu3d: bool,
 }
 
 impl Default for GpuConfig {
     fn default() -> Self {
         Self {
             modes: vec![DEFAULT_MODE],
+            gpu3d: false,
         }
     }
 }
@@ -87,6 +90,11 @@ impl GpuConfig {
                     "scanout {index} mode {width}x{height} outside 1..={MAX_DIMENSION}"
                 )));
             }
+        }
+        if self.gpu3d && !cfg!(feature = "gpu3d") {
+            return Err(GpuError::BadConfig(
+                "gpu3d = true requires a VMM built with --features gpu-3d".into(),
+            ));
         }
         Ok(())
     }
@@ -167,7 +175,7 @@ impl VirtioGpu {
             }
         }));
         let stats = Arc::new(GpuStats::default());
-        let gpu = GpuEngine::new(display.clone(), Arc::clone(&stats));
+        let gpu = GpuEngine::new(display.clone(), Arc::clone(&stats), config.gpu3d);
         let (tx, rx) = mpsc::channel();
         let irq_worker = Arc::clone(&irq);
         let join = std::thread::Builder::new()
@@ -178,7 +186,7 @@ impl VirtioGpu {
             target: "ternvale::gpu",
             scanouts = config.modes.len(),
             modes = ?config.modes,
-            gpu3d = cfg!(feature = "gpu3d"),
+            gpu3d = config.gpu3d,
             "virtio-gpu device ready (no cursor)"
         );
         Ok(Self {
@@ -260,14 +268,17 @@ impl VirtioGpu {
     }
 
     fn config_len(&self) -> u64 {
-        #[cfg(feature = "gpu3d")]
-        {
-            CONFIG_LEN_3D
+        if self.three_d_offered() {
+            #[cfg(feature = "gpu3d")]
+            {
+                return CONFIG_LEN_3D;
+            }
         }
-        #[cfg(not(feature = "gpu3d"))]
-        {
-            CONFIG_LEN
-        }
+        CONFIG_LEN
+    }
+
+    fn three_d_offered(&self) -> bool {
+        self.config.gpu3d && cfg!(feature = "gpu3d")
     }
 
     fn config_bytes(&self) -> Vec<u8> {
@@ -277,13 +288,9 @@ impl VirtioGpu {
         // events_clear (4..8) reads as 0.
         out[8..12].copy_from_slice(&(self.config.modes.len() as u32).to_le_bytes());
         #[cfg(feature = "gpu3d")]
-        {
+        if self.three_d_offered() {
             out[12..16].copy_from_slice(&CAPSET_COUNT.to_le_bytes());
             out[16..20].copy_from_slice(&BLOB_ALIGNMENT.to_le_bytes());
-        }
-        #[cfg(not(feature = "gpu3d"))]
-        {
-            // num_capsets (12..16) is 0: no 3D.
         }
         out
     }
@@ -307,13 +314,10 @@ impl VirtioDevice for VirtioGpu {
 
     fn device_features(&self) -> u64 {
         #[cfg(feature = "gpu3d")]
-        {
-            F_EDID | F_VIRGL | F_RESOURCE_BLOB | F_CONTEXT_INIT | F_BLOB_ALIGNMENT
+        if self.three_d_offered() {
+            return F_EDID | F_VIRGL | F_RESOURCE_BLOB | F_CONTEXT_INIT | F_BLOB_ALIGNMENT;
         }
-        #[cfg(not(feature = "gpu3d"))]
-        {
-            F_EDID
-        }
+        F_EDID
     }
 
     fn num_queues(&self) -> u16 {

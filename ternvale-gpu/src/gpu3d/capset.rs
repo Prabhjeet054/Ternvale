@@ -77,7 +77,7 @@ pub fn capset_response(
     }
     let mut out = vec![0u8; HDR_LEN + VENUS_CAPSET_BYTES];
     out[..HDR_LEN].copy_from_slice(&protocol::response_hdr(request, protocol::RESP_OK_CAPSET));
-    super::virgl::fill_venus_capset(&mut out[HDR_LEN..]);
+    fill_venus_capset(&mut out[HDR_LEN..]);
     tracing::trace!(
         target: "ternvale::gpu",
         capset_id,
@@ -88,10 +88,11 @@ pub fn capset_response(
     Ok(out)
 }
 
-/// Minimal Venus capset payload: Vulkan 1.3 in the first `u32`, remainder zero until
-/// virglrenderer/rutabaga fills real device limits.
-/// Stub capset when virglrenderer is not loaded.
-pub(crate) fn fill_venus_capset_stub(bytes: &mut [u8]) {
+/// Venus capset from virglrenderer, or a Vulkan 1.3 stub.
+fn fill_venus_capset(bytes: &mut [u8]) {
+    if ternvale_gpu3d_host::fill_venus_capset(bytes) {
+        return;
+    }
     bytes[0..4].copy_from_slice(&0x0040_0300u32.to_le_bytes()); // VK_API_VERSION_1_3
 }
 

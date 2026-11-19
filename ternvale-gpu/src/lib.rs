@@ -1,8 +1,9 @@
 //! virtio-gpu for Ternvale guests (virtio 1.2 §5.7).
 //!
-//! The default build is a **2D-only** profile. With the optional `gpu3d` feature, the device
-//! also advertises the Venus capset and accepts blob/context/`SUBMIT_3D` commands for Mesa's
-//! Venus driver (host rendering still requires virglrenderer / rutabaga_gfx; see `gpu3d` module).
+//! The default build is a **2D-only** profile. With the optional `gpu3d` cargo feature **and**
+//! per-VM `[gpu] gpu3d = true`, the device advertises the Venus capset and accepts
+//! blob/context/`SUBMIT_3D` commands. Host rendering is `ternvale-gpu3d-host` (optional
+//! virglrenderer → MoltenVK → Metal).
 //!
 //! [`VirtioGpu`] is a [`ternvale_devices::VirtioDevice`]: the same
 //! virtio-mmio and virtio-pci transports that carry virtio-blk carry it

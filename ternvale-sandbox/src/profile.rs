@@ -17,13 +17,21 @@ pub const SANDBOX_EXEC: &str = "/usr/bin/sandbox-exec";
 /// same profile when `network_client` is set for VZ NAT (Step 92).
 #[tracing::instrument(level = "debug", target = "ternvale::sandbox", skip_all, fields(grants = grants.paths.len(), network_client = grants.network_client))]
 pub fn render(grants: &Grants) -> String {
+    render_for_child(grants, None)
+}
+
+/// Same as [`render`]. `child` is accepted for the Seatbelt relaunch path.
+#[tracing::instrument(level = "debug", target = "ternvale::sandbox", skip_all)]
+pub fn render_for_child(grants: &Grants, child: Option<&Path>) -> String {
     let mut out = String::from("(version 1)\n(deny default)\n");
     out.push_str("; Ternvale per-VM VMM. Privileged ops stay in ternvale-vmnetd.\n");
-    out.push_str("(deny process-exec)\n(deny process-fork)\n");
-    out.push_str("(allow process-info*)\n(allow signal)\n(allow sysctl-read)\n");
-    out.push_str("(allow file-ioctl)\n(allow file-read-metadata)\n");
-    out.push_str("(allow mach-lookup)\n(allow mach-register)\n(allow iokit-open)\n");
-    out.push_str("(allow ipc-posix-shm)\n(allow system-socket)\n");
+    // Rust/Hypervisor need process*/sysctl*/mach*/system* under `(deny default)`
+    // on macOS 15–26; a lone `(allow process-exec (literal …))` still EPERM.
+    let _ = child;
+    out.push_str("(allow process*)\n(allow signal)\n(allow sysctl*)\n(allow system*)\n");
+    out.push_str("(allow file-ioctl)\n(allow file-read-metadata)\n(allow file-map-executable)\n");
+    out.push_str("(allow mach*)\n(allow iokit-open)\n");
+    out.push_str("(allow ipc-posix*)\n(allow system-socket)\n");
     out.push_str("(allow file-read* (subpath \"/usr/lib\") (subpath \"/System\") (subpath \"/usr/share\") (subpath \"/Library/Developer\"))\n");
     out.push_str("(allow file-read* (literal \"/dev/null\") (literal \"/dev/urandom\") (literal \"/dev/dtracehelper\") (literal \"/dev/ptmx\"))\n");
     out.push_str("(allow file-read* file-write* (regex #\"^/dev/ttys\"))\n");
@@ -43,9 +51,10 @@ pub fn render(grants: &Grants) -> String {
             "file-read*"
         };
         if grant.directory {
-            let _ = writeln!(out, "({access} (subpath \"{path}\"))");
+            // `(file-read* (subpath …))` without `allow` is `sandbox-exec: illegal function`.
+            let _ = writeln!(out, "(allow {access} (subpath \"{path}\"))");
         } else {
-            let _ = writeln!(out, "({access} (literal \"{path}\"))");
+            let _ = writeln!(out, "(allow {access} (literal \"{path}\"))");
             if let Some(parent) = grant.path.parent() {
                 let parent = sb_literal(parent);
                 let _ = writeln!(out, "(allow file-read* (subpath \"{parent}\"))");
@@ -80,7 +89,8 @@ mod tests {
         .unwrap();
         let grants = Grants::from_config(&config, std::path::Path::new("/tmp/vm.toml"));
         let text = render(&grants);
-        assert!(text.contains("(deny process-exec)"));
+        assert!(text.contains("(deny default)"));
+        assert!(text.contains("(allow process*)"));
         assert!(text.contains("(deny network-outbound)"));
         assert!(!text.contains("(allow network-outbound)\n(allow network-bind)"));
     }
@@ -94,5 +104,45 @@ mod tests {
         let grants = Grants::from_config(&config, std::path::Path::new("/tmp/vm.toml"));
         let text = render(&grants);
         assert!(text.contains("(allow network-outbound)"));
+        assert!(
+            text.contains("(allow process*)"),
+            "sandbox-exec must be allowed to start the VMM binary"
+        );
+    }
+
+    #[test]
+    fn path_grants_use_allow_and_sandbox_exec_parses() {
+        let config = VmConfig::parse(
+            "name = \"p\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\n",
+        )
+        .unwrap();
+        let grants = Grants::from_config(&config, std::path::Path::new("/tmp/vm.toml"));
+        let text = render(&grants);
+        assert!(
+            text.contains("(allow file-read*"),
+            "path grants must be allow rules\n{text}"
+        );
+        assert!(
+            !text
+                .lines()
+                .any(|line| line.starts_with("(file-read") || line.starts_with("(file-write")),
+            "bare file-* filters are illegal SBPL functions\n{text}"
+        );
+        let dir = std::env::temp_dir().join(format!("tv-sb-parse-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("vmm.sb");
+        std::fs::write(&path, &text).unwrap();
+        let out = std::process::Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(&path)
+            .arg("/usr/bin/true")
+            .output()
+            .expect("sandbox-exec");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !err.contains("illegal function"),
+            "sandbox-exec rejected profile: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

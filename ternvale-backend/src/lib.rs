@@ -214,6 +214,7 @@ mod tests {
             cpu_profile: Default::default(),
             x86_emulation: Default::default(),
             agent: Default::default(),
+            gpu: None,
         }
     }
 

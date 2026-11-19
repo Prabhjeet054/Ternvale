@@ -118,6 +118,7 @@ fn boot(
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));

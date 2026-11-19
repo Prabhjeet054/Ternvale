@@ -84,6 +84,7 @@ pub fn run() -> Result<(), String> {
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     let uart = Pl011::open(&serial_log).map_err(|err| err.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -98,7 +99,10 @@ pub fn run() -> Result<(), String> {
     let slot = Arc::clone(&captured);
     let started = Instant::now();
     let exit = Machine::run_with(&vm, Box::new(uart), Arc::clone(&cancel), move |attach| {
-        let config = GpuConfig { modes: vec![MODE] };
+        let config = GpuConfig {
+            modes: vec![MODE],
+            gpu3d: false,
+        };
         let gpu = VirtioGpu::attach(
             SLOT,
             config,

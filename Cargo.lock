@@ -1686,6 +1686,7 @@ dependencies = [
  "ternvale-crypto",
  "ternvale-devices",
  "ternvale-gpu",
+ "ternvale-gpu3d-host",
  "ternvale-metrics",
  "ternvale-net",
  "ternvale-tpm",
@@ -1699,9 +1700,20 @@ dependencies = [
 name = "ternvale-gpu"
 version = "0.1.0"
 dependencies = [
- "libloading",
  "ternvale-devices",
+ "ternvale-gpu3d-host",
  "ternvale-vmm",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "ternvale-gpu3d-host"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+ "ternvale-hv",
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",

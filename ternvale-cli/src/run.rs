@@ -226,6 +226,9 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
 
     let opened =
         ternvale_backend::open_sync(config.clone()).map_err(|error| anyhow::anyhow!("{error}"))?;
+    if config.gpu3d() && !opened.capabilities().gpu_3d {
+        anyhow::bail!("[gpu].gpu3d is not supported by this backend (capability gpu_3d)");
+    }
     if opened.drives_guest() {
         return run_self_hosted(config, opened, mode);
     }
@@ -330,6 +333,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     });
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();
+    let gpu3d = config.gpu3d();
     let ram_mib = config.ram_mib;
     let ram_min_mib = config.balloon_floor_mib();
     let cpus = config.cpus;
@@ -348,6 +352,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
             share,
             windows_names,
             display: plan.as_ref(),
+            gpu3d,
             agent: agent.clone(),
             audio,
             ram_mib,
@@ -454,6 +459,8 @@ struct Wanted<'a> {
     /// `--display window`: a virtio-gpu after vsock, then a virtio-input
     /// keyboard and tablet (all PCI with `virtio-pci`).
     display: Option<&'a DisplayPlan>,
+    /// Per-VM Venus 3D (`[gpu] gpu3d`). Default false.
+    gpu3d: bool,
     /// Guest agent, for `SetResolution` when the SwiftUI window is resized.
     agent: Option<Arc<ternvale_devices::AgentServer>>,
     /// Attach virtio-sound on the next free virtio-mmio slot.
@@ -606,7 +613,8 @@ fn attach_devices(
     if let Some(plan) = wanted.display {
         let slot = u32::try_from(mmio_after_net)
             .map_err(|_| MachineError::Attach("virtio-gpu slot does not fit in u32".into()))?;
-        let (mapped, display) = crate::display::attach_gpu(attach, wanted.transport, slot)?;
+        let (mapped, display) =
+            crate::display::attach_gpu(attach, wanted.transport, slot, wanted.gpu3d)?;
         devices.extend(mapped);
         let (mapped, input) =
             crate::display_input::attach_input(attach, wanted.transport, slot + 1)?;

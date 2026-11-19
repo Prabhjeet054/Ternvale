@@ -378,6 +378,7 @@ fn boot_once(
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     tracing::info!(
         target: "ternvale::boot",

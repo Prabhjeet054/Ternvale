@@ -281,6 +281,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),
+        gpu: None,
     };
     vm.validate()
         .map_err(|err| format!("linux config: {err}"))?;

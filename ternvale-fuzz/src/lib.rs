@@ -8,6 +8,7 @@ mod agent;
 mod crypto;
 mod esr;
 mod fuse;
+mod gpu3d;
 mod guest;
 mod psci;
 mod tpm;
@@ -30,6 +31,7 @@ pub use agent::run as agent_proto;
 pub use crypto::run as crypto_at_rest;
 pub use esr::run as esr;
 pub use fuse::run as fuse;
+pub use gpu3d::run as gpu3d_decoder;
 pub use psci::run as psci;
 pub use tpm::run as tpm_crb;
 pub use user_net::run as user_net;
@@ -76,6 +78,7 @@ pub const TARGETS: &[&str] = &[
     "user_net",
     "fuse",
     "crypto",
+    "gpu3d_decoder",
 ];
 
 /// Run the named target on `data`. Unknown names are ignored.
@@ -101,6 +104,7 @@ pub fn run_named(target: &str, data: &[u8]) {
         "user_net" => user_net(data),
         "fuse" => fuse(data),
         "crypto" => crypto_at_rest(data),
+        "gpu3d_decoder" => gpu3d_decoder(data),
         _ => {}
     }
 }

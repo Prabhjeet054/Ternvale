@@ -293,6 +293,7 @@ mod tests {
             cpu_profile: Default::default(),
             x86_emulation: Default::default(),
             agent: Default::default(),
+            gpu: None,
         };
         let plan = VzPlan::from_config(&config).expect("linux rosetta");
         assert!(plan.rosetta);

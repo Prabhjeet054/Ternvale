@@ -34,7 +34,10 @@ guest installers. Review upstream terms before you redistribute them yourself.
 | swtpm | `brew install swtpm` | BSD-3-Clause | no | No (host tool) |
 | virtio-win ISO | `scripts/fetch-virtio-win.sh` | BSD-3-Clause (kvm-guest-drivers-windows) | no | No |
 | WinFsp MSI | `scripts/fetch-winfsp.sh` | **GPLv3 + FLOSS exception** | **GPL** (exception for unmodified MSI + FLOSS host) | **No** |
-| virglrenderer / rutabaga_gfx | not linked (`gpu3d` is a local command surface) | BSD-3-Clause upstream; not vendored | no | No |
+| virglrenderer | optional `dlopen` (`gpu3d` + `[gpu] gpu3d = true`) | MIT upstream; not vendored | no | No |
+| rutabaga_gfx | not linked | BSD-3-Clause; not vendored | no | No |
+| gfxstream | not linked (fallback candidate) | Apache-2.0; not vendored | no | No |
+| MoltenVK | host Vulkan ICD for virglrenderer Venus; not linked into Ternvale | Apache-2.0; user-installed | no | No |
 | FEX-Emu | Guest usermode x86 (`scripts/build-fex.sh`); not linked into the VMM | **MIT** (Ryan Houdek, 2019+) | no | No |
 | FEX RootFS (typically Ubuntu squashfs) | `ternvale x86 fetch-rootfs` after typing `yes` | Canonical / distro terms (not FEX MIT) | n/a | **No** (never bundled) |
 | qemu-user-static | Guest distro package via `ternvale x86 install-qemu-user` | **GPL** | **GPL** | **No** |
@@ -74,9 +77,10 @@ Ternvale.app. Guests install the distro package (`qemu-user-static` /
 
 ### GPU
 
-No Mesa, virglrenderer, or MoltenVK binary is redistributed. The optional
-`gpu3d` module is Ternvale source (MIT OR Apache-2.0) with comments pointing
-at crosvm `rutabaga_gfx` (BSD-3-Clause) for a future optional link.
+No Mesa, virglrenderer, gfxstream, or MoltenVK binary is redistributed. The
+`gpu3d` / `ternvale-gpu3d-host` code is Ternvale source (MIT OR Apache-2.0).
+virglrenderer is loaded at runtime when present (`TERNVALE_VIRGL_RENDERER`).
+See `docs/GPU_ACCELERATION.md` Step 107.
 
 ### tvgpu-dod (Windows KMDOD) — consulted, not copied
 

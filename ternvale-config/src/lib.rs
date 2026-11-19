@@ -10,6 +10,7 @@ mod cpu;
 mod disk;
 mod error;
 mod firmware_tables;
+mod gpu;
 mod iso;
 mod nic;
 mod policy;
@@ -29,6 +30,7 @@ pub use cpu::CpuProfile;
 pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEPTH};
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
+pub use gpu::GpuSection;
 pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BYTES};
 pub use nic::{ForwardProto, Nic, NicMode, PortForward};
 pub use policy::{parse_cidr, CidrPort, NicPolicy};
@@ -171,6 +173,18 @@ backend = "user"
         assert_eq!(config.cpu_profile, super::CpuProfile::Baseline);
         let dumped = config.to_toml().expect("toml");
         assert!(dumped.contains("cpu_profile = \"baseline\""), "{dumped}");
+    }
+
+    #[test]
+    fn gpu3d_defaults_off() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&sample(&fix)).expect("parse");
+        assert!(!config.gpu3d());
+        let text = format!("{}\n[gpu]\ngpu3d = true\n", sample(&fix));
+        let config = VmConfig::from_toml(&text).expect("gpu3d");
+        assert!(config.gpu3d());
+        let dumped = config.to_toml().expect("toml");
+        assert!(dumped.contains("gpu3d = true"), "{dumped}");
     }
 
     #[test]

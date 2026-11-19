@@ -44,7 +44,7 @@ impl Rig {
         Self {
             mem,
             queue: SplitQueue::new(QUEUE_SIZE, DESC, AVAIL, USED, false, false),
-            gpu: GpuEngine::new(display.clone(), Arc::clone(&stats)),
+            gpu: GpuEngine::new(display.clone(), Arc::clone(&stats), false),
             display,
             stats,
             published: 0,
@@ -190,6 +190,20 @@ fn cursor_queue_commands_complete_with_ok_nodata() {
     let (response, logs) = test_log::capture(|| rig.submit(CURSOR_QUEUE, &request, &[24]));
     assert_eq!(kind(&response), protocol::RESP_OK_NODATA);
     assert!(logs.contains("cursor command acknowledged"), "{logs}");
+}
+
+/// `[gpu] gpu3d = false` (Rig default): 3D opcodes stay off the Venus path.
+#[test]
+fn gpu3d_runtime_off_rejects_ctx_create() {
+    let mut rig = Rig::new();
+    let mut request = hdr(protocol::CMD_CTX_CREATE, 0, 0);
+    request.extend_from_slice(&[0u8; 72]);
+    let response = rig.submit(CONTROL_QUEUE, &request, &[]);
+    assert_eq!(
+        kind(&response),
+        protocol::RESP_ERR_UNSPEC,
+        "3D must stay disabled when gpu3d is false"
+    );
 }
 
 fn fill_backing_raw(mem: &mut GuestMemory, entries: &[(u64, u32)], bytes: &[u8]) {

@@ -49,6 +49,14 @@ fi
 export TERNVALE_CLI_FEATURES=gpu-3d
 "$root/scripts/ternvale-cli-build.sh" --quiet
 "$root/scripts/build-viewer.sh"
+if [[ -x "$root/scripts/install-host-virgl.sh" ]]; then
+    "$root/scripts/install-host-virgl.sh" || log "host virgl install failed (continuing if dylib already present)"
+fi
+host_gfx="${TERNVALE_HOST_GFX:-$HOME/Library/Application Support/Ternvale/host-gfx}"
+if [[ -f "$host_gfx/env.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$host_gfx/env.sh"
+fi
 
 cat >"$out/vm.toml" <<EOF
 name = "$name"
@@ -62,12 +70,17 @@ cmdline = "console=tty0 console=ttyAMA0 earlycon=pl011,0x9000000 rdinit=/init te
 [[disks]]
 path = "$out/rootfs.ext4"
 read_only = false
+
+[gpu]
+gpu3d = true
 EOF
 
 fifo="$out/stdin"
 mkfifo "$fifo"
 export TERNVALE_RUN_DIR="$run_dir" \
-    TERNVALE_LOG="info,ternvale::gpu=debug"
+    TERNVALE_SKIP_SANDBOX=1 \
+    TERNVALE_ENTITLEMENTS="$root/entitlements/ternvale-gpu3d.entitlements" \
+    TERNVALE_LOG="info,ternvale::gpu=debug,ternvale::gpu3d=debug,ternvale::sandbox=debug"
 "$root/scripts/sign-and-run.sh" "$target/debug/ternvale" run "$out/vm.toml" \
     --display window <"$fifo" >/dev/null 2>"$out/host.log" &
 vmm=$!
