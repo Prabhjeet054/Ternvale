@@ -76,6 +76,9 @@ pub fn checks(config: &VmConfig) -> Vec<Check> {
     if config.nested_virt {
         out.push(check_nested_virt_config(config));
     }
+    if !config.cpu_profile.is_host() {
+        out.push(check_cpu_profile_config(config));
+    }
     let cmdline = match &config.firmware {
         Some(firmware) => {
             out.push(check_firmware(firmware));
@@ -129,6 +132,33 @@ fn check_nested_virt_config(config: &VmConfig) -> Check {
         NAME,
         Outcome::Pass,
         "nested_virt = true: guest boots at EL2h (native)",
+    )
+}
+
+/// `cpu_profile = "baseline"` needs native (ID register writes).
+#[tracing::instrument(level = "debug", target = "ternvale::cpuprofile", skip_all, fields(vm = %config.name))]
+fn check_cpu_profile_config(config: &VmConfig) -> Check {
+    const NAME: &str = "cpu_profile";
+    let resolved = ternvale_backend::resolve(config).resolved;
+    let caps = ternvale_backend::BackendCapabilities::for_guest(resolved, config.profile);
+    if !caps.cpu_profiles {
+        return Check::new(
+            NAME,
+            Outcome::Fail,
+            format!(
+                "cpu_profile = {} is not supported by this backend",
+                config.cpu_profile
+            ),
+        )
+        .fix("Use backend = \"native\" (see docs/CPU_PROFILES.md).");
+    }
+    Check::new(
+        NAME,
+        Outcome::Pass,
+        format!(
+            "cpu_profile = {}: native will try ID_AA64* masking via hv_vcpu_set_sys_reg",
+            config.cpu_profile
+        ),
     )
 }
 

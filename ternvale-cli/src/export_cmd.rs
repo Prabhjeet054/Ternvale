@@ -87,6 +87,22 @@ pub fn export_vm(name: &str, out: &Path, zstd: bool, json: bool) -> Result<ExitC
             }
         }
     }
+    if let Some(cpu) = config.serial_log.parent().map(|p| p.join("cpu.json")) {
+        if cpu.is_file() {
+            files.push(tvm_io::store(
+                &cpu,
+                &out.join("cpu.json"),
+                "cpu.json",
+                FileKind::Cpu,
+                zstd,
+            )?);
+            tracing::info!(
+                target: "ternvale::cpuprofile",
+                path = %cpu.display(),
+                "exported cpu.json fingerprint"
+            );
+        }
+    }
     // Relative paths inside the bundle are not valid until import rewrites them.
     let config_text =
         toml::to_string_pretty(&exported).context("serialize exported config (unvalidated)")?;

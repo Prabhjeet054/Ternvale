@@ -43,6 +43,10 @@ pub(super) struct Shared<'a> {
     pub control: &'a VmControl,
     /// Guest entered at EL2h (`nested_virt = true`).
     pub nested_virt: bool,
+    /// `cpu_profile` from the VM TOML.
+    pub cpu_profile: ternvale_config::CpuProfile,
+    /// Directory for `cpu.json` (parent of `serial_log`).
+    pub cpu_dir: Option<&'a std::path::Path>,
 }
 
 enum Leave {
@@ -146,6 +150,22 @@ fn setup(index: u32, vcpu: &Vcpu, shared: &Shared<'_>) -> Result<bool, MachineEr
     vcpu.set_sys_reg(SysReg::MpidrEl1, mpidr)
         .map_err(op(index, "set MPIDR_EL1"))?;
     crate::pmu::advertise_pmuv3(vcpu).map_err(op(index, "advertise PMUv3 in ID_AA64DFR0_EL1"))?;
+    let fingerprint = crate::cpu_profile::apply_and_capture(vcpu, shared.cpu_profile)
+        .map_err(op(index, "apply CPU profile ID registers"))?;
+    if index == 0 {
+        if let Some(host) = shared.control.snapshot_host() {
+            *crate::lockwatch::lock(&host.cpu, "snapshot-cpu") = Some(fingerprint.clone());
+        }
+        if let Some(dir) = shared.cpu_dir {
+            if let Err(error) = crate::cpu_profile::write_cpu_json(dir, &fingerprint) {
+                tracing::warn!(
+                    target: "ternvale::cpuprofile",
+                    error = %error,
+                    "could not write cpu.json"
+                );
+            }
+        }
+    }
     match shared.gic.vcpu_redistributor_base(vcpu.id()) {
         Ok(base) => {
             tracing::info!(

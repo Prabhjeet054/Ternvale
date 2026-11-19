@@ -27,13 +27,14 @@ pub fn create(vm: &str, label: &str, json: bool) -> Result<ExitCode> {
 
 /// `ternvale snapshot restore <vm> <name>`.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(vm, label))]
-pub fn restore(vm: &str, label: &str, json: bool) -> Result<ExitCode> {
+pub fn restore(vm: &str, label: &str, force: bool, json: bool) -> Result<ExitCode> {
     let socket = paths::socket_path(vm)?;
     let response = client::request(
         &socket,
         vm,
         &Request::SnapshotRestore {
             name: label.to_string(),
+            force,
         },
     )
     .with_context(|| format!("snapshot restore {label} for vm {vm}"))?;

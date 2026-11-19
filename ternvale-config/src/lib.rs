@@ -6,6 +6,7 @@
 mod agent;
 mod audio;
 mod backend;
+mod cpu;
 mod disk;
 mod error;
 mod firmware_tables;
@@ -24,6 +25,7 @@ mod x86;
 pub use agent::AgentSection;
 pub use audio::AudioSection;
 pub use backend::BackendKind;
+pub use cpu::CpuProfile;
 pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEPTH};
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
@@ -157,6 +159,18 @@ backend = "user"
     #[test]
     fn crate_name_is_stable() {
         assert_eq!(env!("CARGO_PKG_NAME"), "ternvale-config");
+    }
+
+    #[test]
+    fn cpu_profile_defaults_to_host() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&sample(&fix)).expect("parse");
+        assert!(config.cpu_profile.is_host());
+        let text = format!("cpu_profile = \"baseline\"\n{}", sample(&fix));
+        let config = VmConfig::from_toml(&text).expect("cpu");
+        assert_eq!(config.cpu_profile, super::CpuProfile::Baseline);
+        let dumped = config.to_toml().expect("toml");
+        assert!(dumped.contains("cpu_profile = \"baseline\""), "{dumped}");
     }
 
     #[test]

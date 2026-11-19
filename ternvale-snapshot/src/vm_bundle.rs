@@ -2,6 +2,7 @@
 //!
 //! v1 uses a **full RAM dump** per region (no memory COW). See `docs/VM_SNAPSHOT.md`.
 
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -39,6 +40,12 @@ pub struct VmSnapshotMeta {
     pub vcpu_count: u32,
     /// Human-readable gaps (virtio queue state, etc.).
     pub limitations: Vec<String>,
+    /// `host` or `baseline`. Omitted on bundles written before Step 103.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_profile: Option<String>,
+    /// Guest-visible ID / feature registers as hex (`0x…`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub id_registers: BTreeMap<String, String>,
 }
 
 /// Guest RAM plus GIC blob and JSON sidecars.
@@ -80,6 +87,8 @@ pub fn new_meta(
             "Guest RAM is a full dump (no memory COW yet).".to_string(),
             "Virtio queue and in-flight request state are not restored; disks use layered .tstack snapshots separately.".to_string(),
         ],
+        cpu_profile: None,
+        id_registers: BTreeMap::new(),
     }
 }
 
@@ -347,6 +356,26 @@ mod tests {
             "{err}"
         );
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn old_meta_without_cpu_fields_still_loads() {
+        let json = r#"{
+            "magic": "TVSB",
+            "version": 1,
+            "vm_name": "vm",
+            "label": "old",
+            "created_unix_ms": 0,
+            "ram_base": 0,
+            "ram_size": 0,
+            "ram_policy": "full",
+            "gic_bytes": 0,
+            "vcpu_count": 1,
+            "limitations": []
+        }"#;
+        let meta: VmSnapshotMeta = serde_json::from_str(json).expect("old meta");
+        assert!(meta.cpu_profile.is_none());
+        assert!(meta.id_registers.is_empty());
     }
 
     #[test]

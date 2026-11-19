@@ -7,6 +7,7 @@ mod acpi_check;
 mod boot;
 mod boot_order;
 mod control;
+mod cpu_profile;
 mod diag;
 mod esr;
 mod fdt;
@@ -38,6 +39,10 @@ pub use boot::{load as load_payload, stage as stage_payload, BootError, LoadInfo
 pub use boot_order::{disk_ofw_path, pci_disk_bdf, BOOTORDER_FILE};
 pub use control::{
     ControlError, ControlHooks, CpuStats, StopCause, VmControl, VmState, VmStats, VmStatus,
+};
+pub use cpu_profile::{
+    apply_and_capture, evaluate_restore, format_mismatch_error, from_hex_map, host_fingerprint,
+    mismatches, to_hex_map, write_cpu_json, CpuFingerprint, CpuMismatch,
 };
 pub use diag::{DeviceCount, Diagnostics, MmioEvent, MmioTrace, MMIO_TRACE_LEN};
 pub use esr::{decode as decode_esr, ExitEvent};

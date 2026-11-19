@@ -114,6 +114,10 @@ x86-engines-test:
 nested-virt-test:
 	./scripts/nested-virt-live-check.sh
 
+# Step 103: host ID_AA64* vs guest cpuinfo, baseline mask, restore --force.
+cpu-profile-test:
+	./scripts/cpu-profile-live-check.sh
+
 # Step 89: Sparkle appcast generator + crash ingest (no network).
 updates-test:
 	cd scripts/updates && python3 -m unittest discover -p 'test_*.py' -v

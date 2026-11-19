@@ -317,6 +317,9 @@ fn reject_unsupported(config: &VmConfig) -> Result<(), VzError> {
     if config.nested_virt {
         return Err(unsupported("nested_virt", "nested_virt"));
     }
+    if !config.cpu_profile.is_host() {
+        return Err(unsupported("cpu_profile", "cpu_profiles"));
+    }
     for (index, nic) in config.nics.iter().enumerate() {
         if nic.backend != "user" {
             return Err(unsupported(
@@ -381,8 +384,22 @@ mod tests {
             encryption: false,
             rosetta: false,
             nested_virt: false,
+            cpu_profile: Default::default(),
             x86_emulation: Default::default(),
             agent: Default::default(),
+        }
+    }
+
+    #[test]
+    fn baseline_cpu_profile_is_unsupported_on_vz() {
+        let mut config = linux();
+        config.cpu_profile = ternvale_config::CpuProfile::Baseline;
+        match VzPlan::from_config(&config) {
+            Err(VzError::UnsupportedOption {
+                option,
+                capability: "cpu_profiles",
+            }) => assert_eq!(option, "cpu_profile"),
+            other => panic!("{other:?}"),
         }
     }
 

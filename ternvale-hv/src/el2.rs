@@ -203,7 +203,7 @@ fn probe_default_enabled() -> Option<bool> {
     Some(enabled)
 }
 
-fn dlsym_fn<T>(name: &CStr) -> Option<T> {
+pub(crate) fn dlsym_fn<T>(name: &CStr) -> Option<T> {
     const RTLD_DEFAULT: *mut c_void = -2isize as *mut c_void;
     // SAFETY: `name` is a NUL-terminated literal. Non-null `dlsym` is `T`.
     let symbol = unsafe { ffi::dlsym(RTLD_DEFAULT, name.as_ptr()) };

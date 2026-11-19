@@ -51,6 +51,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         encryption: false,
         rosetta: false,
         nested_virt: false,
+        cpu_profile: Default::default(),
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),

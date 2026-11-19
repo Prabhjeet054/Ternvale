@@ -40,6 +40,8 @@ pub enum FileKind {
     Tpm,
     /// Kernel, initrd, or firmware copied into `boot/`.
     Boot,
+    /// Guest-visible ID_AA64* fingerprint (`cpu.json`).
+    Cpu,
 }
 
 /// One file inside the bundle (paths relative to the `.tvm` directory).

@@ -105,6 +105,7 @@ fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Re
         encryption: false,
         rosetta: false,
         nested_virt: false,
+        cpu_profile: Default::default(),
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),

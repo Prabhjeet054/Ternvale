@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use ternvale_crypto::CryptoContext;
 use ternvale_hv::SysReg;
 use ternvale_snapshot::{
-    new_meta, read_bundle_crypto, write_bundle_crypto, SnapshotError, VmSnapshotPayload,
+    new_meta, read_bundle_crypto, write_bundle_crypto, SnapshotError, VmSnapshotMeta,
+    VmSnapshotPayload,
 };
 
 use super::{ControlError, VmControl, VmState, KICK_EVERY};
@@ -104,6 +105,8 @@ pub struct SnapshotHost {
     pub ram_size: u64,
     pub vm_name: String,
     pub device_note: String,
+    /// Guest-visible ID registers captured after vCPU 0 setup.
+    pub cpu: Arc<Mutex<Option<crate::cpu_profile::CpuFingerprint>>>,
 }
 
 impl SnapshotHost {
@@ -128,7 +131,7 @@ impl SnapshotHost {
                     detail: format!("ram capture: {error}"),
                 })?
         };
-        let meta = new_meta(
+        let mut meta = new_meta(
             &self.vm_name,
             label,
             self.ram_base,
@@ -136,6 +139,16 @@ impl SnapshotHost {
             gic.len(),
             vcpus.len() as u32,
         );
+        if let Some(fp) = crate::lockwatch::lock(&self.cpu, "snapshot-cpu").as_ref() {
+            meta.cpu_profile = Some(fp.profile.clone());
+            meta.id_registers = crate::cpu_profile::to_hex_map(fp);
+            tracing::debug!(
+                target: "ternvale::cpuprofile",
+                profile = %fp.profile,
+                regs = fp.id_registers.len(),
+                "stored CPU fingerprint in snapshot meta"
+            );
+        }
         let vcpus_json =
             serde_json::to_string_pretty(vcpus).map_err(|error| SnapshotError::InvalidRequest {
                 detail: format!("serialize vcpus: {error}"),
@@ -453,6 +466,12 @@ impl VmControl {
     /// Pause, restore from `dir`, resume.
     #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(vm = %self.name, dir = %dir.display()))]
     pub fn snapshot_restore(&self, dir: &Path) -> Result<(), ControlError> {
+        self.snapshot_restore_with(dir, false)
+    }
+
+    /// Pause, restore from `dir`, resume. `force` skips CPU ID refusal.
+    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(vm = %self.name, dir = %dir.display(), force))]
+    pub fn snapshot_restore_with(&self, dir: &Path, force: bool) -> Result<(), ControlError> {
         if let Some(hooks) = self.hooks.get() {
             if let Some(restore) = &hooks.snapshot_restore {
                 tracing::info!(
@@ -474,7 +493,7 @@ impl VmControl {
         let started = Instant::now();
         self.pause(Duration::from_secs(30))?;
         let pause_ms = millis(started.elapsed());
-        let result = self.snapshot_restore_paused(&host, dir);
+        let result = self.snapshot_restore_paused(&host, dir, force);
         let apply_ms = millis(started.elapsed()) - pause_ms;
         let _ = self.resume();
         let total_ms = millis(started.elapsed());
@@ -533,12 +552,18 @@ impl VmControl {
         Ok(dir.to_path_buf())
     }
 
-    fn snapshot_restore_paused(&self, host: &SnapshotHost, dir: &Path) -> Result<(), ControlError> {
+    fn snapshot_restore_paused(
+        &self,
+        host: &SnapshotHost,
+        dir: &Path,
+        force: bool,
+    ) -> Result<(), ControlError> {
         if self.state() != VmState::Paused {
             return Err(self.reject("snapshot restore", self.state()));
         }
         let gcm = self.crypto();
         let (payload, vcpus) = host.read_bundle(dir, gcm.as_deref()).map_err(map_snap)?;
+        check_cpu_fingerprint(&payload.meta, force)?;
         host.apply_bundle(&payload, &vcpus).map_err(map_snap)?;
         self.snapshot.begin_restore(vcpus).map_err(map_snap_str)?;
         self.changed.notify_all();
@@ -562,6 +587,39 @@ impl VmControl {
     ) {
         self.snapshot.restore_tick(cpu, apply);
     }
+}
+
+fn check_cpu_fingerprint(meta: &VmSnapshotMeta, force: bool) -> Result<(), ControlError> {
+    if meta.id_registers.is_empty() {
+        tracing::warn!(
+            target: "ternvale::cpuprofile",
+            "snapshot has no CPU fingerprint; skipping ID check"
+        );
+        return Ok(());
+    }
+    let snap = crate::cpu_profile::from_hex_map(meta.cpu_profile.as_deref(), &meta.id_registers);
+    let host = match crate::cpu_profile::host_fingerprint() {
+        Ok(fp) => fp,
+        Err(error) => {
+            tracing::warn!(
+                target: "ternvale::cpuprofile",
+                error = %error,
+                "could not read host feature registers"
+            );
+            if force {
+                tracing::warn!(
+                    target: "ternvale::cpuprofile",
+                    "CPU fingerprint check skipped (--force); host feature dump failed"
+                );
+                return Ok(());
+            }
+            return Err(ControlError::Snapshot {
+                detail: format!("could not read host CPU feature registers: {error}"),
+            });
+        }
+    };
+    crate::cpu_profile::evaluate_restore(&snap, &host, force)
+        .map_err(|detail| ControlError::Snapshot { detail })
 }
 
 fn map_snap_str(detail: String) -> ControlError {

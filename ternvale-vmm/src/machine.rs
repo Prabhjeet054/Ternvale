@@ -242,6 +242,7 @@ impl Machine {
             ram_mib = config.ram_mib,
             boot_disk = config.boot_disk,
             nested_virt = config.nested_virt,
+            cpu_profile = %config.cpu_profile,
             "starting vm"
         );
         let inputs = Inputs::read(config)?;
@@ -344,6 +345,7 @@ impl Machine {
             device_note:
                 "MMIO device registers (virtio queues, UART FIFOs) are not serialized in v1."
                     .to_string(),
+            cpu: Arc::new(Mutex::new(None)),
         }));
         let shutdown = Arc::new(AtomicBool::new(false));
         let watchdog = Arc::new(Watchdog::new(HANG));
@@ -383,6 +385,8 @@ impl Machine {
             vtimer_offset: &vtimer_offset,
             control,
             nested_virt: config.nested_virt,
+            cpu_profile: config.cpu_profile,
+            cpu_dir: config.serial_log.parent(),
         };
         let outcome = run_vcpus(config.cpus, &shared);
         control.mark_stopping(power.stop_reason().unwrap_or(ExitReason::Canceled));

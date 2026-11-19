@@ -56,7 +56,7 @@ impl BackendCapabilities {
             shared_folders: true,
             // virtio-gpu presenter + app Metal viewer (TVDP). Not VZVirtualMachineView.
             custom_display_pipeline: true,
-            cpu_profiles: false,
+            cpu_profiles: true,
         }
     }
 
@@ -164,6 +164,7 @@ mod tests {
         assert!(caps.custom_display_pipeline);
         assert!(!caps.guest_macos);
         assert!(caps.nested_virt);
+        assert!(caps.cpu_profiles);
         assert!(!caps.rosetta);
         assert!(caps.fex);
         assert!(caps.qemu_user);

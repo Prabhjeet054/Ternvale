@@ -9,7 +9,7 @@ use std::time::Duration;
 use clap::{CommandFactory, Parser};
 use ternvale_vmm::{VmControl, VmState};
 
-use crate::cli::{Cli, Command, DiskCommand, X86Command};
+use crate::cli::{Cli, Command, DiskCommand, SnapshotCommand, X86Command};
 use crate::client::{self, Reach};
 use crate::display::DisplayMode;
 use crate::protocol::{Request, Response, MAX_LINE};
@@ -81,6 +81,17 @@ fn parses_every_subcommand() {
     );
     assert_eq!(parse(&["ternvale", "serve"]), Command::Serve);
     assert_eq!(parse(&["ternvale", "probe-el2"]), Command::ProbeEl2);
+    assert_eq!(parse(&["ternvale", "probe-cpu"]), Command::ProbeCpu);
+    assert_eq!(
+        parse(&["ternvale", "snapshot", "restore", "vm", "s1", "--force"]),
+        Command::Snapshot {
+            action: SnapshotCommand::Restore {
+                vm: "vm".into(),
+                name: "s1".into(),
+                force: true,
+            }
+        }
+    );
     assert_eq!(
         parse(&[
             "ternvale",

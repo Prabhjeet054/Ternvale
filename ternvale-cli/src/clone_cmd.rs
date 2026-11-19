@@ -81,6 +81,21 @@ pub fn clone_vm(source: &str, new_name: &str) -> Result<ExitCode> {
     }
     let text = new_config.to_toml().context("serialize cloned VM config")?;
     fs::write(&config_path, text).with_context(|| format!("write {}", config_path.display()))?;
+    let src_cpu = source_config_path
+        .parent()
+        .map(|p| p.join("cpu.json"))
+        .filter(|p| p.is_file());
+    if let Some(src_cpu) = src_cpu {
+        let dest_cpu = dest_dir.join("cpu.json");
+        fs::copy(&src_cpu, &dest_cpu)
+            .with_context(|| format!("copy CPU fingerprint {}", src_cpu.display()))?;
+        tracing::info!(
+            target: "ternvale::cpuprofile",
+            from = %src_cpu.display(),
+            to = %dest_cpu.display(),
+            "cloned cpu.json"
+        );
+    }
     println!("cloned {source} -> {new_name}");
     println!("  config: {}", config_path.display());
     for disk in &new_config.disks {

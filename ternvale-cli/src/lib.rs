@@ -52,6 +52,7 @@ pub mod macos_clone;
 pub mod paths;
 pub mod peer;
 pub mod power;
+pub mod probe_cpu;
 pub mod probe_el2;
 pub mod protocol;
 pub mod qemu_cmd;
@@ -321,7 +322,9 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
         } => commands::stop(&name, force, graceful, no_wait, json),
         Command::Snapshot { action } => match action {
             cli::SnapshotCommand::Create { vm, name } => snapshot_cmd::create(&vm, &name, json),
-            cli::SnapshotCommand::Restore { vm, name } => snapshot_cmd::restore(&vm, &name, json),
+            cli::SnapshotCommand::Restore { vm, name, force } => {
+                snapshot_cmd::restore(&vm, &name, force, json)
+            }
             cli::SnapshotCommand::List { vm } => snapshot_cmd::list(&vm, json),
             cli::SnapshotCommand::Delete { vm, name } => snapshot_cmd::delete(&vm, &name, json),
         },
@@ -358,6 +361,7 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             cli::VmCommand::Delete { name } => clone_cmd::delete_vm(&name),
         },
         Command::ProbeEl2 => probe_el2::run(json),
+        Command::ProbeCpu => probe_cpu::run(json),
         Command::Doctor {
             config,
             install_rosetta,

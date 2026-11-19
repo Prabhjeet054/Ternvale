@@ -427,6 +427,12 @@ impl VmControl {
         }
     }
 
+    /// RAM/GIC/CPU fingerprint host, if `run` installed one.
+    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all)]
+    pub(crate) fn snapshot_host(&self) -> Option<Arc<snapshot::SnapshotHost>> {
+        self.snapshot_host.get().cloned()
+    }
+
     /// vCPU thread: participate in an in-flight snapshot session.
     #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(cpu))]
     pub(crate) fn snapshot_vcpu_tick(

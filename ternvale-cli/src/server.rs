@@ -486,7 +486,7 @@ pub fn handle_line_with(
                 Err(error) => Response::error(error.to_string()),
             })
         }
-        Request::SnapshotRestore { name } => {
+        Request::SnapshotRestore { name, force } => {
             let bundle = match crate::paths::snapshot_bundle(control.name(), &name) {
                 Ok(path) => path,
                 Err(error) => return Response::error(error.to_string()),
@@ -494,7 +494,7 @@ pub fn handle_line_with(
             if !bundle.join("meta.json").is_file() {
                 return Response::error(format!("no snapshot {} at {}", name, bundle.display()));
             }
-            Ok(match control.snapshot_restore(&bundle) {
+            Ok(match control.snapshot_restore_with(&bundle, force) {
                 Ok(()) => Response::status(&control.status()),
                 Err(error) => Response::error(error.to_string()),
             })

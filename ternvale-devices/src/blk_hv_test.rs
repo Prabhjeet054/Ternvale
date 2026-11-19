@@ -80,6 +80,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         encryption: false,
         rosetta: false,
         nested_virt: false,
+        cpu_profile: Default::default(),
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),

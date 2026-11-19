@@ -226,6 +226,7 @@ fn jsonrpc_to_request(method: Method, params: Option<&Value>) -> Result<Request,
         }),
         Method::SnapshotRestore => Ok(Request::SnapshotRestore {
             name: get_str("snapshot").ok_or_else(|| ApiError::InvalidParams("snapshot".into()))?,
+            force: map.get("force").and_then(Value::as_bool).unwrap_or(false),
         }),
         Method::SnapshotList => Ok(Request::SnapshotList),
         Method::SnapshotDelete => Ok(Request::SnapshotDelete {

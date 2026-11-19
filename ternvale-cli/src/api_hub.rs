@@ -154,7 +154,10 @@ fn vm_request(method: Method, map: &serde_json::Map<String, Value>) -> Result<Re
             auto: map.get("auto").and_then(Value::as_bool),
         },
         Method::SnapshotCreate => Request::SnapshotCreate { name: snap()? },
-        Method::SnapshotRestore => Request::SnapshotRestore { name: snap()? },
+        Method::SnapshotRestore => Request::SnapshotRestore {
+            name: snap()?,
+            force: map.get("force").and_then(Value::as_bool).unwrap_or(false),
+        },
         Method::SnapshotList => Request::SnapshotList,
         Method::SnapshotDelete => Request::SnapshotDelete { name: snap()? },
         _ => return Err(ApiError::MethodNotFound(method.as_str().into())),

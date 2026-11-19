@@ -102,6 +102,9 @@ pub struct VmConfig {
     /// Native only; the host must report EL2 support (`ternvale probe-el2`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub nested_virt: bool,
+    /// `"host"` (default) or `"baseline"`. See [`crate::CpuProfile`].
+    #[serde(default, skip_serializing_if = "crate::CpuProfile::is_host")]
+    pub cpu_profile: crate::CpuProfile,
     /// Attach Apple's Linux Rosetta share (`VZLinuxRosettaDirectoryShare`).
     /// Honoured only by the VZ backend; native returns unsupported.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

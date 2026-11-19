@@ -7,6 +7,7 @@ mod clock;
 mod el2;
 mod entropy;
 mod error;
+mod feature;
 mod ffi;
 mod footprint;
 mod gic;
@@ -35,6 +36,7 @@ pub use error::{
     HvError, HV_BAD_ARGUMENT, HV_BUSY, HV_DENIED, HV_ERROR, HV_EXISTS, HV_ILLEGAL_GUEST_STATE,
     HV_NO_DEVICE, HV_NO_RESOURCES, HV_SUCCESS, HV_UNSUPPORTED,
 };
+pub use feature::{read_host_features, FeatureReg, FeatureValue};
 pub use footprint::phys_footprint;
 pub use gic::{raise_ppi, Gic, IccReg, VTIMER_PPI};
 pub use host::{host_chip, hypervisor_supported, macos_version, HostChip, MacosVersion};

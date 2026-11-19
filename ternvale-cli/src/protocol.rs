@@ -71,6 +71,9 @@ pub enum Request {
     SnapshotRestore {
         /// Snapshot label.
         name: String,
+        /// Skip CPU ID refusal (logs a warning).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        force: bool,
     },
     /// List snapshot labels for this VM (no pause).
     SnapshotList,

@@ -56,6 +56,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         encryption: false,
         rosetta: false,
         nested_virt: false,
+        cpu_profile: Default::default(),
         x86_emulation: Default::default(),
         agent: Default::default(),
         backend: Default::default(),

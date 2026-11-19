@@ -288,6 +288,8 @@ pub enum Command {
     /// Probe Hypervisor.framework EL2 and Virtualization.framework nested virt
     /// (research only; does not enable nested guests).
     ProbeEl2,
+    /// Dump Hypervisor.framework ID_AA64* / feature registers for this Mac.
+    ProbeCpu,
     /// Check this Mac can run VMs: macOS version, hypervisor, entitlement,
     /// GIC, disk space, and the log directory. Exits 1 if a check fails.
     Doctor {
@@ -505,6 +507,9 @@ pub enum SnapshotCommand {
         vm: String,
         /// Snapshot label.
         name: String,
+        /// Restore even when this Mac lacks ID_AA64* features the snapshot used.
+        #[arg(long)]
+        force: bool,
     },
     /// List snapshot labels for a VM.
     List {
