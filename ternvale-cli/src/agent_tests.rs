@@ -212,3 +212,62 @@ fn agent_line_explains_disconnects() {
         "  agent: connected (v1), Linux 6.6 aarch64, ternvale-agent 0.1.0, up 12.3s, 8/9 pings answered; 2 connect(s), 1 disconnect(s)"
     );
 }
+
+#[test]
+fn driver_logs_control_request_does_not_need_allow_exec() {
+    let dir = TempDir::new("drvlog");
+    let sidecar = dir.0.join("sidecar");
+    std::fs::create_dir_all(&sidecar).expect("sidecar");
+    std::fs::write(
+        sidecar.join("tvhello.log"),
+        "tvhello: DriverEntry\ntvhello: D0 entry\n",
+    )
+    .expect("log");
+    std::env::set_var(ternvale_agent::DRIVER_LOG_DIR_ENV, &sidecar);
+
+    let socket = dir.0.join("agentvm.sock");
+    let setup = prepare(&config(Some(VsockSection::default())), &socket)
+        .expect("prepare")
+        .expect("vsock section");
+    let host = dir.0.join("agentvm.vsock").join("host-5000.sock");
+    let control = Arc::new(VmControl::new("agentvm", 1));
+    let _server =
+        ControlServer::with_agent(&socket, control, setup.agent.clone()).expect("control");
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&stop);
+    let agent = std::thread::spawn(move || {
+        run(
+            &AgentConfig::new(Target::Unix(host)),
+            &mut SystemActions::default(),
+            &flag,
+        )
+    });
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let json = agent_of(&status(&socket));
+        if json.state == "connected" {
+            break;
+        }
+        assert!(Instant::now() < deadline, "agent never connected: {json:?}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let response = crate::client::request(
+        &socket,
+        "agentvm",
+        &Request::DriverLogs {
+            timeout_ms: Some(5_000),
+            max_bytes: None,
+        },
+    )
+    .expect("driver-logs");
+    stop.store(true, Ordering::Release);
+    let _ = agent.join();
+    std::env::remove_var(ternvale_agent::DRIVER_LOG_DIR_ENV);
+
+    assert!(response.ok, "{response:?}");
+    let text = response.driver_logs.as_deref().unwrap_or("");
+    assert!(text.contains("tvhello: DriverEntry"), "{text}");
+    assert_eq!(response.driver_logs_truncated, Some(false));
+}

@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <!-- Kernel-mode: treat warnings as errors; enable Code Analysis (Step 104). -->
+    <TreatWarningAsError>true</TreatWarningAsError>
+    <WarningLevel>4</WarningLevel>
+    <EnableCodeAnalysis>true</EnableCodeAnalysis>
+    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+    <Platform>ARM64</Platform>
+    <DriverTargetPlatform>Universal</DriverTargetPlatform>
+  </PropertyGroup>
+</Project>

@@ -77,6 +77,20 @@ pub enum Command {
         #[command(subcommand)]
         action: X86Command,
     },
+    /// Pull KMDF/WPP sidecar logs from the guest agent (not `allow_exec`).
+    DriverLogs {
+        /// VM name.
+        name: String,
+        /// Write the text to this file instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Give up after this many seconds.
+        #[arg(long, default_value_t = 5)]
+        timeout: u64,
+        /// Cap on concatenated log bytes.
+        #[arg(long)]
+        max_bytes: Option<u32>,
+    },
     /// Wait until the guest agent is connected.
     WaitReady {
         /// VM name.

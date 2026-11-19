@@ -232,6 +232,13 @@ fn jsonrpc_to_request(method: Method, params: Option<&Value>) -> Result<Request,
         Method::SnapshotDelete => Ok(Request::SnapshotDelete {
             name: get_str("snapshot").ok_or_else(|| ApiError::InvalidParams("snapshot".into()))?,
         }),
+        Method::DriverLogs => Ok(Request::DriverLogs {
+            timeout_ms: timeout,
+            max_bytes: map
+                .get("max_bytes")
+                .and_then(Value::as_u64)
+                .map(|n| n as u32),
+        }),
         Method::Handshake | Method::Subscribe => Err(ApiError::InvalidRequest("internal".into())),
         other => Err(ApiError::MethodNotFound(format!(
             "{} is a hub method (connect to api.sock)",

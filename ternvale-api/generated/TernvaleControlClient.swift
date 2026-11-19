@@ -28,6 +28,7 @@ public enum TernvaleMethod: String, Codable, CaseIterable {
     case netConfigure = "net.configure"
     case subscribe = "subscribe"
     case status = "status"
+    case driverLogs = "driver.logs"
 }
 
 /// Event kinds from `subscribe`.

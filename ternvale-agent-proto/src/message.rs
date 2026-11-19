@@ -167,6 +167,19 @@ pub enum Message {
         /// Lowercase hex SHA-256.
         sha256: String,
     },
+    /// Host → agent: pull KMDF/WPP text logs written under ProgramData.
+    DriverLogsGet {
+        /// Cap (bytes). Omitted: [`crate::MAX_DRIVER_LOG_BYTES`].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_bytes: Option<u32>,
+    },
+    /// Agent → host: concatenated UTF-8 driver logs.
+    DriverLogsOk {
+        /// Log text (may be empty if nothing is installed yet).
+        text: String,
+        /// True when the guest truncated to `max_bytes`.
+        truncated: bool,
+    },
     /// Agent → host: copy/exec request failed.
     CopyErr {
         /// The request id.
@@ -271,6 +284,8 @@ impl Message {
             Self::CopyHash { .. } => "copy_hash",
             Self::CopyHashOk { .. } => "copy_hash_ok",
             Self::CopyErr { .. } => "copy_err",
+            Self::DriverLogsGet { .. } => "driver_logs_get",
+            Self::DriverLogsOk { .. } => "driver_logs_ok",
         }
     }
 
@@ -337,6 +352,20 @@ impl Message {
             }
             Self::CopyErr { reason, .. } if reason.len() > MAX_NAME => {
                 Err(format!("copy_err reason longer than {MAX_NAME} bytes"))
+            }
+            Self::DriverLogsGet { max_bytes: Some(n) }
+                if *n == 0 || *n as usize > crate::MAX_DRIVER_LOG_BYTES =>
+            {
+                Err(format!(
+                    "driver_logs_get max_bytes must be 1..={}",
+                    crate::MAX_DRIVER_LOG_BYTES
+                ))
+            }
+            Self::DriverLogsOk { text, .. } if text.len() > crate::MAX_DRIVER_LOG_BYTES => {
+                Err(format!(
+                    "driver_logs_ok longer than {} bytes",
+                    crate::MAX_DRIVER_LOG_BYTES
+                ))
             }
             _ => Ok(()),
         }

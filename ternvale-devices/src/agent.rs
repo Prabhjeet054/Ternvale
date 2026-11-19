@@ -95,6 +95,12 @@ pub enum AgentServerError {
         /// Wait duration in milliseconds.
         timeout_ms: u64,
     },
+    /// The agent did not answer `DriverLogsGet` in time.
+    #[error("driver_logs_get timed out after {timeout_ms} ms")]
+    DriverLogsTimeout {
+        /// Wait duration in milliseconds.
+        timeout_ms: u64,
+    },
     /// The agent did not finish `Exec` in time.
     #[error("exec timed out after {timeout_ms} ms")]
     ExecTimeout {
@@ -273,6 +279,7 @@ impl AgentServer {
                 | Message::CopyPut { .. }
                 | Message::CopyGet { .. }
                 | Message::CopyHash { .. }
+                | Message::DriverLogsGet { .. }
         ) {
             return Err(AgentServerError::NotARequest {
                 kind: message.kind(),
@@ -384,6 +391,59 @@ impl AgentServer {
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
                 state: "disconnected during window_list_get",
+            }),
+        }
+    }
+
+    /// Pull concatenated KMDF/WPP sidecar text from the guest (not `allow_exec`).
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm, timeout_ms = status::millis(timeout), max_bytes))]
+    pub fn driver_logs(
+        &self,
+        timeout: Duration,
+        max_bytes: Option<u32>,
+    ) -> Result<(String, bool), AgentServerError> {
+        let (tx, rx) = mpsc::channel();
+        {
+            let mut book = self.shared.book();
+            let state = book.snapshot(Instant::now()).state;
+            if state != AgentState::Connected {
+                return Err(AgentServerError::NotConnected {
+                    state: state.as_str(),
+                });
+            }
+            if book.driver_wait.is_some() {
+                return Err(AgentServerError::NotConnected {
+                    state: "driver_logs_get already pending",
+                });
+            }
+            book.driver_wait = Some(tx);
+        }
+        self.send(&Message::DriverLogsGet { max_bytes })?;
+        match rx.recv_timeout(timeout) {
+            Ok(Ok((text, truncated))) => {
+                tracing::info!(
+                    target: "ternvale::agent",
+                    bytes = text.len(),
+                    truncated,
+                    "driver_logs_get ok"
+                );
+                Ok((text, truncated))
+            }
+            Ok(Err(reason)) => {
+                tracing::warn!(target: "ternvale::agent", reason = %reason, "driver_logs_get failed");
+                Err(AgentServerError::NotConnected {
+                    state: "driver_logs_get failed",
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let mut book = self.shared.book();
+                book.driver_wait = None;
+                Err(AgentServerError::DriverLogsTimeout {
+                    timeout_ms: status::millis(timeout),
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
+                state: "disconnected during driver_logs_get",
             }),
         }
     }

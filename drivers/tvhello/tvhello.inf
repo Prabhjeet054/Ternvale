@@ -1,0 +1,56 @@
+; Root-enumerated KMDF hello driver for Ternvale driver-dev VMs.
+; Test-sign only. Do not ship a production catalog from this INF.
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ManufacturerName%
+CatalogFile = tvhello.cat
+PnpLockdown = 1
+DriverVer   = 11/19/2026,10.0.0.1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+tvhello.sys = 1,,
+
+[Manufacturer]
+%ManufacturerName% = Standard,NTARM64
+
+[Standard.NTARM64]
+%TvHello.DeviceDesc% = TvHello_Device, Root\TvHello
+
+[TvHello_Device.NT]
+CopyFiles = TvHello_CopyFiles
+
+[TvHello_CopyFiles]
+tvhello.sys
+
+[TvHello_Device.NT.HW]
+AddReg = TvHello_AddReg
+
+[TvHello_AddReg]
+; Device interface GUID {C7A1E4D2-9B3F-4A18-8E2C-1F5D6A7B8C90}
+HKR,,DeviceInterfaceGuids,0x00010000,"{C7A1E4D2-9B3F-4A18-8E2C-1F5D6A7B8C90}"
+
+[TvHello_Device.NT.Services]
+AddService = TvHello,0x00000002,TvHello_Service_Inst
+
+[TvHello_Service_Inst]
+DisplayName    = %TvHello.ServiceName%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\tvhello.sys
+LoadOrderGroup = Extended Base
+
+[Strings]
+ManufacturerName     = "Ternvale"
+DiskName             = "Ternvale tvhello Installation Disk"
+TvHello.DeviceDesc   = "Ternvale KMDF Hello"
+TvHello.ServiceName  = "Ternvale KMDF Hello"

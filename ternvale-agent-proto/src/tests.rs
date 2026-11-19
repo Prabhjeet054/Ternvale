@@ -46,6 +46,13 @@ fn all_messages() -> Vec<Message> {
             size: 3,
             sha256: "a".repeat(64),
         },
+        Message::DriverLogsGet {
+            max_bytes: Some(1024),
+        },
+        Message::DriverLogsOk {
+            text: "hello".into(),
+            truncated: false,
+        },
     ]
 }
 

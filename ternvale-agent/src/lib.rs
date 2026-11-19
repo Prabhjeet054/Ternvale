@@ -11,6 +11,7 @@ mod actions;
 mod backoff;
 mod clip;
 mod copy;
+mod drvlog;
 mod error;
 mod exec;
 mod os;
@@ -30,6 +31,10 @@ use std::time::Duration;
 
 pub use actions::{Actions, SystemActions};
 pub use backoff::Backoff;
+pub use drvlog::{
+    collect as collect_driver_logs, log_dir as driver_log_dir, DriverLogs,
+    ENV_DIR as DRIVER_LOG_DIR_ENV,
+};
 pub use error::AgentError;
 pub use os::os_description;
 pub use session::SessionEnd;

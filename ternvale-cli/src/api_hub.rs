@@ -64,7 +64,8 @@ pub fn hub_call(method: Method, params: Option<&Value>) -> Result<Response, ApiE
         | Method::SnapshotRestore
         | Method::SnapshotList
         | Method::SnapshotDelete
-        | Method::Status => {
+        | Method::Status
+        | Method::DriverLogs => {
             let n = name()?;
             let req = vm_request(method, &map)?;
             crate::api_library::forward(&n, &req)
@@ -160,6 +161,13 @@ fn vm_request(method: Method, map: &serde_json::Map<String, Value>) -> Result<Re
         },
         Method::SnapshotList => Request::SnapshotList,
         Method::SnapshotDelete => Request::SnapshotDelete { name: snap()? },
+        Method::DriverLogs => Request::DriverLogs {
+            timeout_ms: timeout,
+            max_bytes: map
+                .get("max_bytes")
+                .and_then(Value::as_u64)
+                .map(|n| n as u32),
+        },
         _ => return Err(ApiError::MethodNotFound(method.as_str().into())),
     })
 }

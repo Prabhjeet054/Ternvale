@@ -9,8 +9,8 @@ use anyhow::{bail, Context, Result};
 
 use crate::protocol::{Request, Response, MAX_PAUSE_MS};
 
-/// Longest response line read back (stats for 16 CPUs fit easily).
-const MAX_RESPONSE: u64 = 64 * 1024;
+/// Longest response line read back (`driver-logs` can be ~48 KiB of text).
+const MAX_RESPONSE: u64 = 96 * 1024;
 
 /// Why a VM could not be reached.
 #[derive(Debug, PartialEq, Eq)]
@@ -46,6 +46,9 @@ pub fn exchange(stream: UnixStream, request: &Request) -> Result<Response> {
         Request::Copy { .. } => Duration::from_secs(180),
         Request::Exec { timeout_ms, .. } => {
             Duration::from_millis(timeout_ms.unwrap_or(60_000).saturating_add(10_000))
+        }
+        Request::DriverLogs { timeout_ms, .. } => {
+            Duration::from_millis(timeout_ms.unwrap_or(5_000).saturating_add(5_000))
         }
         _ => Duration::from_millis(MAX_PAUSE_MS + 10_000),
     };

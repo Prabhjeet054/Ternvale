@@ -560,6 +560,46 @@ pub fn handle_line_with(
             );
             return response;
         }
+        Request::DriverLogs {
+            timeout_ms,
+            max_bytes,
+        } => {
+            let Some(agent) = agent else {
+                return Response::error("this vm has no guest agent server");
+            };
+            if let Some(n) = max_bytes {
+                if n == 0 || n as usize > ternvale_agent_proto::MAX_DRIVER_LOG_BYTES {
+                    return Response::error(format!(
+                        "driver-logs max_bytes must be 1..={}",
+                        ternvale_agent_proto::MAX_DRIVER_LOG_BYTES
+                    ));
+                }
+            }
+            let wait = timeout_ms
+                .map(Duration::from_millis)
+                .unwrap_or(crate::clipboard::DEFAULT_CLIPBOARD_TIMEOUT);
+            return match agent.driver_logs(wait, max_bytes) {
+                Ok((text, truncated)) => {
+                    tracing::info!(
+                        target: "ternvale::cli",
+                        bytes = text.len(),
+                        truncated,
+                        "driver-logs pulled"
+                    );
+                    let mut response = Response::driver_logs(&control.status(), text, truncated);
+                    decorate_status(
+                        &mut response,
+                        Some(agent),
+                        tools_iso,
+                        backend,
+                        capabilities,
+                        x86_engine,
+                    );
+                    response
+                }
+                Err(error) => Response::error(format!("driver-logs: {error}")),
+            };
+        }
         Request::Exec { .. } | Request::Copy { .. } => {
             return Response::error("internal: exec/copy not gated");
         }

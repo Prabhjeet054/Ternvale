@@ -1,0 +1,19 @@
+# WDK / MSBuild products (never commit signed catalogs or keys)
+**/ARM64/
+**/x64/
+**/Win32/
+**/*.sys
+**/*.cer
+**/*.pfx
+**/*.pvk
+**/*.pdb
+**/*.obj
+**/*.tlog
+**/*.log
+**/*.idb
+**/*.ilk
+**/*.exp
+**/*.lib
+**/*.cat
+*.user
+.vs/

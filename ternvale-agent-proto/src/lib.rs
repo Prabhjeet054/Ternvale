@@ -54,6 +54,8 @@ pub const MAX_EXEC_ARGV: usize = 32;
 pub const MAX_EXEC_ARG: usize = 4096;
 /// Largest binary chunk in `ExecOutput` / `CopyPut` / `CopyGetOk` (before hex).
 pub const MAX_BIN_CHUNK: usize = 24 * 1024;
+/// Largest `DriverLogsOk.text` (JSON must still fit [`MAX_FRAME`]).
+pub const MAX_DRIVER_LOG_BYTES: usize = 48 * 1024;
 
 /// The peer's protocol version is outside what this build supports.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

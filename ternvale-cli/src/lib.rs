@@ -38,6 +38,7 @@ pub mod disk_cmd;
 pub mod display;
 pub mod display_input;
 pub mod doctor;
+pub mod driver_logs;
 pub mod events_sub;
 pub mod exec_cmd;
 pub mod export_cmd;
@@ -231,6 +232,12 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             cli::X86Command::Setup { config, yes } => x86_plan::setup(&config, yes, json),
         },
         Command::WaitReady { name, timeout } => wait_cmd::wait_ready(&name, timeout, json),
+        Command::DriverLogs {
+            name,
+            out,
+            timeout,
+            max_bytes,
+        } => driver_logs::driver_logs(&name, out.as_deref(), timeout, max_bytes, json),
         Command::Ssh { name } => ssh_cmd::ssh(&name, json),
         Command::Create {
             name,

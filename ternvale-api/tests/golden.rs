@@ -102,6 +102,7 @@ fn schema_lists_every_method_and_event() {
         "query-stats",
         "balloon-set",
         "set-data-key",
+        "driver-logs",
     ] {
         assert!(
             cmds.iter().any(|v| v.as_str() == Some(cmd)),

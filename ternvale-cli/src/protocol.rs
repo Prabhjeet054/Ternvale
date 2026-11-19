@@ -93,6 +93,15 @@ pub enum Request {
         /// New clipboard contents.
         text: String,
     },
+    /// Pull KMDF/WPP sidecar text from the guest agent (not `allow_exec`).
+    DriverLogs {
+        /// How long to wait for the guest agent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
+        /// Cap on concatenated log bytes (guest default 48 KiB).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_bytes: Option<u32>,
+    },
     /// Set virtio-balloon `num_pages` (`target_mib`) or resume auto policy.
     BalloonSet {
         /// Requested balloon size in MiB (capped by floor and guest in-use).
@@ -180,6 +189,7 @@ impl Request {
             Self::SnapshotDelete { .. } => "snapshot-delete",
             Self::ClipboardGet { .. } => "clipboard-get",
             Self::ClipboardSet { .. } => "clipboard-set",
+            Self::DriverLogs { .. } => "driver-logs",
             Self::BalloonSet { .. } => "balloon-set",
             Self::SetDataKey { .. } => "set-data-key",
             Self::Exec { .. } => "exec",
@@ -208,6 +218,7 @@ impl Request {
             Self::SnapshotDelete { .. } => "snapshot delete for",
             Self::ClipboardGet { .. } => "clipboard get for",
             Self::ClipboardSet { .. } => "clipboard set for",
+            Self::DriverLogs { .. } => "driver logs for",
             Self::BalloonSet { .. } => "set balloon for",
             Self::SetDataKey { .. } => "set data key for",
             Self::Exec { .. } => "exec on",
@@ -363,6 +374,12 @@ pub struct Response {
     /// Plain text from `clipboard-get`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clipboard_text: Option<String>,
+    /// Concatenated guest driver sidecar logs (`driver-logs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver_logs: Option<String>,
+    /// True when `driver-logs` hit `max_bytes`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub driver_logs_truncated: Option<bool>,
     /// Set on JSON-RPC `handshake` only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_version: Option<u32>,
@@ -416,6 +433,8 @@ impl Response {
             snapshots: None,
             snapshot_path: None,
             clipboard_text: None,
+            driver_logs: None,
+            driver_logs_truncated: None,
             api_version: None,
             min_api_version: None,
             max_api_version: None,
@@ -476,6 +495,16 @@ impl Response {
     pub fn clipboard(status: &VmStatus, text: String) -> Self {
         Self {
             clipboard_text: Some(text),
+            ..Self::status(status)
+        }
+    }
+
+    /// Success with guest driver sidecar text.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(bytes = text.len(), truncated))]
+    pub fn driver_logs(status: &VmStatus, text: String, truncated: bool) -> Self {
+        Self {
+            driver_logs: Some(text),
+            driver_logs_truncated: Some(truncated),
             ..Self::status(status)
         }
     }
@@ -651,6 +680,13 @@ mod tests {
                 Request::ClipboardSet { text: "hi".into() },
             ),
             (
+                r#"{"cmd":"driver-logs"}"#,
+                Request::DriverLogs {
+                    timeout_ms: None,
+                    max_bytes: None,
+                },
+            ),
+            (
                 r#"{"cmd":"balloon-set","target_mib":1024}"#,
                 Request::BalloonSet {
                     target_mib: Some(1024),
@@ -763,6 +799,13 @@ mod tests {
             &Request::BalloonSet {
                 target_mib: Some(1024),
                 auto: None,
+            },
+        );
+        assert_golden(
+            "cmd-driver-logs.json",
+            &Request::DriverLogs {
+                timeout_ms: None,
+                max_bytes: None,
             },
         );
         assert_golden(

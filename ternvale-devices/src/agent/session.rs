@@ -30,6 +30,9 @@ pub(super) fn record_end(book: &mut Book, conn: Conn, why: &str) {
     if let Some(wait) = book.window_wait.take() {
         let _ = wait.send(Err(why.to_string()));
     }
+    if let Some(wait) = book.driver_wait.take() {
+        let _ = wait.send(Err(why.to_string()));
+    }
     if let Some((_, wait)) = book.exec_wait.take() {
         let _ = wait.send(super::xfer::ExecEvent::Failed {
             reason: why.to_string(),
@@ -149,6 +152,19 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
                     let _ = wait.send(Ok(windows));
                 } else {
                     tracing::debug!(target: "ternvale::agent", count = windows.len(), "window_list_ok without a waiter");
+                }
+            }
+            Some(Message::DriverLogsOk { text, truncated }) => {
+                let mut book = shared.book();
+                if let Some(wait) = book.driver_wait.take() {
+                    let _ = wait.send(Ok((text, truncated)));
+                } else {
+                    tracing::debug!(
+                        target: "ternvale::agent",
+                        bytes = text.len(),
+                        truncated,
+                        "driver_logs_ok without a waiter"
+                    );
                 }
             }
             Some(Message::ExecOutput { id, stream, data }) => {

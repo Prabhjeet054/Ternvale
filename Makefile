@@ -118,6 +118,10 @@ nested-virt-test:
 cpu-profile-test:
 	./scripts/cpu-profile-live-check.sh
 
+# Step 104: agent driver-logs on two Linux VMs; Windows WDK when TERNVALE_WINDOWS_GUEST=1.
+driver-dev-test:
+	./scripts/driver-dev-live-check.sh
+
 # Step 89: Sparkle appcast generator + crash ingest (no network).
 updates-test:
 	cd scripts/updates && python3 -m unittest discover -p 'test_*.py' -v

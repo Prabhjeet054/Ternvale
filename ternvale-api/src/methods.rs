@@ -25,6 +25,8 @@ pub enum Method {
     Subscribe,
     /// Per-VM legacy alias of `stats` (`query-stats` on the cmd protocol).
     Status,
+    /// Pull guest KMDF sidecar logs (`driver-logs` on the cmd protocol).
+    DriverLogs,
 }
 
 impl Method {
@@ -53,6 +55,7 @@ impl Method {
             Self::NetConfigure => "net.configure",
             Self::Subscribe => "subscribe",
             Self::Status => "status",
+            Self::DriverLogs => "driver.logs",
         }
     }
 
@@ -86,4 +89,5 @@ pub const METHODS: &[Method] = &[
     Method::NetConfigure,
     Method::Subscribe,
     Method::Status,
+    Method::DriverLogs,
 ];

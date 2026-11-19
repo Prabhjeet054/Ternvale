@@ -171,6 +171,13 @@ if [ -n "${agent}" ]; then
   if [ "${sharetest}" = "1" ] || [ "${fstest}" = "1" ] || [ "${rotest}" = "1" ]; then
     export TERNVALE_AGENT_HARNESS=1
   fi
+  if /bin/busybox grep -q 'ternvale\.drvlog=1' /proc/cmdline; then
+    mkdir -p /var/log/ternvale/driver-logs
+    echo "tvhello: DriverEntry" >/var/log/ternvale/driver-logs/tvhello.log
+    echo "tvhello: D0 entry" >>/var/log/ternvale/driver-logs/tvhello.log
+    echo "tvhello: live-check sidecar" >>/var/log/ternvale/driver-logs/tvhello.log
+    echo "ternvale driver log sidecar ready"
+  fi
   TERNVALE_AGENT_LOG=${level} setsid /bin/ternvale-agent </dev/null >/dev/console 2>&1 &
   echo "ternvale agent started pid=$! log=${level}"
 fi

@@ -437,6 +437,23 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(
+        parse(&[
+            "ternvale",
+            "driver-logs",
+            "win11",
+            "--timeout",
+            "8",
+            "--max-bytes",
+            "4096",
+        ]),
+        Command::DriverLogs {
+            name: "win11".into(),
+            out: None,
+            timeout: 8,
+            max_bytes: Some(4096),
+        }
+    );
+    assert_eq!(
         parse(&["ternvale", "ssh", "win11"]),
         Command::Ssh {
             name: "win11".into()

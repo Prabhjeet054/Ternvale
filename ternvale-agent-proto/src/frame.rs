@@ -172,7 +172,7 @@ fn parse(payload: &[u8], peer: &str) -> Result<Message, FrameError> {
     }
 }
 
-const KNOWN: [&str; 13] = [
+const KNOWN: [&str; 15] = [
     "hello",
     "welcome",
     "reject",
@@ -186,4 +186,6 @@ const KNOWN: [&str; 13] = [
     "shutdown",
     "window_list_get",
     "window_list_ok",
+    "driver_logs_get",
+    "driver_logs_ok",
 ];

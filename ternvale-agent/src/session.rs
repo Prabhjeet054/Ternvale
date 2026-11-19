@@ -166,6 +166,20 @@ fn serve_requests(
                 return Ok(SessionEnd::Shutdown);
             }
             Message::TimeSync { unix_secs } => actions.time_sync(unix_secs),
+            Message::DriverLogsGet { max_bytes } => {
+                let cap = max_bytes
+                    .map(|n| n as usize)
+                    .unwrap_or(ternvale_agent_proto::MAX_DRIVER_LOG_BYTES);
+                let logs = crate::drvlog::collect(&crate::drvlog::log_dir(), cap);
+                send_host(
+                    stream,
+                    writer.as_ref(),
+                    &Message::DriverLogsOk {
+                        text: logs.text,
+                        truncated: logs.truncated,
+                    },
+                )
+            }
             Message::Exec {
                 id,
                 argv,
@@ -210,7 +224,8 @@ fn serve_requests(
             | Message::CopyPutOk { .. }
             | Message::CopyGetOk { .. }
             | Message::CopyHashOk { .. }
-            | Message::CopyErr { .. }) => {
+            | Message::CopyErr { .. }
+            | Message::DriverLogsOk { .. }) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from host ignored");
                 Ok(())
             }

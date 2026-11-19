@@ -68,6 +68,17 @@ fn golden() -> Vec<(Message, &'static str)> {
             },
             r#"{"type":"window_list_ok","windows":[{"id":42,"title":"Terminal","x":0,"y":0,"width":800,"height":600}]}"#,
         ),
+        (
+            Message::DriverLogsGet { max_bytes: None },
+            r#"{"type":"driver_logs_get"}"#,
+        ),
+        (
+            Message::DriverLogsOk {
+                text: "tvhello".into(),
+                truncated: true,
+            },
+            r#"{"type":"driver_logs_ok","text":"tvhello","truncated":true}"#,
+        ),
     ]
 }
 

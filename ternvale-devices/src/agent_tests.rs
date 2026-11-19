@@ -285,6 +285,38 @@ fn window_list_get_returns_guest_windows() {
 }
 
 #[test]
+fn driver_logs_get_reads_sidecar_without_allow_exec() {
+    let dir = std::env::temp_dir().join(format!("tv-drvlog-host-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    std::fs::write(dir.join("tvhello.log"), "hello-kmdf\n").expect("log");
+    std::env::set_var(ternvale_agent::DRIVER_LOG_DIR_ENV, &dir);
+    let path = socket("drvlog");
+    let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
+    let stop = Arc::new(AtomicBool::new(false));
+    let recorder = Recorder::default();
+    let config = AgentConfig {
+        backoff: Backoff::new(Duration::from_millis(20), Duration::from_millis(200)),
+        poll: Duration::from_millis(10),
+        idle_timeout: Duration::from_secs(2),
+        ..AgentConfig::new(Target::Unix(path.clone()))
+    };
+    let (flag, mut actions) = (Arc::clone(&stop), recorder.clone());
+    let agent = std::thread::spawn(move || run(&config, &mut actions, &flag));
+    server
+        .wait_for(WAIT, |s| s.state == AgentState::Connected)
+        .expect("connected");
+    let (text, truncated) = server
+        .driver_logs(Duration::from_secs(2), None)
+        .expect("driver_logs");
+    stop.store(true, Ordering::Release);
+    let _ = agent.join();
+    std::env::remove_var(ternvale_agent::DRIVER_LOG_DIR_ENV);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(text.contains("hello-kmdf"), "{text}");
+    assert!(!truncated);
+}
+
+#[test]
 fn newer_connection_replaces_the_current_one_and_unknown_types_are_skipped() {
     let path = socket("replace");
     let server = AgentServer::start_with(&path, "unit", fast(), Vec::new()).expect("start");
