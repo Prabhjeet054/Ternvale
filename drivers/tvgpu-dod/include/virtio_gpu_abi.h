@@ -1,0 +1,155 @@
+/* virtio-gpu 2D + EDID wire constants (OASIS virtio 1.2 §5.7).
+ *
+ * Independent transcription of the specification. Do not include Linux
+ * uapi or virtio-win headers here. Numbers are checked against
+ * ternvale-gpu/src/protocol.rs in the host crate tests.
+ */
+#pragma once
+
+#include <ntddk.h>
+
+#define VIRTIO_GPU_CMD_GET_DISPLAY_INFO 0x0100u
+#define VIRTIO_GPU_CMD_RESOURCE_CREATE_2D 0x0101u
+#define VIRTIO_GPU_CMD_RESOURCE_UNREF 0x0102u
+#define VIRTIO_GPU_CMD_SET_SCANOUT 0x0103u
+#define VIRTIO_GPU_CMD_RESOURCE_FLUSH 0x0104u
+#define VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D 0x0105u
+#define VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING 0x0106u
+#define VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING 0x0107u
+#define VIRTIO_GPU_CMD_GET_EDID 0x010Au
+#define VIRTIO_GPU_CMD_UPDATE_CURSOR 0x0300u
+#define VIRTIO_GPU_CMD_MOVE_CURSOR 0x0301u
+
+#define VIRTIO_GPU_RESP_OK_NODATA 0x1100u
+#define VIRTIO_GPU_RESP_OK_DISPLAY_INFO 0x1101u
+#define VIRTIO_GPU_RESP_OK_EDID 0x1104u
+#define VIRTIO_GPU_RESP_ERR_UNSPEC 0x1200u
+#define VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID 0x1202u
+#define VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID 0x1203u
+#define VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER 0x1205u
+
+#define VIRTIO_GPU_FLAG_FENCE 1u
+#define VIRTIO_GPU_MAX_SCANOUTS 16u
+#define VIRTIO_GPU_CTRL_HDR_SIZE 24u
+#define VIRTIO_GPU_DISPLAY_INFO_SIZE (VIRTIO_GPU_CTRL_HDR_SIZE + VIRTIO_GPU_MAX_SCANOUTS * 24u)
+#define VIRTIO_GPU_EDID_WIRE_LEN 1024u
+#define VIRTIO_GPU_EDID_RESP_SIZE (VIRTIO_GPU_CTRL_HDR_SIZE + 8u + VIRTIO_GPU_EDID_WIRE_LEN)
+#define VIRTIO_GPU_EVENT_DISPLAY 1u
+#define VIRTIO_GPU_F_EDID (1ull << 1)
+#define VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM 2u
+#define VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM 1u
+
+#define VIRTIO_GPU_PCI_VENDOR 0x1AF4u
+#define VIRTIO_GPU_PCI_DEVICE 0x1050u /* 0x1040 + device id 16 */
+#define VIRTIO_GPU_PCI_SUBSYS 0x1100u
+
+#pragma pack(push, 1)
+typedef struct _VIRTIO_GPU_CTRL_HDR {
+    UINT32 Type;
+    UINT32 Flags;
+    UINT64 FenceId;
+    UINT32 CtxId;
+    UINT8 RingIdx;
+    UINT8 Padding[3];
+} VIRTIO_GPU_CTRL_HDR;
+
+typedef struct _VIRTIO_GPU_RECT {
+    UINT32 X;
+    UINT32 Y;
+    UINT32 Width;
+    UINT32 Height;
+} VIRTIO_GPU_RECT;
+
+typedef struct _VIRTIO_GPU_DISPLAY_ONE {
+    VIRTIO_GPU_RECT Rect;
+    UINT32 Enabled;
+    UINT32 Flags;
+} VIRTIO_GPU_DISPLAY_ONE;
+
+typedef struct _VIRTIO_GPU_RESP_DISPLAY_INFO {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    VIRTIO_GPU_DISPLAY_ONE Pmodes[VIRTIO_GPU_MAX_SCANOUTS];
+} VIRTIO_GPU_RESP_DISPLAY_INFO;
+
+typedef struct _VIRTIO_GPU_GET_EDID {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    UINT32 Scanout;
+    UINT32 Padding;
+} VIRTIO_GPU_GET_EDID;
+
+typedef struct _VIRTIO_GPU_RESP_EDID {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    UINT32 Size;
+    UINT32 Padding;
+    UINT8 Edid[VIRTIO_GPU_EDID_WIRE_LEN];
+} VIRTIO_GPU_RESP_EDID;
+
+typedef struct _VIRTIO_GPU_RESOURCE_CREATE_2D {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    UINT32 ResourceId;
+    UINT32 Format;
+    UINT32 Width;
+    UINT32 Height;
+} VIRTIO_GPU_RESOURCE_CREATE_2D;
+
+typedef struct _VIRTIO_GPU_RESOURCE_UNREF {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    UINT32 ResourceId;
+    UINT32 Padding;
+} VIRTIO_GPU_RESOURCE_UNREF;
+
+typedef struct _VIRTIO_GPU_SET_SCANOUT {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    VIRTIO_GPU_RECT Rect;
+    UINT32 ScanoutId;
+    UINT32 ResourceId;
+} VIRTIO_GPU_SET_SCANOUT;
+
+typedef struct _VIRTIO_GPU_TRANSFER_TO_HOST_2D {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    VIRTIO_GPU_RECT Rect;
+    UINT64 Offset;
+    UINT32 ResourceId;
+    UINT32 Padding;
+} VIRTIO_GPU_TRANSFER_TO_HOST_2D;
+
+typedef struct _VIRTIO_GPU_RESOURCE_FLUSH {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    VIRTIO_GPU_RECT Rect;
+    UINT32 ResourceId;
+    UINT32 Padding;
+} VIRTIO_GPU_RESOURCE_FLUSH;
+
+typedef struct _VIRTIO_GPU_MEM_ENTRY {
+    UINT64 Addr;
+    UINT32 Length;
+    UINT32 Padding;
+} VIRTIO_GPU_MEM_ENTRY;
+
+typedef struct _VIRTIO_GPU_RESOURCE_ATTACH_BACKING {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    UINT32 ResourceId;
+    UINT32 NrEntries;
+} VIRTIO_GPU_RESOURCE_ATTACH_BACKING;
+
+typedef struct _VIRTIO_GPU_UPDATE_CURSOR {
+    VIRTIO_GPU_CTRL_HDR Hdr;
+    VIRTIO_GPU_RECT Pos; /* x,y used; width/height unused */
+    UINT32 ResourceId;
+    UINT32 HotX;
+    UINT32 HotY;
+    UINT32 Padding;
+} VIRTIO_GPU_UPDATE_CURSOR;
+
+typedef struct _VIRTIO_GPU_CONFIG {
+    UINT32 EventsRead;
+    UINT32 EventsClear;
+    UINT32 NumScanouts;
+    UINT32 NumCapsets;
+} VIRTIO_GPU_CONFIG;
+#pragma pack(pop)
+
+C_ASSERT(sizeof(VIRTIO_GPU_CTRL_HDR) == 24);
+C_ASSERT(sizeof(VIRTIO_GPU_RESP_DISPLAY_INFO) == VIRTIO_GPU_DISPLAY_INFO_SIZE);
+C_ASSERT(sizeof(VIRTIO_GPU_RESP_EDID) == VIRTIO_GPU_EDID_RESP_SIZE);
+C_ASSERT(sizeof(VIRTIO_GPU_CONFIG) == 16);

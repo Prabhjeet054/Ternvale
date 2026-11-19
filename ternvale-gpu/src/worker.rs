@@ -16,7 +16,7 @@ use crate::protocol;
 
 /// Queue 0: `controlq` (virtio 1.2 §5.7.2).
 pub const CONTROL_QUEUE: u16 = 0;
-/// Queue 1: `cursorq`. Present because drivers require it; commands are completed unprocessed.
+/// Queue 1: `cursorq`. Commands complete with `RESP_OK_NODATA`; the host does not composite a cursor.
 pub const CURSOR_QUEUE: u16 = 1;
 /// Largest request read from one chain: an attach-backing with the full
 /// `MAX_BACKING_ENTRIES` is 24 + 8 + 16384 × 16 bytes.
@@ -94,8 +94,7 @@ pub fn serve(
         let response = if index == CONTROL_QUEUE {
             gpu.handle(mem, &request)
         } else {
-            cursor(&request);
-            Vec::new()
+            cursor(&request)
         };
         let written = scatter(mem, &chain.writable, &response);
         tracing::trace!(target: "ternvale::gpu", queue = index, head = chain.head, request_len = request.len(), response_len = written, "virtio-gpu request completed");
@@ -104,13 +103,20 @@ pub fn serve(
     completed
 }
 
-fn cursor(request: &[u8]) {
+#[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
+fn cursor(request: &[u8]) -> Vec<u8> {
     match protocol::parse_hdr(request) {
         Ok(hdr) => {
-            tracing::debug!(target: "ternvale::gpu", cmd = protocol::type_name(hdr.kind), "virtio-gpu cursor command ignored (no cursor support yet)")
+            tracing::debug!(
+                target: "ternvale::gpu",
+                cmd = protocol::type_name(hdr.kind),
+                "virtio-gpu cursor command acknowledged (not composited)"
+            );
+            protocol::response_hdr(&hdr, protocol::RESP_OK_NODATA).to_vec()
         }
         Err(error) => {
-            tracing::warn!(target: "ternvale::gpu", error = %error, "malformed virtio-gpu cursor request")
+            tracing::warn!(target: "ternvale::gpu", error = %error, "malformed virtio-gpu cursor request");
+            Vec::new()
         }
     }
 }
@@ -161,7 +167,7 @@ fn scatter(mem: &mut GuestMemory, writable: &[Buffer], response: &[u8]) -> u32 {
     if at < response.len() {
         tracing::warn!(target: "ternvale::gpu", response_len = response.len(), written = at, "virtio-gpu response did not fit the writable buffers");
     }
-    // `response` is at most `DISPLAY_INFO_LEN` bytes.
+    // `response` is at most `DISPLAY_INFO_LEN` / EDID / `RESP_OK_NODATA`.
     at as u32
 }
 

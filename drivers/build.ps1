@@ -8,8 +8,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $Project) {
-    $Project = Join-Path $Root "tvhello\tvhello.vcxproj"
+$Projects = @()
+if ($Project) {
+    $Projects = @($Project)
+} else {
+    $Projects = @(
+        (Join-Path $Root "tvhello\tvhello.vcxproj"),
+        (Join-Path $Root "tvgpu-dod\tvgpu-dod.vcxproj")
+    )
 }
 
 $VsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -36,8 +42,10 @@ if ($ScratchBugcheck) {
     $ScratchProp = "true"
 }
 
-Write-Host "Building $Project ($Config|ARM64)"
-& $MsBuild $Project /p:Configuration=$Config /p:Platform=ARM64 /p:TreatWarningAsError=true /p:TvHelloScratchBugcheck=$ScratchProp /m
-if ($LASTEXITCODE -ne 0) {
-    throw "MSBuild failed with $LASTEXITCODE"
+foreach ($Proj in $Projects) {
+    Write-Host "Building $Proj ($Config|ARM64)"
+    & $MsBuild $Proj /p:Configuration=$Config /p:Platform=ARM64 /p:TreatWarningAsError=true /p:TvHelloScratchBugcheck=$ScratchProp /m
+    if ($LASTEXITCODE -ne 0) {
+        throw "MSBuild failed with $LASTEXITCODE for $Proj"
+    }
 }

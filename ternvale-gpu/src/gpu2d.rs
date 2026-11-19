@@ -469,3 +469,7 @@ impl Gpu2d {
 #[cfg(test)]
 #[path = "gpu2d_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tvgpu_dod_live_tests.rs"]
+mod tvgpu_dod_live_tests;

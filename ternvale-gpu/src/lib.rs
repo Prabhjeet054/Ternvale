@@ -11,8 +11,9 @@
 //! `RESOURCE_UNREF`, `RESOURCE_ATTACH_BACKING`, `RESOURCE_DETACH_BACKING`,
 //! `SET_SCANOUT`, `TRANSFER_TO_HOST_2D` and `RESOURCE_FLUSH`. Each scanout
 //! keeps a host-side pixel buffer ([`Frame`]) that [`GpuDisplay`] reads. The
-//! cursor queue exists but its commands are not acted on yet; 3D, capsets
-//! and blob resources answer `RESP_ERR_UNSPEC` unless `gpu3d` is enabled.
+//! cursor queue completes with `RESP_OK_NODATA` and does not composite a
+//! pointer; 3D, capsets and blob resources answer `RESP_ERR_UNSPEC` unless
+//! `gpu3d` is enabled.
 //! Host window resize raises `VIRTIO_GPU_EVENT_DISPLAY` and updates the EDID
 //! timing the next `GET_EDID` returns.
 //!

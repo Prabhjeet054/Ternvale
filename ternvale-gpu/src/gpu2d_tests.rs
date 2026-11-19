@@ -11,15 +11,15 @@ const H: u32 = 32;
 /// The 8 KiB backing of a 64×32 resource, as two 4 KiB pages in reverse address order.
 const PAGES: [(u64, u32); 2] = [(HEAP + 0x2000, 4096), (HEAP, 4096)];
 
-struct Fx {
-    memory: Arc<Mutex<GuestMemory>>,
+pub(crate) struct Fx {
+    pub(crate) memory: Arc<Mutex<GuestMemory>>,
     gpu: Gpu2d,
-    display: GpuDisplay,
+    pub(crate) display: GpuDisplay,
     stats: Arc<GpuStats>,
 }
 
 impl Fx {
-    fn new(modes: &[(u32, u32)]) -> Self {
+    pub(crate) fn new(modes: &[(u32, u32)]) -> Self {
         let display = GpuDisplay::new(modes);
         let stats = Arc::new(GpuStats::default());
         Self {
@@ -30,12 +30,12 @@ impl Fx {
         }
     }
 
-    fn answer(&mut self, request: &[u8]) -> Vec<u8> {
+    pub(crate) fn answer(&mut self, request: &[u8]) -> Vec<u8> {
         let mem = self.memory.lock().expect("mem");
         self.gpu.handle(&mem, request)
     }
 
-    fn send(&mut self, request: &[u8]) -> u32 {
+    pub(crate) fn send(&mut self, request: &[u8]) -> u32 {
         testutil::kind(&self.answer(request))
     }
 

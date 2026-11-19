@@ -78,3 +78,18 @@ No Mesa, virglrenderer, or MoltenVK binary is redistributed. The optional
 `gpu3d` module is Ternvale source (MIT OR Apache-2.0) with comments pointing
 at crosvm `rutabaga_gfx` (BSD-3-Clause) for a future optional link.
 
+### tvgpu-dod (Windows KMDOD) — consulted, not copied
+
+`drivers/tvgpu-dod` is an independent Ternvale implementation of:
+
+- OASIS **virtio 1.2** §5.7 (GPU device) and §4.1.4 (virtio-pci). Spec text is
+  not redistributed.
+- Microsoft **WDDM display-only miniport (KMDOD)** DDIs (`DxgkInitialize`,
+  VidPN, `SetVidPnSourceAddress`). The Windows-driver-samples KMDOD sample is
+  typically **MIT**; it was read only as a behavioral reference. **No sample
+  source was copied.**
+- virtio-win **`viogpudo`** (Red Hat `kvm-guest-drivers-windows`,
+  **BSD-3-Clause**): PCI ID `1AF4:1050`, controlq command order, and EDID /
+  display-event flow were used as behavioral references. **No virtio-win
+  source was copied.** Ternvale does not ship the virtio-win ISO.
+

@@ -183,13 +183,13 @@ fn a_descriptor_outside_guest_ram_breaks_the_queue_before_the_device_parses_it()
 }
 
 #[test]
-fn cursor_queue_commands_complete_with_an_empty_response() {
+fn cursor_queue_commands_complete_with_ok_nodata() {
     let mut rig = Rig::new();
     let mut request = hdr(protocol::CMD_UPDATE_CURSOR, 0, 0);
     request.extend_from_slice(&[0u8; 32]);
     let (response, logs) = test_log::capture(|| rig.submit(CURSOR_QUEUE, &request, &[24]));
-    assert!(response.is_empty());
-    assert!(logs.contains("cursor command ignored"), "{logs}");
+    assert_eq!(kind(&response), protocol::RESP_OK_NODATA);
+    assert!(logs.contains("cursor command acknowledged"), "{logs}");
 }
 
 fn fill_backing_raw(mem: &mut GuestMemory, entries: &[(u64, u32)], bytes: &[u8]) {

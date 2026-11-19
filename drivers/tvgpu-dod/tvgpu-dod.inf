@@ -1,0 +1,57 @@
+; Ternvale virtio-gpu display-only miniport (KMDOD).
+; PCI vendor 1AF4, device 1050 (virtio-pci 0x1040 + GPU id 16).
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = Display
+ClassGUID   = {4d36e968-e325-11ce-bfc1-08002be10318}
+Provider    = %Ternvale%
+DriverVer   = 11/19/2026,10.0.26100.1
+CatalogFile = tvgpu-dod.cat
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%
+
+[SourceDisksFiles]
+tvgpu-dod.sys = 1
+
+[Manufacturer]
+%Ternvale% = Ternvale, NTarm64
+
+[Ternvale.NTarm64]
+%Tvgpu.DeviceDesc% = tvgpu_dod_Inst, PCI\VEN_1AF4&DEV_1050
+%Tvgpu.DeviceDesc% = tvgpu_dod_Inst, PCI\VEN_1AF4&DEV_1050&SUBSYS_11001AF4
+
+[tvgpu_dod_Inst]
+FeatureScore = F9
+CopyFiles = tvgpu_dod_CopyFiles
+
+[tvgpu_dod_CopyFiles]
+tvgpu-dod.sys
+
+[tvgpu_dod_Inst.Services]
+AddService = tvgpu-dod, 0x00000002, tvgpu_dod_Service
+
+[tvgpu_dod_Service]
+DisplayName    = %Tvgpu.ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\tvgpu-dod.sys
+LoadOrderGroup = Video
+
+[tvgpu_dod_Inst.HW]
+AddReg = tvgpu_dod_HwAddReg
+
+[tvgpu_dod_HwAddReg]
+HKR, "Interrupt Management\MessageSignaledInterruptProperties", MSISupported, 0x00010001, 0
+
+[Strings]
+Ternvale           = "Ternvale"
+DiskName           = "Ternvale virtio-gpu display"
+Tvgpu.DeviceDesc   = "Ternvale virtio-gpu display-only (KMDOD)"
+Tvgpu.ServiceDesc  = "Ternvale tvgpu-dod"

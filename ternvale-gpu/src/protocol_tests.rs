@@ -211,3 +211,72 @@ fn rect_bounds_use_checked_arithmetic() {
     );
     assert_eq!(rect(3, 4, 5, 6).to_string(), "5x6+3+4");
 }
+
+fn c_define_u32(header: &str, name: &str) -> u32 {
+    let needle = format!("#define {name} ");
+    let line = header
+        .lines()
+        .find(|l| l.starts_with(&needle))
+        .unwrap_or_else(|| panic!("missing {name}"));
+    let value = line[needle.len()..].trim().trim_end_matches('u');
+    let value = value
+        .split_whitespace()
+        .next()
+        .unwrap_or(value)
+        .trim_end_matches('u');
+    if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        u32::from_str_radix(hex, 16).unwrap_or_else(|_| panic!("{name}={value}"))
+    } else {
+        value.parse().unwrap_or_else(|_| panic!("{name}={value}"))
+    }
+}
+
+#[test]
+fn tvgpu_dod_c_header_matches_protocol() {
+    let header = include_str!("../../drivers/tvgpu-dod/include/virtio_gpu_abi.h");
+    let cases = [
+        ("VIRTIO_GPU_CMD_GET_DISPLAY_INFO", CMD_GET_DISPLAY_INFO),
+        ("VIRTIO_GPU_CMD_RESOURCE_CREATE_2D", CMD_RESOURCE_CREATE_2D),
+        ("VIRTIO_GPU_CMD_RESOURCE_UNREF", CMD_RESOURCE_UNREF),
+        ("VIRTIO_GPU_CMD_SET_SCANOUT", CMD_SET_SCANOUT),
+        ("VIRTIO_GPU_CMD_RESOURCE_FLUSH", CMD_RESOURCE_FLUSH),
+        (
+            "VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D",
+            CMD_TRANSFER_TO_HOST_2D,
+        ),
+        (
+            "VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING",
+            CMD_RESOURCE_ATTACH_BACKING,
+        ),
+        ("VIRTIO_GPU_CMD_GET_EDID", CMD_GET_EDID),
+        ("VIRTIO_GPU_CMD_UPDATE_CURSOR", CMD_UPDATE_CURSOR),
+        ("VIRTIO_GPU_CMD_MOVE_CURSOR", CMD_MOVE_CURSOR),
+        ("VIRTIO_GPU_RESP_OK_NODATA", RESP_OK_NODATA),
+        ("VIRTIO_GPU_RESP_OK_DISPLAY_INFO", RESP_OK_DISPLAY_INFO),
+        ("VIRTIO_GPU_RESP_OK_EDID", RESP_OK_EDID),
+        ("VIRTIO_GPU_FLAG_FENCE", FLAG_FENCE),
+        ("VIRTIO_GPU_EVENT_DISPLAY", crate::device::EVENT_DISPLAY),
+        ("VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM", 2),
+        ("VIRTIO_GPU_PCI_VENDOR", 0x1AF4),
+        ("VIRTIO_GPU_PCI_DEVICE", 0x1050),
+    ];
+    for (name, want) in cases {
+        assert_eq!(c_define_u32(header, name), want, "{name}");
+    }
+    assert_eq!(
+        c_define_u32(header, "VIRTIO_GPU_MAX_SCANOUTS"),
+        MAX_SCANOUTS as u32
+    );
+    assert_eq!(
+        c_define_u32(header, "VIRTIO_GPU_CTRL_HDR_SIZE"),
+        HDR_LEN as u32
+    );
+    assert_eq!(
+        c_define_u32(header, "VIRTIO_GPU_EDID_WIRE_LEN"),
+        crate::edid::WIRE_EDID_LEN as u32
+    );
+    assert_eq!(HDR_LEN + MAX_SCANOUTS * 24, DISPLAY_INFO_LEN);
+}
