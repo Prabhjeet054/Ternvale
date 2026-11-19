@@ -22,8 +22,9 @@ const FETCH_SCRIPT: &str = concat!(
 
 const README: &str = "Ternvale guest tools\n\n\
 Run Install-TernvaleTools.ps1 (or install.ps1) as Administrator.\n\
-That installs ARM64 virtio-win drivers with pnputil, WinFsp (unmodified\n\
-MSI), VirtioFsSvc, and the TernvaleGuestAgent service.\n\
+That installs ARM64 virtio-win drivers with pnputil, optional Ternvale\n\
+packages under ternvale-drivers/, WinFsp (unmodified MSI), VirtioFsSvc,\n\
+and the TernvaleGuestAgent service.\n\
 virtio-win and WinFsp are not in the Ternvale source tree; see docs/LICENSES.md.\n";
 
 /// Inputs for [`build_iso`].
@@ -38,9 +39,12 @@ pub struct BuildIsoArgs {
     pub out: PathBuf,
     /// Override `agent_version` in the manifest (tests / rebuilt ISO).
     pub agent_version: Option<String>,
+    /// Optional stamped driver tree (`tvhello` / `tvgpu-dod` packages).
+    pub drivers: Option<PathBuf>,
 }
 
 /// Paths written by a successful build.
+#[derive(Debug)]
 pub struct BuiltIso {
     /// Hybrid ISO.
     pub iso: PathBuf,
@@ -77,6 +81,19 @@ pub fn build_iso(args: BuildIsoArgs) -> Result<BuiltIso> {
         if let Some(msi) = crate::tools_winfsp::resolve(None, args.fetch)? {
             crate::tools_winfsp::stage(&msi, &staging.join("winfsp"))?;
         }
+        let drivers_root = resolve_drivers(args.drivers.as_deref())?;
+        let mut drivers_version = None;
+        if let Some(drivers) = drivers_root.as_ref() {
+            stage_ternvale_drivers(drivers, &staging.join("ternvale-drivers"))?;
+            let stamp = format!("tvgpu-{}", env!("CARGO_PKG_VERSION"));
+            tracing::info!(
+                target: "ternvale::cli",
+                src = %drivers.display(),
+                stamp = %stamp,
+                "staged Ternvale guest drivers on the tools ISO"
+            );
+            drivers_version = Some(stamp);
+        }
 
         let files = hash_tree(&staging)?;
         let version = env!("CARGO_PKG_VERSION").to_string();
@@ -84,7 +101,8 @@ pub fn build_iso(args: BuildIsoArgs) -> Result<BuiltIso> {
             .agent_version
             .clone()
             .unwrap_or_else(|| version.clone());
-        let manifest = ToolsManifest::new(version, agent_version, virtio_label, files);
+        let mut manifest = ToolsManifest::new(version, agent_version, virtio_label, files);
+        manifest.drivers_version = drivers_version;
         let json = serde_json::to_vec_pretty(&manifest).context("serialize MANIFEST.json")?;
         fs::write(staging.join("MANIFEST.json"), &json).context("write MANIFEST.json")?;
 
@@ -368,5 +386,70 @@ pub fn build_test_iso(out: &Path, staging_src: &Path) -> Result<BuiltIso> {
         agent: Some(agent),
         out: out.to_path_buf(),
         agent_version: None,
+        drivers: None,
     })
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+fn resolve_drivers(explicit: Option<&Path>) -> Result<Option<PathBuf>> {
+    if let Some(path) = explicit {
+        return Ok(Some(require_existing("drivers", path)?));
+    }
+    if let Some(path) = std::env::var_os("TERNVALE_DRIVERS_DIST") {
+        let path = PathBuf::from(path);
+        if path.is_dir() {
+            return Ok(Some(path));
+        }
+        tracing::warn!(
+            target: "ternvale::cli",
+            path = %path.display(),
+            "TERNVALE_DRIVERS_DIST is not a directory"
+        );
+        return Ok(None);
+    }
+    let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../drivers/release/dist");
+    if fallback.is_dir()
+        && fallback
+            .read_dir()
+            .ok()
+            .and_then(|mut e| e.next())
+            .is_some()
+    {
+        return Ok(Some(fallback));
+    }
+    Ok(None)
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(src = %src.display()))]
+fn stage_ternvale_drivers(src: &Path, dest: &Path) -> Result<()> {
+    refuse_secrets(src)?;
+    copy_tree(src, dest)
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(dir = %dir.display()))]
+fn refuse_secrets(dir: &Path) -> Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("read {}", dir.display()))? {
+        let entry = entry.with_context(|| format!("read entry in {}", dir.display()))?;
+        let path = entry.path();
+        let meta = entry
+            .metadata()
+            .with_context(|| format!("stat {}", path.display()))?;
+        if meta.is_dir() {
+            refuse_secrets(&path)?;
+            continue;
+        }
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let lower = name.to_ascii_lowercase();
+        if lower.ends_with(".pfx")
+            || lower.ends_with(".pvk")
+            || lower.ends_with(".key")
+            || lower.contains("password")
+        {
+            bail!(
+                "refusing to put secret {} on the tools ISO (never store certificates in git or the ISO)",
+                path.display()
+            );
+        }
+    }
+    Ok(())
 }

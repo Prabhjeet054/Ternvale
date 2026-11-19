@@ -12,6 +12,7 @@ fn install_script_sets_up_winfsp_and_virtiofs() {
     assert!(ps1.contains("winfsp.msi"), "{ps1}");
     assert!(ps1.contains("VirtioFsSvc"), "{ps1}");
     assert!(ps1.contains("virtiofs.exe"), "{ps1}");
+    assert!(ps1.contains("ternvale-drivers"), "{ps1}");
 }
 
 #[test]
@@ -39,6 +40,7 @@ fn clap_parses_tools_build_iso() {
                 agent: Some("/tmp/ternvale-agent.exe".into()),
                 out: Some("/tmp/ternvale-tools.iso".into()),
                 agent_version: None,
+                drivers: None,
             }
         }
     );
@@ -165,5 +167,55 @@ fn bumped_iso_agent_version_flags_the_guest_as_outdated() {
     assert_eq!(status.tools_iso_agent.as_deref(), Some("0.1.1"));
     let rendered = crate::commands::render(&status, None);
     assert!(rendered.contains("tools: outdated"), "{rendered}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn build_iso_stages_ternvale_drivers_and_refuses_pfx() {
+    let dir = std::env::temp_dir().join(format!("ternvale-tools-drv-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("dir");
+    let out = dir.join("ternvale-tools.iso");
+    let drv = dir.join("dist");
+    std::fs::create_dir_all(drv.join("tvgpu-dod")).expect("drv");
+    std::fs::write(drv.join("tvgpu-dod/tvgpu-dod.inf"), b"; dummy INF\n").expect("inf");
+    let virtio = dir.join("virtio-src");
+    std::fs::create_dir_all(virtio.join("viostor/w11/ARM64")).expect("virtio");
+    std::fs::write(virtio.join("viostor/w11/ARM64/viostor.inf"), b"; dummy\n").expect("vinf");
+    let agent = dir.join("ternvale-agent.exe");
+    std::fs::write(&agent, b"MZ dummy agent").expect("agent");
+    let built = crate::tools_build::build_iso(crate::tools_build::BuildIsoArgs {
+        virtio_win: Some(virtio.clone()),
+        fetch: false,
+        agent: Some(agent.clone()),
+        out: out.clone(),
+        agent_version: None,
+        drivers: Some(drv.clone()),
+    })
+    .expect("iso with drivers");
+    assert_eq!(
+        built.manifest.drivers_version.as_deref(),
+        Some(concat!("tvgpu-", env!("CARGO_PKG_VERSION")))
+    );
+    let listing = crate::tools_build::iso_list(&out)
+        .expect("list")
+        .to_ascii_lowercase();
+    assert!(listing.contains("tvgpu-dod.inf"), "{listing}");
+    assert!(built.manifest.guest_outdated("ternvale-agent 0.1.0"));
+
+    std::fs::write(drv.join("tvgpu-dod/secret.pfx"), b"not-a-real-key").expect("pfx");
+    let err = crate::tools_build::build_iso(crate::tools_build::BuildIsoArgs {
+        virtio_win: Some(virtio),
+        fetch: false,
+        agent: Some(agent),
+        out: dir.join("second.iso"),
+        agent_version: None,
+        drivers: Some(drv),
+    });
+    let err = match err {
+        Err(error) => error,
+        Ok(_) => panic!("expected pfx to be refused"),
+    };
+    assert!(err.to_string().contains("secret"), "{err:#}");
     let _ = std::fs::remove_dir_all(&dir);
 }

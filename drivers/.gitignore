@@ -17,3 +17,10 @@
 **/*.cat
 *.user
 .vs/
+# Packaging output (sys/cat/cab/pdb). Never commit PFX or EV-signed secrets.
+release/dist/
+release/attestation-stage/
+release/*.cab
+release/attestation.ddf
+release/_sample.inf
+release/_bad.inf

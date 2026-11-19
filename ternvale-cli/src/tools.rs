@@ -19,7 +19,7 @@ pub const TOOLS_ISO_ENV: &str = "TERNVALE_TOOLS_ISO";
 /// `ternvale tools …`
 #[derive(Debug, Subcommand, PartialEq, Eq)]
 pub enum ToolsCommand {
-    /// Assemble `ternvale-tools.iso` (virtio-win + WinFsp MSI + agent + install.ps1).
+    /// Assemble `ternvale-tools.iso` (virtio-win + WinFsp MSI + agent + optional Ternvale drivers).
     BuildIso {
         /// virtio-win ISO or an extracted directory.
         #[arg(long)]
@@ -36,6 +36,9 @@ pub enum ToolsCommand {
         /// Override `agent_version` written into MANIFEST.json.
         #[arg(long)]
         agent_version: Option<String>,
+        /// Stamped Ternvale driver tree (`drivers/release/dist`) copied to `ternvale-drivers/`.
+        #[arg(long)]
+        drivers: Option<PathBuf>,
     },
     /// Check file SHA-256s of a mounted tools volume against the sidecar manifest.
     Verify {
@@ -135,6 +138,7 @@ pub fn tools(command: ToolsCommand) -> Result<ExitCode> {
             agent,
             out,
             agent_version,
+            drivers,
         } => {
             let out = match out {
                 Some(path) => path,
@@ -146,11 +150,15 @@ pub fn tools(command: ToolsCommand) -> Result<ExitCode> {
                 agent,
                 out,
                 agent_version,
+                drivers,
             })?;
             println!("wrote {}", built.iso.display());
             println!("manifest {}", built.sidecar.display());
             println!("tools_version {}", built.manifest.tools_version);
             println!("agent_version {}", built.manifest.agent_version);
+            if let Some(drivers) = built.manifest.drivers_version.as_deref() {
+                println!("drivers_version {drivers}");
+            }
             Ok(ExitCode::SUCCESS)
         }
         ToolsCommand::Verify { root, iso } => {

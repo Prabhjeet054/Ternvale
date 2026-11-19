@@ -314,6 +314,7 @@ fn parses_every_subcommand() {
                 agent: None,
                 out: None,
                 agent_version: None,
+                drivers: None,
             }
         }
     );

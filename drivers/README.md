@@ -43,3 +43,6 @@ The in-guest agent concatenates `*.log` / `*.txt` there for the host.
 host acknowledges `cursorq` without compositing. See `docs/TVGPU_DOD.md`.
 Guest live: `.\drivers\scripts\tvgpu-dod-live.ps1`. Host:
 `./scripts/tvgpu-dod-live-check.sh`.
+
+Packaging / test-sign / Partner Center attestation: `drivers/release/`
+(`docs/SECURE_BOOT.md` for UEFI Secure Boot gaps).

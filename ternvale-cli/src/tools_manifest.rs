@@ -38,6 +38,10 @@ pub struct ToolsManifest {
     pub built: String,
     /// Every payload file except this manifest.
     pub files: Vec<ManifestFile>,
+    /// Optional Ternvale guest-driver pack stamp (`tvgpu-<semver>`). Additive;
+    /// older `MANIFEST.json` files omit it (serde default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drivers_version: Option<String>,
 }
 
 impl ToolsManifest {
@@ -57,6 +61,7 @@ impl ToolsManifest {
             virtio_win,
             built: chrono::Utc::now().to_rfc3339(),
             files,
+            drivers_version: None,
         }
     }
 
@@ -87,12 +92,18 @@ impl ToolsManifest {
         if guest.is_empty() {
             return true;
         }
-        let outdated = guest != expected && !guest.contains(expected);
+        let agent_old = guest != expected && !guest.contains(expected);
+        let drivers_old = match self.drivers_version.as_deref() {
+            Some(stamp) if !stamp.is_empty() => guest != stamp && !guest.contains(stamp),
+            _ => false,
+        };
+        let outdated = agent_old || drivers_old;
         if outdated {
             tracing::info!(
                 target: "ternvale::cli",
                 guest,
                 expected,
+                drivers_version = self.drivers_version.as_deref().unwrap_or(""),
                 tools_version = %self.tools_version,
                 "guest tools are older than the tools ISO"
             );
@@ -125,5 +136,22 @@ mod tests {
         assert!(man.guest_outdated("ternvale-agent 0.0.9"));
         assert!(!man.guest_outdated("0.1.0"));
         assert!(!man.guest_outdated("ternvale-agent 0.1.0"));
+    }
+
+    #[test]
+    fn drivers_version_flags_guests_that_do_not_advertise_the_stamp() {
+        let mut man =
+            ToolsManifest::new("0.1.0".into(), "0.1.0".into(), "0.1.302".into(), Vec::new());
+        man.drivers_version = Some("tvgpu-0.1.0".into());
+        assert!(man.guest_outdated("ternvale-agent 0.1.0"));
+        assert!(!man.guest_outdated("ternvale-agent 0.1.0 tvgpu-0.1.0"));
+        let json = serde_json::to_string(&man).expect("json");
+        assert!(json.contains("drivers_version"));
+        let parsed = ToolsManifest::parse(&json).expect("parse");
+        assert_eq!(parsed.drivers_version.as_deref(), Some("tvgpu-0.1.0"));
+        let old = r#"{"magic":"TERNVALE-TOOLS","version":1,"tools_version":"0.1.0","agent_version":"0.1.0","virtio_win":"0.1.302","built":"t","files":[]}"#;
+        let without = ToolsManifest::parse(old).expect("compat");
+        assert_eq!(without.drivers_version, None);
+        assert!(!without.guest_outdated("ternvale-agent 0.1.0"));
     }
 }

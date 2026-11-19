@@ -126,6 +126,10 @@ driver-dev-test:
 tvgpu-dod-test:
 	./scripts/tvgpu-dod-live-check.sh
 
+# Step 106: DCH INF analog + DriverVer stamp (WDK infverif/Inf2Cat on Windows).
+driver-package-test:
+	./scripts/driver-package-live-check.sh
+
 # Step 89: Sparkle appcast generator + crash ingest (no network).
 updates-test:
 	cd scripts/updates && python3 -m unittest discover -p 'test_*.py' -v

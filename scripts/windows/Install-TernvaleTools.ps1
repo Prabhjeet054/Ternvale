@@ -68,6 +68,18 @@ try {
         }
     }
 
+    $TernvaleDrivers = Join-Path $Root 'ternvale-drivers'
+    if (Test-Path -LiteralPath $TernvaleDrivers) {
+        Get-ChildItem -LiteralPath $TernvaleDrivers -Filter '*.inf' -Recurse -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                Write-Host "pnputil ternvale $($_.FullName)"
+                & pnputil.exe /add-driver $_.FullName /install
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "pnputil failed for $($_.FullName) (exit $LASTEXITCODE)"
+                }
+            }
+    }
+
     $Agent = Join-Path $Root 'agent\ternvale-agent.exe'
     if (-not (Test-Path -LiteralPath $Agent)) {
         throw "missing $Agent"
