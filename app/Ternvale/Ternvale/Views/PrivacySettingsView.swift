@@ -10,6 +10,9 @@ struct PrivacySettingsView: View {
     @State private var camera = false
     @State private var usbEnabled = true
     @State private var clipboard = false
+    @State private var launchers = false
+    @State private var openInGuest = false
+    @State private var openOnHost = false
     @State private var shares: [(tag: String, hostPath: String, readOnly: Bool)] = []
     @State private var error: String?
     @State private var loaded = false
@@ -72,6 +75,16 @@ struct PrivacySettingsView: View {
                     Text(clipboard ? "On" : "Off")
                 }
             }
+            Section("Guest apps") {
+                Toggle("Start Menu launchers in ~/Applications/Ternvale Apps", isOn: $launchers)
+                Toggle("Open Mac files in guest apps (share path only)", isOn: $openInGuest)
+                Toggle("Open guest links/files with macOS default apps", isOn: $openOnHost)
+                Text(
+                    "Off by default, per VM. URLs are limited to http, https, and mailto unless you add a scheme. file: is never allowed. The first use of each association asks for confirmation. Uninstall launchers with ternvale apps uninstall-stubs."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
             if let error {
                 Text(error).foregroundStyle(.red).font(.caption)
             }
@@ -95,6 +108,9 @@ struct PrivacySettingsView: View {
             camera = VMConfigParser.parseCameraEnabled(in: text)
             usbEnabled = VMConfigParser.parseUsbEnabled(in: text)
             clipboard = VMConfigParser.parseClipboardAgent(in: text)
+            launchers = VMConfigParser.parseAgentLaunchers(in: text)
+            openInGuest = VMConfigParser.parseAgentOpenInGuest(in: text)
+            openOnHost = VMConfigParser.parseAgentOpenOnHost(in: text)
             shares = VMConfigParser.parseShares(in: text)
         } catch {
             self.error = error.localizedDescription
@@ -106,6 +122,9 @@ struct PrivacySettingsView: View {
             var text = try String(contentsOf: configURL, encoding: .utf8)
             text = VMConfigParser.replacingAudioInput(in: text, enabled: microphone)
             text = VMConfigParser.replacingCameraEnabled(in: text, enabled: camera)
+            text = VMConfigParser.replacingAgentLaunchers(in: text, enabled: launchers)
+            text = VMConfigParser.replacingAgentOpenInGuest(in: text, enabled: openInGuest)
+            text = VMConfigParser.replacingAgentOpenOnHost(in: text, enabled: openOnHost)
             try text.write(to: configURL, atomically: true, encoding: .utf8)
             onSave()
         } catch {

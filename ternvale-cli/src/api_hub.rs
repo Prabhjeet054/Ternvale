@@ -55,6 +55,63 @@ pub fn hub_call(method: Method, params: Option<&Value>) -> Result<Response, ApiE
                 .ok_or_else(|| ApiError::InvalidParams("new_name".into()))?;
             lib(crate::clone_cmd::clone_vm(source, new_name).map(|_| ()))
         }
+        Method::AppsList => {
+            let n = name()?;
+            crate::apps_cmd::list_response(&n).map_err(|e| ApiError::Application(format!("{e:#}")))
+        }
+        Method::AppsLaunch => {
+            let n = name()?;
+            let id = map
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ApiError::InvalidParams("id required".into()))?;
+            let files: Vec<String> = map
+                .get("file")
+                .and_then(Value::as_str)
+                .map(|s| vec![s.to_string()])
+                .unwrap_or_default();
+            let confirm = map.get("confirm").and_then(Value::as_bool).unwrap_or(false);
+            crate::apps_cmd::launch_response(&n, id, &files, confirm)
+                .map_err(|e| ApiError::Application(format!("{e:#}")))
+        }
+        Method::AppsStubsInstall => crate::apps_cmd::install_stubs_response(&name()?)
+            .map_err(|e| ApiError::Application(format!("{e:#}"))),
+        Method::AppsStubsUninstall => {
+            let n = map.get("name").and_then(Value::as_str);
+            match crate::stubs::uninstall(n) {
+                Ok(removed) => {
+                    let mut response = Response::ok();
+                    response.stubs_removed = Some(u64::from(removed));
+                    Ok(response)
+                }
+                Err(error) => Ok(Response::error(format!("{error:#}"))),
+            }
+        }
+        Method::AppsOpen => {
+            let n = name()?;
+            let id = map
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ApiError::InvalidParams("id required".into()))?;
+            let file = map
+                .get("file")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ApiError::InvalidParams("file required".into()))?;
+            let confirm = map.get("confirm").and_then(Value::as_bool).unwrap_or(false);
+            crate::apps_cmd::open_response(&n, id, Path::new(file), confirm)
+                .map_err(|e| ApiError::Application(format!("{e:#}")))
+        }
+        Method::AppsApprove => {
+            let n = name()?;
+            let key = map
+                .get("key")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ApiError::InvalidParams("key required".into()))?;
+            match crate::assoc::approve(&n, key) {
+                Ok(()) => Ok(Response::ok()),
+                Err(error) => Ok(Response::error(format!("{error:#}"))),
+            }
+        }
         Method::Stop
         | Method::Pause
         | Method::Resume

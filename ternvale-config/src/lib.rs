@@ -4,6 +4,7 @@
 //! unknown fields and runs validation before returning.
 
 mod agent;
+mod assoc;
 mod audio;
 mod backend;
 mod camera;
@@ -26,7 +27,11 @@ mod vm;
 mod vsock;
 mod x86;
 
-pub use agent::AgentSection;
+pub use agent::{AgentSection, DEFAULT_URL_SCHEMES};
+pub use assoc::{
+    check_host_url, file_ext, guest_file_to_host, host_file_to_guest, is_blocked_exec_ext,
+    url_scheme, BLOCKED_EXEC_EXTS,
+};
 pub use audio::AudioSection;
 pub use backend::BackendKind;
 pub use camera::{CameraSection, CameraTransport};

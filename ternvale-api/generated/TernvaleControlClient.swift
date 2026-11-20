@@ -29,6 +29,12 @@ public enum TernvaleMethod: String, Codable, CaseIterable {
     case subscribe = "subscribe"
     case status = "status"
     case driverLogs = "driver.logs"
+    case appsList = "apps.list"
+    case appsLaunch = "apps.launch"
+    case appsStubsInstall = "apps.stubs.install"
+    case appsStubsUninstall = "apps.stubs.uninstall"
+    case appsOpen = "apps.open"
+    case appsApprove = "apps.approve"
 }
 
 /// Event kinds from `subscribe`.

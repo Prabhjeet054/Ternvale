@@ -91,6 +91,11 @@ pub enum Command {
         #[arg(long)]
         max_bytes: Option<u32>,
     },
+    /// Guest Start-menu launchers, Open With, and stub uninstall.
+    Apps {
+        #[command(subcommand)]
+        action: AppsCommand,
+    },
     /// Wait until the guest agent is connected.
     WaitReady {
         /// VM name.
@@ -502,6 +507,63 @@ pub enum X86Command {
     ScrapeMetrics {
         /// Running VM.
         name: String,
+    },
+}
+
+/// `ternvale apps …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum AppsCommand {
+    /// List Start-menu / packaged apps from the guest agent.
+    List {
+        /// VM name.
+        name: String,
+    },
+    /// Start the VM if needed and launch a guest app in seamless mode.
+    Launch {
+        /// VM name.
+        name: String,
+        /// Guest app id.
+        #[arg(long)]
+        id: String,
+        /// Record first-use confirmation.
+        #[arg(long)]
+        confirm: bool,
+        /// Host files (must already be on a share; never copied).
+        #[arg(last = true)]
+        files: Vec<String>,
+    },
+    /// Write `~/Applications/Ternvale Apps/<vm>/` launcher stubs.
+    InstallStubs {
+        /// VM name.
+        name: String,
+    },
+    /// Remove generated launcher stubs (`--name` limits to one VM).
+    UninstallStubs {
+        /// VM name (omitted: every Ternvale stub).
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Finder “Open With”: open a Mac file in a guest app via the share.
+    Open {
+        /// VM name.
+        name: String,
+        /// Guest app id.
+        #[arg(long)]
+        id: String,
+        /// Host file (must be on a shared folder).
+        #[arg(long)]
+        file: PathBuf,
+        /// Record first-use confirmation.
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Record first-use confirmation for an association key.
+    Approve {
+        /// VM name.
+        name: String,
+        /// Key (`guest-app:…`, `guest-open:…`, `host-url:https`, …).
+        #[arg(long)]
+        key: String,
     },
 }
 

@@ -164,6 +164,55 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
                     tracing::debug!(target: "ternvale::agent", count = windows.len(), "window_list_ok without a waiter");
                 }
             }
+            Some(Message::AppListOk { apps }) => {
+                let mut book = shared.book();
+                if let Some(wait) = book.app_wait.take() {
+                    let _ = wait.send(Ok(apps));
+                } else {
+                    tracing::debug!(target: "ternvale::agent", count = apps.len(), "app_list_ok without a waiter");
+                }
+            }
+            Some(Message::AppLaunchOk { id }) => {
+                let mut book = shared.book();
+                if let Some(wait) = book.launch_wait.take() {
+                    let _ = wait.send(Ok(()));
+                } else {
+                    tracing::debug!(target: "ternvale::agent", id = %id, "app_launch_ok without a waiter");
+                }
+            }
+            Some(Message::AppLaunchErr { id, reason }) => {
+                let mut book = shared.book();
+                if let Some(wait) = book.launch_wait.take() {
+                    let _ = wait.send(Err(reason));
+                } else {
+                    tracing::debug!(target: "ternvale::agent", id = %id, "app_launch_err without a waiter");
+                }
+            }
+            Some(Message::HostOpen { kind, target }) => {
+                let sink =
+                    ternvale_vmm::lockwatch::lock(&shared.host_open_sink, "agent-host-open-sink")
+                        .clone();
+                let result = if let Some(sink) = sink {
+                    sink(kind.clone(), target)
+                } else {
+                    Err("host open is not configured".into())
+                };
+                let reply = match result {
+                    Ok(()) => Message::HostOpenOk { kind },
+                    Err(reason) => {
+                        tracing::warn!(
+                            target: "ternvale::agent",
+                            kind = %kind,
+                            reason = %reason,
+                            "host_open refused"
+                        );
+                        Message::HostOpenErr { kind, reason }
+                    }
+                };
+                if let Err(error) = shared.write(id, &reply) {
+                    tracing::debug!(target: "ternvale::agent", error = %error, "host_open reply failed");
+                }
+            }
             Some(Message::WindowFrame {
                 id: window_id,
                 seq,

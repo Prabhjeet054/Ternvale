@@ -13,6 +13,23 @@ final class PrivacyConfigTests: XCTestCase {
         XCTAssertFalse(VMConfigParser.parseCameraEnabled(in: text))
         XCTAssertTrue(VMConfigParser.parseUsbEnabled(in: text))
         XCTAssertFalse(VMConfigParser.parseClipboardAgent(in: text))
+        XCTAssertFalse(VMConfigParser.parseAgentLaunchers(in: text))
+        XCTAssertFalse(VMConfigParser.parseAgentOpenInGuest(in: text))
+        XCTAssertFalse(VMConfigParser.parseAgentOpenOnHost(in: text))
+    }
+
+    func testReplaceAgentAppsInsertsTable() {
+        let text = """
+        name = "lab"
+        kernel = "/path/Image"
+        """
+        let on = VMConfigParser.replacingAgentLaunchers(in: text, enabled: true)
+        XCTAssertTrue(on.contains("[agent]"), on)
+        XCTAssertTrue(VMConfigParser.parseAgentLaunchers(in: on))
+        let guest = VMConfigParser.replacingAgentOpenInGuest(in: on, enabled: true)
+        XCTAssertTrue(VMConfigParser.parseAgentOpenInGuest(in: guest))
+        let host = VMConfigParser.replacingAgentOpenOnHost(in: guest, enabled: true)
+        XCTAssertTrue(VMConfigParser.parseAgentOpenOnHost(in: host))
     }
 
     func testReplaceAudioInputInsertsTable() {

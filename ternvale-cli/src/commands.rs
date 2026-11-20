@@ -157,6 +157,12 @@ pub fn describe(path: &Path, config: &VmConfig, socket: &Path) -> String {
     if config.allow_exec() {
         line("  agent       allow_exec".into());
     }
+    if config.agent.launchers || config.agent.open_in_guest || config.agent.open_on_host {
+        line(format!(
+            "  apps        launchers={} open_in_guest={} open_on_host={}",
+            config.agent.launchers, config.agent.open_in_guest, config.agent.open_on_host
+        ));
+    }
     line(format!("  serial log  {}", config.serial_log.display()));
     line(format!("  socket      {}", socket.display()));
     out

@@ -91,6 +91,31 @@ fn golden() -> Vec<(Message, &'static str)> {
             },
             r#"{"type":"driver_logs_ok","text":"tvhello","truncated":true}"#,
         ),
+        (Message::AppListGet, r#"{"type":"app_list_get"}"#),
+        (
+            Message::AppListOk {
+                apps: vec![GuestApp {
+                    id: "Notepad.lnk".into(),
+                    name: "Notepad".into(),
+                    ..GuestApp::default()
+                }],
+            },
+            r#"{"type":"app_list_ok","apps":[{"id":"Notepad.lnk","name":"Notepad"}]}"#,
+        ),
+        (
+            Message::AppLaunch {
+                id: "Notepad.lnk".into(),
+                file: None,
+            },
+            r#"{"type":"app_launch","id":"Notepad.lnk"}"#,
+        ),
+        (
+            Message::HostOpen {
+                kind: "url".into(),
+                target: "https://example.com".into(),
+            },
+            r#"{"type":"host_open","kind":"url","target":"https://example.com"}"#,
+        ),
     ]
 }
 

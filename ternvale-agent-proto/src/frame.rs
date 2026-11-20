@@ -191,7 +191,7 @@ fn parse(payload: &[u8], peer: &str) -> Result<Message, FrameError> {
     }
 }
 
-const KNOWN: [&str; 35] = [
+const KNOWN: [&str; 43] = [
     "hello",
     "welcome",
     "reject",
@@ -227,4 +227,12 @@ const KNOWN: [&str; 35] = [
     "driver_logs_ok",
     "camera_frame",
     "camera_frame_ok",
+    "app_list_get",
+    "app_list_ok",
+    "app_launch",
+    "app_launch_ok",
+    "app_launch_err",
+    "host_open",
+    "host_open_ok",
+    "host_open_err",
 ];

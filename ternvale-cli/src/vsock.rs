@@ -75,6 +75,12 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
                 );
             }
         }));
+        let policy = config.agent.clone();
+        let share_list = config.shares.clone();
+        let vm_name = config.name.clone();
+        server.set_host_open_sink(Arc::new(move |kind, target| {
+            crate::assoc::handle_guest_open(&vm_name, &policy, &share_list, &kind, &target)
+        }));
         Some(Arc::new(server))
     } else {
         tracing::info!(target: "ternvale::cli", "agent server disabled (vsock.agent = false)");

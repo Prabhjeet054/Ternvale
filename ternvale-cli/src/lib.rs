@@ -20,6 +20,8 @@ pub mod acpi_fault;
 pub mod api_hub;
 pub mod api_library;
 pub mod api_server;
+pub mod apps_cmd;
+pub mod assoc;
 pub mod balloon_cmd;
 pub mod camera_host;
 pub mod cli;
@@ -71,6 +73,7 @@ pub mod server;
 pub mod snapshot_cmd;
 pub mod ssh_cmd;
 pub mod stats_cmd;
+pub mod stubs;
 pub mod summary;
 pub mod template_cmd;
 pub mod tools;
@@ -234,6 +237,26 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             cli::X86Command::Setup { config, yes } => x86_plan::setup(&config, yes, json),
         },
         Command::WaitReady { name, timeout } => wait_cmd::wait_ready(&name, timeout, json),
+        Command::Apps { action } => match action {
+            cli::AppsCommand::List { name } => apps_cmd::list(&name, json),
+            cli::AppsCommand::Launch {
+                name,
+                id,
+                confirm,
+                files,
+            } => apps_cmd::launch(&name, &id, &files, confirm, json),
+            cli::AppsCommand::InstallStubs { name } => apps_cmd::install_stubs(&name, json),
+            cli::AppsCommand::UninstallStubs { name } => {
+                apps_cmd::uninstall_stubs(name.as_deref(), json)
+            }
+            cli::AppsCommand::Open {
+                name,
+                id,
+                file,
+                confirm,
+            } => apps_cmd::open_in_guest(&name, &id, &file, confirm, json),
+            cli::AppsCommand::Approve { name, key } => apps_cmd::approve(&name, &key, json),
+        },
         Command::DriverLogs {
             name,
             out,

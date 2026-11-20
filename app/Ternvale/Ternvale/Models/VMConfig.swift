@@ -262,6 +262,33 @@ enum VMConfigParser {
         sectionBool(in: text, table: "usb", key: "enabled") ?? true
     }
 
+    /// `[agent] launchers` (default false).
+    static func parseAgentLaunchers(in text: String) -> Bool {
+        sectionBool(in: text, table: "agent", key: "launchers") ?? false
+    }
+
+    /// `[agent] open_in_guest` (default false).
+    static func parseAgentOpenInGuest(in text: String) -> Bool {
+        sectionBool(in: text, table: "agent", key: "open_in_guest") ?? false
+    }
+
+    /// `[agent] open_on_host` (default false).
+    static func parseAgentOpenOnHost(in text: String) -> Bool {
+        sectionBool(in: text, table: "agent", key: "open_on_host") ?? false
+    }
+
+    static func replacingAgentLaunchers(in text: String, enabled: Bool) -> String {
+        upsertTableBool(in: text, table: "agent", key: "launchers", value: enabled)
+    }
+
+    static func replacingAgentOpenInGuest(in text: String, enabled: Bool) -> String {
+        upsertTableBool(in: text, table: "agent", key: "open_in_guest", value: enabled)
+    }
+
+    static func replacingAgentOpenOnHost(in text: String, enabled: Bool) -> String {
+        upsertTableBool(in: text, table: "agent", key: "open_on_host", value: enabled)
+    }
+
     /// `[vsock] agent` (default true when the table exists).
     static func parseClipboardAgent(in text: String) -> Bool {
         guard text.contains("[vsock]") else { return false }

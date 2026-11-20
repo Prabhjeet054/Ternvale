@@ -156,6 +156,19 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         disk: Option<u32>,
     },
+    /// List Start-menu / packaged guest apps (`agent.launchers`).
+    AppList,
+    /// Launch a guest app (optional share-mapped file).
+    AppLaunch {
+        /// Guest app id.
+        id: String,
+        /// Absolute guest path on a share.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file: Option<String>,
+        /// Record first-use confirmation.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        confirm: bool,
+    },
     /// Add usermode x86 translation counters (`query-stats.metrics.x86`).
     X86Metrics {
         /// `rosetta` / `fex` / `qemu-user`.
@@ -197,6 +210,8 @@ impl Request {
             Self::DiskResize { .. } => "disk-resize",
             Self::DiskCompact { .. } => "disk-compact",
             Self::X86Metrics { .. } => "x86-metrics",
+            Self::AppList => "app-list",
+            Self::AppLaunch { .. } => "app-launch",
         }
     }
 
@@ -226,6 +241,8 @@ impl Request {
             Self::DiskResize { .. } => "resize disk for",
             Self::DiskCompact { .. } => "compact disk for",
             Self::X86Metrics { .. } => "record x86 metrics for",
+            Self::AppList => "list apps for",
+            Self::AppLaunch { .. } => "launch app on",
         }
     }
 }
@@ -423,6 +440,43 @@ pub struct Response {
     /// Guest-visible image size after resize.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logical_bytes: Option<u64>,
+    /// Start-menu / packaged apps (`app-list`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apps: Option<Vec<AppJson>>,
+    /// First-use association confirmation required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_confirmation: Option<bool>,
+    /// Association key that needs `apps.approve`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub association: Option<String>,
+    /// Stubs installed or removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stubs_removed: Option<u64>,
+}
+
+/// One guest app in `app-list` (optional; older clients ignore it).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppJson {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub exe: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<String>,
+}
+
+impl From<ternvale_agent_proto::GuestApp> for AppJson {
+    fn from(app: ternvale_agent_proto::GuestApp) -> Self {
+        Self {
+            id: app.id,
+            name: app.name,
+            exe: app.exe,
+            source: app.source.as_str().to_string(),
+            extensions: app.extensions,
+        }
+    }
 }
 
 impl Response {
@@ -452,6 +506,39 @@ impl Response {
             allocated_before: None,
             allocated_after: None,
             logical_bytes: None,
+            apps: None,
+            needs_confirmation: None,
+            association: None,
+            stubs_removed: None,
+        }
+    }
+
+    /// Success with no extra payload.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn ok() -> Self {
+        Self::blank(true)
+    }
+
+    /// `app-list` payload.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(count = apps.len()))]
+    pub fn apps(apps: Vec<AppJson>) -> Self {
+        Self {
+            apps: Some(apps),
+            ..Self::blank(true)
+        }
+    }
+
+    /// First-use confirmation required (not a hard failure of the VM).
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(key))]
+    pub fn needs_confirmation(key: &str) -> Self {
+        Self {
+            ok: false,
+            error: Some(format!(
+                "needs confirmation for first use of {key} (ternvale apps approve --key {key})"
+            )),
+            needs_confirmation: Some(true),
+            association: Some(key.to_string()),
+            ..Self::blank(false)
         }
     }
 
@@ -728,6 +815,15 @@ mod tests {
                     engine: "qemu-user".into(),
                     processes: 2,
                     failures: 1,
+                },
+            ),
+            (r#"{"cmd":"app-list"}"#, Request::AppList),
+            (
+                r#"{"cmd":"app-launch","id":"Notepad.lnk"}"#,
+                Request::AppLaunch {
+                    id: "Notepad.lnk".into(),
+                    file: None,
+                    confirm: false,
                 },
             ),
         ];

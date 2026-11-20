@@ -3,9 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    validate_window_frame, validate_window_input, validate_window_op, validate_windows,
-    GuestWindow, HexBytes, MAX_BIN_CHUNK, MAX_COPY_PATH, MAX_DIMENSION, MAX_EXEC_ARG,
-    MAX_EXEC_ARGV, MAX_NAME,
+    validate_app_launch, validate_apps, validate_host_open, validate_window_frame,
+    validate_window_input, validate_window_op, validate_windows, GuestApp, GuestWindow, HexBytes,
+    MAX_BIN_CHUNK, MAX_COPY_PATH, MAX_DIMENSION, MAX_EXEC_ARG, MAX_EXEC_ARGV, MAX_NAME,
 };
 
 /// One protocol message. JSON form: `{"type":"<snake_case name>", ...fields}`.
@@ -287,6 +287,52 @@ pub enum Message {
         /// Bytes written this chunk.
         written: u64,
     },
+    /// Host → agent: list Start-menu / packaged apps (answer `AppListOk`).
+    AppListGet,
+    /// Agent → host: Start-menu shortcuts and packaged apps.
+    AppListOk {
+        /// Apps (capped).
+        apps: Vec<GuestApp>,
+    },
+    /// Host → agent: start a listed app, optionally with a guest file path.
+    AppLaunch {
+        /// [`GuestApp::id`].
+        id: String,
+        /// Absolute guest path on a share (Open With). Omitted: launch only.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file: Option<String>,
+    },
+    /// Agent → host: `AppLaunch` started.
+    AppLaunchOk {
+        /// App id.
+        id: String,
+    },
+    /// Agent → host: `AppLaunch` failed.
+    AppLaunchErr {
+        /// App id.
+        id: String,
+        /// Why (not a secret).
+        reason: String,
+    },
+    /// Agent → host: open a URL or share-mapped file on the host.
+    HostOpen {
+        /// `url` or `file`.
+        kind: String,
+        /// URL or absolute guest path.
+        target: String,
+    },
+    /// Host → agent: `HostOpen` accepted.
+    HostOpenOk {
+        /// Echo of `kind`.
+        kind: String,
+    },
+    /// Host → agent: `HostOpen` refused.
+    HostOpenErr {
+        /// Echo of `kind`.
+        kind: String,
+        /// Why (not a secret).
+        reason: String,
+    },
     /// Agent → host: copy/exec request failed.
     CopyErr {
         /// The request id.
@@ -402,6 +448,14 @@ impl Message {
             Self::DriverLogsOk { .. } => "driver_logs_ok",
             Self::CameraFrame { .. } => "camera_frame",
             Self::CameraFrameOk { .. } => "camera_frame_ok",
+            Self::AppListGet => "app_list_get",
+            Self::AppListOk { .. } => "app_list_ok",
+            Self::AppLaunch { .. } => "app_launch",
+            Self::AppLaunchOk { .. } => "app_launch_ok",
+            Self::AppLaunchErr { .. } => "app_launch_err",
+            Self::HostOpen { .. } => "host_open",
+            Self::HostOpenOk { .. } => "host_open_ok",
+            Self::HostOpenErr { .. } => "host_open_err",
         }
     }
 
@@ -520,6 +574,22 @@ impl Message {
                 } else {
                     Ok(())
                 }
+            }
+            Self::AppListOk { apps } => validate_apps(apps),
+            Self::AppLaunch { id, file } => validate_app_launch(id, file.as_deref()),
+            Self::AppLaunchOk { id } => validate_app_launch(id, None),
+            Self::AppLaunchErr { id, reason } => validate_app_launch(id, None).and_then(|()| {
+                if reason.len() > MAX_NAME {
+                    Err(format!(
+                        "app_launch_err reason longer than {MAX_NAME} bytes"
+                    ))
+                } else {
+                    Ok(())
+                }
+            }),
+            Self::HostOpen { kind, target } => validate_host_open(kind, target),
+            Self::HostOpenErr { reason, .. } if reason.len() > MAX_NAME => {
+                Err(format!("host_open_err reason longer than {MAX_NAME} bytes"))
             }
             _ => Ok(()),
         }

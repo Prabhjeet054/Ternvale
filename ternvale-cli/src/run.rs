@@ -107,6 +107,7 @@ fn run_self_hosted(
         Arc::clone(&control),
         agent,
         config.allow_exec(),
+        config.agent.launchers,
         backend_name,
         capabilities,
         x86_engine,
@@ -357,6 +358,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
         tools_iso,
         Some(Arc::clone(&power)),
         config.allow_exec(),
+        config.agent.launchers,
         x86_engine,
     )
     .with_context(|| format!("start the control socket for vm {}", config.name))?;

@@ -11,12 +11,17 @@
 //! do not know and ignore unknown fields, so a minor addition does not need
 //! a version bump; changing or removing a message does.
 
+mod app;
 mod frame;
 mod hex;
 mod message;
 mod reader;
 mod window;
 
+pub use app::{
+    validate_app_launch, validate_apps, validate_host_open, AppSource, GuestApp, MAX_APPS,
+    MAX_APP_EXE, MAX_APP_EXT, MAX_APP_EXTS, MAX_APP_ICON, MAX_APP_ID, MAX_APP_NAME,
+};
 pub use frame::{encode, read_message, write_message, FrameError};
 pub use hex::{decode as decode_hex, encode as encode_hex, HexBytes};
 pub use message::{is_guest_file_path, ClipboardText, ExecStream, Message};

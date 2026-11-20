@@ -36,6 +36,7 @@ pub fn dispatch_vm_line(
     tools_iso: Option<&Path>,
     power: Option<&crate::power::PowerState>,
     allow_exec: bool,
+    launchers: bool,
     backend: &str,
     capabilities: ternvale_backend::BackendCapabilities,
     x86_engine: &str,
@@ -50,6 +51,7 @@ pub fn dispatch_vm_line(
             tools_iso,
             power,
             allow_exec,
+            launchers,
             backend,
             capabilities,
             x86_engine,
@@ -129,6 +131,7 @@ pub fn dispatch_vm_line(
                 tools_iso,
                 power,
                 allow_exec,
+                launchers,
                 backend,
                 capabilities,
                 x86_engine,
@@ -238,6 +241,12 @@ fn jsonrpc_to_request(method: Method, params: Option<&Value>) -> Result<Request,
                 .get("max_bytes")
                 .and_then(Value::as_u64)
                 .map(|n| n as u32),
+        }),
+        Method::AppsList => Ok(Request::AppList),
+        Method::AppsLaunch => Ok(Request::AppLaunch {
+            id: get_str("id").ok_or_else(|| ApiError::InvalidParams("id".into()))?,
+            file: get_str("file"),
+            confirm: map.get("confirm").and_then(Value::as_bool).unwrap_or(false),
         }),
         Method::Handshake | Method::Subscribe => Err(ApiError::InvalidRequest("internal".into())),
         other => Err(ApiError::MethodNotFound(format!(

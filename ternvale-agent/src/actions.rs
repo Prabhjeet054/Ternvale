@@ -102,6 +102,19 @@ pub trait Actions {
         let _ = (id, kind, code, value);
         Ok(())
     }
+    /// `AppListGet`.
+    fn list_apps(&mut self) -> Result<Vec<ternvale_agent_proto::GuestApp>, AgentError> {
+        Ok(Vec::new())
+    }
+    /// `AppLaunch`.
+    fn launch_app(&mut self, id: &str, file: Option<&str>) -> Result<(), AgentError> {
+        let _ = (id, file);
+        Ok(())
+    }
+    /// Guest → host `HostOpen` (URL or file). Default: none.
+    fn take_host_open(&mut self) -> Option<(String, String)> {
+        None
+    }
     /// `Shutdown`. On Linux this does not return on success.
     fn shutdown(&mut self) -> Result<(), AgentError>;
     /// `TimeSync`: set `CLOCK_REALTIME` (needs privilege).
@@ -287,6 +300,16 @@ impl Actions for SystemActions {
         value: i32,
     ) -> Result<(), AgentError> {
         crate::windows::apply_window_input(id, kind, code, value)
+    }
+
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]
+    fn list_apps(&mut self) -> Result<Vec<ternvale_agent_proto::GuestApp>, AgentError> {
+        crate::apps::list_guest_apps()
+    }
+
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(id))]
+    fn launch_app(&mut self, id: &str, file: Option<&str>) -> Result<(), AgentError> {
+        crate::apps::launch_guest_app(id, file)
     }
 
     #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]

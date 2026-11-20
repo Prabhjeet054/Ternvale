@@ -50,6 +50,7 @@ impl ControlServer {
             control,
             agent,
             false,
+            false,
             "native".into(),
             ternvale_backend::BackendCapabilities::native(),
             "none".into(),
@@ -69,6 +70,7 @@ impl ControlServer {
             control,
             agent,
             allow_exec,
+            false,
             "native".into(),
             ternvale_backend::BackendCapabilities::native(),
             "none".into(),
@@ -83,6 +85,7 @@ impl ControlServer {
         control: Arc<VmControl>,
         agent: Option<Arc<AgentServer>>,
         allow_exec: bool,
+        launchers: bool,
         backend: String,
         capabilities: ternvale_backend::BackendCapabilities,
         x86_engine: String,
@@ -96,6 +99,7 @@ impl ControlServer {
                 tools_iso: None,
                 power: None,
                 allow_exec,
+                launchers,
                 backend,
                 capabilities,
                 x86_engine,
@@ -114,6 +118,7 @@ impl ControlServer {
         tools_iso: Option<PathBuf>,
         power: Option<Arc<crate::power::PowerState>>,
         allow_exec: bool,
+        launchers: bool,
         x86_engine: String,
     ) -> Result<Self> {
         Self::serve_vm(
@@ -125,6 +130,7 @@ impl ControlServer {
                 tools_iso,
                 power,
                 allow_exec,
+                launchers,
                 backend: "native".into(),
                 capabilities: ternvale_backend::BackendCapabilities::native(),
                 x86_engine,
@@ -213,6 +219,7 @@ struct Served {
     tools_iso: Option<PathBuf>,
     power: Option<Arc<crate::power::PowerState>>,
     allow_exec: bool,
+    launchers: bool,
     backend: String,
     capabilities: ternvale_backend::BackendCapabilities,
     x86_engine: String,
@@ -310,6 +317,7 @@ fn serve_lines(stream: UnixStream, served: &Served) -> Result<()> {
             served.tools_iso.as_deref(),
             served.power.as_deref(),
             served.allow_exec,
+            served.launchers,
             &served.backend,
             served.capabilities,
             &served.x86_engine,
@@ -381,6 +389,7 @@ pub fn handle_line(line: &str, control: &VmControl, agent: Option<&AgentServer>)
         None,
         None,
         false,
+        false,
         "native",
         ternvale_backend::BackendCapabilities::native(),
         "none",
@@ -398,6 +407,7 @@ pub fn handle_line_with(
     tools_iso: Option<&Path>,
     power: Option<&crate::power::PowerState>,
     allow_exec: bool,
+    launchers: bool,
     backend: &str,
     capabilities: ternvale_backend::BackendCapabilities,
     x86_engine: &str,
@@ -412,6 +422,9 @@ pub fn handle_line_with(
     tracing::info!(target: "ternvale::cli", cmd = request.name(), "control request");
     let privacy = diag.and_then(|diag| diag.privacy_json());
     if let Some(response) = crate::control_agent::gated(allow_exec, agent, &request) {
+        return response;
+    }
+    if let Some(response) = crate::apps_cmd::handle(&request, agent, launchers) {
         return response;
     }
     if let Some(handled) = crate::power::handle(&request, control, agent, power) {
@@ -627,6 +640,9 @@ pub fn handle_line_with(
         }
         Request::DiskCompact { .. } => {
             return Response::error("disk compact requires the VM to be stopped");
+        }
+        Request::AppList | Request::AppLaunch { .. } => {
+            return Response::error("internal: app request not handled");
         }
         Request::X86Metrics {
             engine,

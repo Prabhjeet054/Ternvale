@@ -27,6 +27,12 @@ pub enum Method {
     Status,
     /// Pull guest KMDF sidecar logs (`driver-logs` on the cmd protocol).
     DriverLogs,
+    AppsList,
+    AppsLaunch,
+    AppsStubsInstall,
+    AppsStubsUninstall,
+    AppsOpen,
+    AppsApprove,
 }
 
 impl Method {
@@ -56,6 +62,12 @@ impl Method {
             Self::Subscribe => "subscribe",
             Self::Status => "status",
             Self::DriverLogs => "driver.logs",
+            Self::AppsList => "apps.list",
+            Self::AppsLaunch => "apps.launch",
+            Self::AppsStubsInstall => "apps.stubs.install",
+            Self::AppsStubsUninstall => "apps.stubs.uninstall",
+            Self::AppsOpen => "apps.open",
+            Self::AppsApprove => "apps.approve",
         }
     }
 
@@ -90,4 +102,10 @@ pub const METHODS: &[Method] = &[
     Method::Subscribe,
     Method::Status,
     Method::DriverLogs,
+    Method::AppsList,
+    Method::AppsLaunch,
+    Method::AppsStubsInstall,
+    Method::AppsStubsUninstall,
+    Method::AppsOpen,
+    Method::AppsApprove,
 ];

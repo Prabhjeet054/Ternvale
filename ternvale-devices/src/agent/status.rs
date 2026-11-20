@@ -119,6 +119,10 @@ pub(super) struct Book {
     pub clipboard_wait: Option<Sender<Result<ClipboardText, String>>>,
     /// Delivers `WindowListOk` to a waiting [`super::AgentServer::window_list_get`].
     pub window_wait: Option<Sender<Result<Vec<GuestWindow>, String>>>,
+    /// Delivers `AppListOk` to a waiting [`super::AgentServer::app_list_get`].
+    pub app_wait: Option<Sender<Result<Vec<ternvale_agent_proto::GuestApp>, String>>>,
+    /// Delivers `AppLaunchOk` / `AppLaunchErr`.
+    pub launch_wait: Option<Sender<Result<(), String>>>,
     /// Delivers `DriverLogsOk` to a waiting [`super::AgentServer::driver_logs`].
     pub driver_wait: Option<Sender<Result<(String, bool), String>>>,
     /// Delivers exec output/exit to a waiting [`super::AgentServer::exec`].

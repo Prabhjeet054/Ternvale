@@ -129,6 +129,7 @@ fn serve_requests(
             Next::Stopped => return Ok(SessionEnd::Stopped),
             Next::Tick => {
                 push_clipboard(stream, actions)?;
+                push_host_open(stream, actions)?;
                 continue;
             }
             Next::TimedOut => {
@@ -192,6 +193,21 @@ fn serve_requests(
                 code,
                 value,
             } => actions.apply_window_input(id, &kind, code, value),
+            Message::AppListGet => {
+                let apps = actions.list_apps()?;
+                send_host(stream, writer.as_ref(), &Message::AppListOk { apps })
+            }
+            Message::AppLaunch { id, file } => match actions.launch_app(&id, file.as_deref()) {
+                Ok(()) => send_host(stream, writer.as_ref(), &Message::AppLaunchOk { id }),
+                Err(error) => send_host(
+                    stream,
+                    writer.as_ref(),
+                    &Message::AppLaunchErr {
+                        id,
+                        reason: error.to_string(),
+                    },
+                ),
+            },
             Message::Shutdown => {
                 actions.shutdown()?;
                 return Ok(SessionEnd::Shutdown);
@@ -263,8 +279,20 @@ fn serve_requests(
             | Message::CopyHashOk { .. }
             | Message::CopyErr { .. }
             | Message::DriverLogsOk { .. }
-            | Message::CameraFrameOk { .. }) => {
+            | Message::CameraFrameOk { .. }
+            | Message::AppListOk { .. }
+            | Message::AppLaunchOk { .. }
+            | Message::AppLaunchErr { .. }
+            | Message::HostOpen { .. }) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from host ignored");
+                Ok(())
+            }
+            Message::HostOpenOk { kind } => {
+                tracing::debug!(target: "ternvale::agent", kind = %kind, "host_open_ok");
+                Ok(())
+            }
+            Message::HostOpenErr { kind, reason } => {
+                tracing::warn!(target: "ternvale::agent", kind = %kind, reason = %reason, "host_open_err");
                 Ok(())
             }
         };
@@ -276,6 +304,24 @@ fn serve_requests(
             Ok(()) => {}
         }
     }
+}
+
+fn push_host_open(stream: &mut Stream, actions: &mut dyn Actions) -> Result<(), AgentError> {
+    let Some((kind, target)) = actions.take_host_open() else {
+        return Ok(());
+    };
+    tracing::info!(
+        target: "ternvale::agent",
+        kind = %kind,
+        target_len = target.len(),
+        "pushing host_open"
+    );
+    write_message(stream, &Message::HostOpen { kind, target }, "host").map_err(|source| {
+        AgentError::Frame {
+            op: "send host_open",
+            source,
+        }
+    })
 }
 
 fn push_clipboard(stream: &mut Stream, actions: &mut dyn Actions) -> Result<(), AgentError> {

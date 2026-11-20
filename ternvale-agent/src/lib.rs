@@ -8,6 +8,7 @@
 //! can run as service `TernvaleGuestAgent`.
 
 mod actions;
+mod apps;
 mod backoff;
 mod camera;
 mod clip;
@@ -20,6 +21,7 @@ mod os;
 pub mod service;
 mod session;
 mod transport;
+mod win_apps;
 mod win_capture;
 mod win_clip;
 mod win_display;

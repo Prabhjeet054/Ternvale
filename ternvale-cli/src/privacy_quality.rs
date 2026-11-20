@@ -55,6 +55,7 @@ fn system_settings_deny_hides_devices_and_status_explains_why() {
         None,
         None,
         false,
+        false,
         "native",
         ternvale_backend::BackendCapabilities::native(),
         "none",

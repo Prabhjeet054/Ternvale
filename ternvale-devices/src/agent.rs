@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use ternvale_agent_proto::{write_message, FrameError, GuestWindow, Message};
+use ternvale_agent_proto::{write_message, FrameError, GuestApp, GuestWindow, Message};
 
 use status::Book;
 pub use status::{AgentState, AgentStatus};
@@ -31,6 +31,8 @@ pub use window_frames::WindowPixels;
 
 /// Host pasteboard callback for a guest `ClipboardSet` push.
 type ClipboardSink = Arc<dyn Fn(String) + Send + Sync>;
+/// Guest `HostOpen` (kind, target). `Err` is sent back as `HostOpenErr`.
+type HostOpenSink = Arc<dyn Fn(String, String) -> Result<(), String> + Send + Sync>;
 
 /// Timing for [`AgentServer`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +99,18 @@ pub enum AgentServerError {
         /// Wait duration in milliseconds.
         timeout_ms: u64,
     },
+    /// The agent did not answer `AppListGet` in time.
+    #[error("app_list_get timed out after {timeout_ms} ms")]
+    AppListTimeout {
+        /// Wait duration in milliseconds.
+        timeout_ms: u64,
+    },
+    /// The agent did not answer `AppLaunch` in time.
+    #[error("app_launch timed out after {timeout_ms} ms")]
+    AppLaunchTimeout {
+        /// Wait duration in milliseconds.
+        timeout_ms: u64,
+    },
     /// The agent did not answer `DriverLogsGet` in time.
     #[error("driver_logs_get timed out after {timeout_ms} ms")]
     DriverLogsTimeout {
@@ -141,6 +155,8 @@ pub(crate) struct Shared {
     shares: Vec<(String, String)>,
     /// Host pasteboard update when the guest pushes `ClipboardSet`.
     clipboard_sink: Mutex<Option<ClipboardSink>>,
+    /// Guest `HostOpen` (URL/file) → macOS handler.
+    host_open_sink: Mutex<Option<HostOpenSink>>,
     /// Guest asked for relative pointer (games). Shared with the presenter.
     relative_pointer: Arc<AtomicBool>,
     /// Next `Exec` / copy correlation id.
@@ -208,6 +224,7 @@ impl AgentServer {
             book: Mutex::new(Book::default()),
             shares,
             clipboard_sink: Mutex::new(None),
+            host_open_sink: Mutex::new(None),
             relative_pointer: Arc::new(AtomicBool::new(false)),
             next_id: AtomicU64::new(0),
         });
@@ -237,6 +254,13 @@ impl AgentServer {
     #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]
     pub fn set_clipboard_sink(&self, sink: ClipboardSink) {
         *ternvale_vmm::lockwatch::lock(&self.shared.clipboard_sink, "agent-clipboard-sink") =
+            Some(sink);
+    }
+
+    /// Called when the guest asks to open a URL or file on the host.
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]
+    pub fn set_host_open_sink(&self, sink: HostOpenSink) {
+        *ternvale_vmm::lockwatch::lock(&self.shared.host_open_sink, "agent-host-open-sink") =
             Some(sink);
     }
 
@@ -284,6 +308,10 @@ impl AgentServer {
                 | Message::ClipboardGet
                 | Message::ShareMount { .. }
                 | Message::WindowListGet
+                | Message::AppListGet
+                | Message::AppLaunch { .. }
+                | Message::HostOpenOk { .. }
+                | Message::HostOpenErr { .. }
                 | Message::WindowOp { .. }
                 | Message::WindowInput { .. }
                 | Message::WindowFrameOk { .. }
@@ -414,6 +442,102 @@ impl AgentServer {
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
                 state: "disconnected during window_list_get",
+            }),
+        }
+    }
+
+    /// Host → agent Start-menu / packaged app list.
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm, timeout_ms = status::millis(timeout)))]
+    pub fn app_list_get(&self, timeout: Duration) -> Result<Vec<GuestApp>, AgentServerError> {
+        let (tx, rx) = mpsc::channel();
+        {
+            let mut book = self.shared.book();
+            let state = book.snapshot(Instant::now()).state;
+            if state != AgentState::Connected {
+                return Err(AgentServerError::NotConnected {
+                    state: state.as_str(),
+                });
+            }
+            if book.app_wait.is_some() {
+                return Err(AgentServerError::NotConnected {
+                    state: "app_list_get already pending",
+                });
+            }
+            book.app_wait = Some(tx);
+        }
+        self.send(&Message::AppListGet)?;
+        match rx.recv_timeout(timeout) {
+            Ok(Ok(apps)) => {
+                tracing::info!(target: "ternvale::agent", count = apps.len(), "app_list_get ok");
+                Ok(apps)
+            }
+            Ok(Err(reason)) => {
+                tracing::warn!(target: "ternvale::agent", reason = %reason, "app_list_get failed in guest");
+                Err(AgentServerError::NotConnected {
+                    state: "app_list_get failed",
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let mut book = self.shared.book();
+                book.app_wait = None;
+                Err(AgentServerError::AppListTimeout {
+                    timeout_ms: status::millis(timeout),
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
+                state: "disconnected during app_list_get",
+            }),
+        }
+    }
+
+    /// Host → agent launch a listed app (optional guest file on a share).
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm, id, has_file = file.is_some()))]
+    pub fn app_launch(
+        &self,
+        id: &str,
+        file: Option<&str>,
+        timeout: Duration,
+    ) -> Result<(), AgentServerError> {
+        let (tx, rx) = mpsc::channel();
+        {
+            let mut book = self.shared.book();
+            let state = book.snapshot(Instant::now()).state;
+            if state != AgentState::Connected {
+                return Err(AgentServerError::NotConnected {
+                    state: state.as_str(),
+                });
+            }
+            if book.launch_wait.is_some() {
+                return Err(AgentServerError::NotConnected {
+                    state: "app_launch already pending",
+                });
+            }
+            book.launch_wait = Some(tx);
+        }
+        self.send(&Message::AppLaunch {
+            id: id.to_string(),
+            file: file.map(str::to_string),
+        })?;
+        match rx.recv_timeout(timeout) {
+            Ok(Ok(())) => {
+                tracing::info!(target: "ternvale::agent", id, "app_launch ok");
+                Ok(())
+            }
+            Ok(Err(reason)) => {
+                tracing::warn!(target: "ternvale::agent", id, reason = %reason, "app_launch failed in guest");
+                Err(AgentServerError::NotConnected {
+                    state: "app_launch failed",
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let mut book = self.shared.book();
+                book.launch_wait = None;
+                Err(AgentServerError::AppLaunchTimeout {
+                    timeout_ms: status::millis(timeout),
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(AgentServerError::NotConnected {
+                state: "disconnected during app_launch",
             }),
         }
     }
