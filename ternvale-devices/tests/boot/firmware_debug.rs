@@ -105,6 +105,7 @@ fn boot(firmware: &Path, serial_log: &Path, log_dir: &Path, host_log: &Path) -> 
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     };
     tracing::info!(
         target: "ternvale::boot",

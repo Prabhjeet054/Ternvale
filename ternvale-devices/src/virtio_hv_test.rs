@@ -63,6 +63,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
     let base = slot_base(0).expect("slot 0");

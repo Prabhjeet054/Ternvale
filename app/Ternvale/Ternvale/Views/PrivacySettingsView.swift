@@ -10,6 +10,8 @@ struct PrivacySettingsView: View {
     @State private var camera = false
     @State private var usbEnabled = true
     @State private var clipboard = false
+    @State private var clipboardRich = false
+    @State private var clipboardDnd = false
     @State private var launchers = false
     @State private var openInGuest = false
     @State private var openOnHost = false
@@ -74,6 +76,13 @@ struct PrivacySettingsView: View {
                 LabeledContent("Guest agent clipboard") {
                     Text(clipboard ? "On" : "Off")
                 }
+                Toggle("Rich clipboard (PNG, RTF, HTML, files)", isOn: $clipboardRich)
+                Toggle("Drag and drop with Finder", isOn: $clipboardDnd)
+                Text(
+                    "Off by default. Transfers larger than clipboard.confirm_mib ask first. Incoming names are sanitized; existing files are never overwritten silently."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Section("Guest apps") {
                 Toggle("Start Menu launchers in ~/Applications/Ternvale Apps", isOn: $launchers)
@@ -108,6 +117,8 @@ struct PrivacySettingsView: View {
             camera = VMConfigParser.parseCameraEnabled(in: text)
             usbEnabled = VMConfigParser.parseUsbEnabled(in: text)
             clipboard = VMConfigParser.parseClipboardAgent(in: text)
+            clipboardRich = VMConfigParser.parseClipboardRich(in: text)
+            clipboardDnd = VMConfigParser.parseClipboardDnd(in: text)
             launchers = VMConfigParser.parseAgentLaunchers(in: text)
             openInGuest = VMConfigParser.parseAgentOpenInGuest(in: text)
             openOnHost = VMConfigParser.parseAgentOpenOnHost(in: text)
@@ -122,6 +133,8 @@ struct PrivacySettingsView: View {
             var text = try String(contentsOf: configURL, encoding: .utf8)
             text = VMConfigParser.replacingAudioInput(in: text, enabled: microphone)
             text = VMConfigParser.replacingCameraEnabled(in: text, enabled: camera)
+            text = VMConfigParser.replacingClipboardRich(in: text, enabled: clipboardRich)
+            text = VMConfigParser.replacingClipboardDnd(in: text, enabled: clipboardDnd)
             text = VMConfigParser.replacingAgentLaunchers(in: text, enabled: launchers)
             text = VMConfigParser.replacingAgentOpenInGuest(in: text, enabled: openInGuest)
             text = VMConfigParser.replacingAgentOpenOnHost(in: text, enabled: openOnHost)

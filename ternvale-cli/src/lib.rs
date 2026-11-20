@@ -40,6 +40,7 @@ pub mod disk;
 pub mod disk_cmd;
 pub mod display;
 pub mod display_input;
+pub mod dnd;
 pub mod doctor;
 pub mod driver_logs;
 pub mod events_sub;

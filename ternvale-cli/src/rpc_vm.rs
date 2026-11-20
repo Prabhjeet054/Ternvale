@@ -248,6 +248,53 @@ fn jsonrpc_to_request(method: Method, params: Option<&Value>) -> Result<Request,
             file: get_str("file"),
             confirm: map.get("confirm").and_then(Value::as_bool).unwrap_or(false),
         }),
+        Method::ClipboardOffer => Ok(Request::ClipboardOffer {
+            formats: map
+                .get("formats")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            confirm: map.get("confirm").and_then(Value::as_bool).unwrap_or(false),
+            dest: get_str("dest"),
+        }),
+        Method::DragIn => Ok(Request::DragIn {
+            paths: map
+                .get("paths")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            dest: get_str("dest"),
+            confirm: map.get("confirm").and_then(Value::as_bool).unwrap_or(false),
+            id: get_str("id"),
+        }),
+        Method::DragOut => Ok(Request::DragOutPromise {
+            names: map
+                .get("names")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            sizes: map
+                .get("sizes")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_u64).collect())
+                .unwrap_or_default(),
+            id: get_str("id"),
+        }),
+        Method::DragCancel => Ok(Request::DragCancel {
+            id: get_str("id").ok_or_else(|| ApiError::InvalidParams("id".into()))?,
+        }),
         Method::Handshake | Method::Subscribe => Err(ApiError::InvalidRequest("internal".into())),
         other => Err(ApiError::MethodNotFound(format!(
             "{} is a hub method (connect to api.sock)",

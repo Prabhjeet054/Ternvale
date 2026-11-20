@@ -3,9 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    validate_app_launch, validate_apps, validate_host_open, validate_window_frame,
-    validate_window_input, validate_window_op, validate_windows, GuestApp, GuestWindow, HexBytes,
-    MAX_BIN_CHUNK, MAX_COPY_PATH, MAX_DIMENSION, MAX_EXEC_ARG, MAX_EXEC_ARGV, MAX_NAME,
+    validate_app_launch, validate_apps, validate_clipboard_offer, validate_clipboard_payload,
+    validate_clipboard_take, validate_drag_accept, validate_drag_cancel, validate_drag_offer,
+    validate_drag_progress, validate_host_open, validate_window_frame, validate_window_input,
+    validate_window_op, validate_windows, GuestApp, GuestWindow, HexBytes, MAX_BIN_CHUNK,
+    MAX_COPY_PATH, MAX_DIMENSION, MAX_EXEC_ARG, MAX_EXEC_ARGV, MAX_NAME,
 };
 
 /// One protocol message. JSON form: `{"type":"<snake_case name>", ...fields}`.
@@ -333,6 +335,94 @@ pub enum Message {
         /// Why (not a secret).
         reason: String,
     },
+    /// Either side: offer clipboard formats (loop-prevention `echo`).
+    ClipboardOffer {
+        /// Offer sequence.
+        seq: u64,
+        /// Format names (`png`, `dib`, `html`, `rtf`, `text`, `files`).
+        formats: Vec<String>,
+        /// Byte sizes parallel to `formats` (empty = unknown).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sizes: Vec<u64>,
+        /// File names when `files` is offered.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        files: Vec<String>,
+        /// Token from the last set we originated (0 = none).
+        echo: u64,
+    },
+    /// Either side: take one format from the last offer.
+    ClipboardTake {
+        /// Offer sequence.
+        seq: u64,
+        /// Chosen format.
+        format: String,
+    },
+    /// Either side: one chunk of a rich clipboard payload (never log `data`).
+    ClipboardPayload {
+        /// Offer sequence.
+        seq: u64,
+        /// Format of this payload.
+        format: String,
+        /// Byte offset in the assembled blob.
+        offset: u64,
+        /// Last chunk.
+        last: bool,
+        /// Chunk bytes (hex on the wire).
+        data: HexBytes,
+        /// Echo token (same as the offer).
+        echo: u64,
+    },
+    /// Either side: chunk landed.
+    ClipboardPayloadOk {
+        /// Offer sequence.
+        seq: u64,
+        /// Bytes written this chunk.
+        written: u64,
+    },
+    /// Either side: file list about to move (Finder ↔ guest).
+    DragOffer {
+        /// Transfer id.
+        id: String,
+        /// Suggested file names (unsanitized; host sanitizes).
+        names: Vec<String>,
+        /// Sizes parallel to `names` (empty = unknown).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sizes: Vec<u64>,
+        /// True: guest → host. False: host → guest.
+        outbound: bool,
+        /// Echo token (0 = none).
+        echo: u64,
+    },
+    /// Either side: accept a drag into `dest` (empty = default drop folder).
+    DragAccept {
+        /// Transfer id.
+        id: String,
+        /// Staging / drop directory hint.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        dest: String,
+    },
+    /// Either side: abort a transfer.
+    DragCancel {
+        /// Transfer id.
+        id: String,
+        /// Why.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        reason: String,
+    },
+    /// Either side: copy progress.
+    DragProgress {
+        /// Transfer id.
+        id: String,
+        /// Bytes copied.
+        done: u64,
+        /// Total bytes (0 = unknown).
+        total: u64,
+    },
+    /// Either side: transfer finished.
+    DragDone {
+        /// Transfer id.
+        id: String,
+    },
     /// Agent → host: copy/exec request failed.
     CopyErr {
         /// The request id.
@@ -456,6 +546,15 @@ impl Message {
             Self::HostOpen { .. } => "host_open",
             Self::HostOpenOk { .. } => "host_open_ok",
             Self::HostOpenErr { .. } => "host_open_err",
+            Self::ClipboardOffer { .. } => "clipboard_offer",
+            Self::ClipboardTake { .. } => "clipboard_take",
+            Self::ClipboardPayload { .. } => "clipboard_payload",
+            Self::ClipboardPayloadOk { .. } => "clipboard_payload_ok",
+            Self::DragOffer { .. } => "drag_offer",
+            Self::DragAccept { .. } => "drag_accept",
+            Self::DragCancel { .. } => "drag_cancel",
+            Self::DragProgress { .. } => "drag_progress",
+            Self::DragDone { .. } => "drag_done",
         }
     }
 
@@ -591,6 +690,23 @@ impl Message {
             Self::HostOpenErr { reason, .. } if reason.len() > MAX_NAME => {
                 Err(format!("host_open_err reason longer than {MAX_NAME} bytes"))
             }
+            Self::ClipboardOffer {
+                formats,
+                sizes,
+                files,
+                ..
+            } => validate_clipboard_offer(formats, sizes, files),
+            Self::ClipboardTake { format, .. } => validate_clipboard_take(format),
+            Self::ClipboardPayload { format, data, .. } => {
+                validate_clipboard_payload(format, data.0.len())
+            }
+            Self::DragOffer {
+                id, names, sizes, ..
+            } => validate_drag_offer(id, names, sizes),
+            Self::DragAccept { id, dest } => validate_drag_accept(id, dest),
+            Self::DragCancel { id, reason } => validate_drag_cancel(id, reason),
+            Self::DragProgress { id, done, total } => validate_drag_progress(id, *done, *total),
+            Self::DragDone { id } => crate::validate_drag_id(id),
             _ => Ok(()),
         }
     }

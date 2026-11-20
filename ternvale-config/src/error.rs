@@ -218,6 +218,15 @@ pub enum ConfigError {
         reason: String,
     },
 
+    /// A `[clipboard]` field is invalid.
+    #[error("{field}: {reason}")]
+    InvalidClipboard {
+        /// Field, such as `clipboard.max_mib`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
+
     /// A `[power]` field is invalid.
     #[error("{field}: {reason}")]
     InvalidPower {

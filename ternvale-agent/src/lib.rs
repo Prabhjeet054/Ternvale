@@ -13,10 +13,12 @@ mod backoff;
 mod camera;
 mod clip;
 mod copy;
+mod dnd;
 mod drvlog;
 mod error;
 mod exec;
 mod os;
+mod rich;
 #[cfg(windows)]
 pub mod service;
 mod session;
@@ -25,11 +27,15 @@ mod win_apps;
 mod win_capture;
 mod win_clip;
 mod win_display;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod win_dnd;
 mod win_share;
 mod win_windows;
 mod windows;
 #[cfg(windows)]
 mod windows_vsock;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+mod x11_dnd;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;

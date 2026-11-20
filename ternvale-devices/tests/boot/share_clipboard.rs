@@ -106,6 +106,7 @@ pub fn run() -> Result<(), String> {
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     };
     let uart = Pl011::open(&serial_log).map_err(|e| e.to_string())?;
     let cancel = Arc::new(AtomicBool::new(false));

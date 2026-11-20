@@ -8,8 +8,8 @@ use crate::disk::Disk;
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
 use crate::{
-    AudioSection, CameraSection, GpuSection, InputSection, IsoSection, Nic, PowerSection, Profile,
-    Share, TpmSection, UsbSection, VsockSection,
+    AudioSection, CameraSection, ClipboardSection, GpuSection, InputSection, IsoSection, Nic,
+    PowerSection, Profile, Share, TpmSection, UsbSection, VsockSection,
 };
 
 const RAM_QUANTUM_MIB: u64 = 16;
@@ -125,6 +125,9 @@ pub struct VmConfig {
     /// Host keyboard mapping. Omitted: Command stays Meta. See [`InputSection`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<InputSection>,
+    /// Rich clipboard and drag-and-drop. Omitted: text-only, no Finder drops.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clipboard: Option<ClipboardSection>,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -273,6 +276,9 @@ impl VmConfig {
         self.audio_section().validate()?;
         self.camera_section().validate()?;
         self.gpu_section().validate()?;
+        if let Some(clipboard) = &self.clipboard {
+            clipboard.validate()?;
+        }
         if self.shares.len() > 1 {
             return Err(ConfigError::InvalidShare {
                 field: "shares",

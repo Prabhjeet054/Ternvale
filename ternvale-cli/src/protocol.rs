@@ -169,6 +169,47 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         confirm: bool,
     },
+    /// Offer rich clipboard formats to the guest (`clipboard.rich`).
+    ClipboardOffer {
+        /// Formats the host can provide (`png`, `dib`, `html`, `rtf`, `text`, `files`).
+        formats: Vec<String>,
+        /// Confirm a large file-list transfer.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        confirm: bool,
+        /// Optional drop dest for a file list.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dest: Option<String>,
+    },
+    /// Finder drop into the guest (`clipboard.dnd`).
+    DragIn {
+        /// Absolute host paths.
+        paths: Vec<String>,
+        /// Guest dest directory (omitted: `clipboard.guest_drop`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dest: Option<String>,
+        /// User confirmed size / overwrite.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        confirm: bool,
+        /// Transfer id (omitted: `drop`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+    },
+    /// Guest drag-out: promised file names (transfer on drop).
+    DragOutPromise {
+        /// Suggested names (sanitized on the host).
+        names: Vec<String>,
+        /// Sizes in bytes (optional).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        sizes: Vec<u64>,
+        /// Transfer id.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+    },
+    /// Cancel an in-flight drag and delete the stage directory.
+    DragCancel {
+        /// Transfer id.
+        id: String,
+    },
     /// Add usermode x86 translation counters (`query-stats.metrics.x86`).
     X86Metrics {
         /// `rosetta` / `fex` / `qemu-user`.
@@ -212,6 +253,10 @@ impl Request {
             Self::X86Metrics { .. } => "x86-metrics",
             Self::AppList => "app-list",
             Self::AppLaunch { .. } => "app-launch",
+            Self::ClipboardOffer { .. } => "clipboard-offer",
+            Self::DragIn { .. } => "drag-in",
+            Self::DragOutPromise { .. } => "drag-out-promise",
+            Self::DragCancel { .. } => "drag-cancel",
         }
     }
 
@@ -243,6 +288,10 @@ impl Request {
             Self::X86Metrics { .. } => "record x86 metrics for",
             Self::AppList => "list apps for",
             Self::AppLaunch { .. } => "launch app on",
+            Self::ClipboardOffer { .. } => "clipboard offer for",
+            Self::DragIn { .. } => "drag in for",
+            Self::DragOutPromise { .. } => "drag out for",
+            Self::DragCancel { .. } => "drag cancel for",
         }
     }
 }
@@ -452,6 +501,15 @@ pub struct Response {
     /// Stubs installed or removed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stubs_removed: Option<u64>,
+    /// Negotiated clipboard formats.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formats: Option<Vec<String>>,
+    /// Drag transfer id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drag_id: Option<String>,
+    /// Host stage paths (optional; older clients ignore).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged: Option<Vec<String>>,
 }
 
 /// One guest app in `app-list` (optional; older clients ignore it).
@@ -510,6 +568,9 @@ impl Response {
             needs_confirmation: None,
             association: None,
             stubs_removed: None,
+            formats: None,
+            drag_id: None,
+            staged: None,
         }
     }
 
@@ -769,6 +830,23 @@ mod tests {
             (
                 r#"{"cmd":"clipboard-set","text":"hi"}"#,
                 Request::ClipboardSet { text: "hi".into() },
+            ),
+            (
+                r#"{"cmd":"clipboard-offer","formats":["png","text"]}"#,
+                Request::ClipboardOffer {
+                    formats: vec!["png".into(), "text".into()],
+                    confirm: false,
+                    dest: None,
+                },
+            ),
+            (
+                r#"{"cmd":"drag-in","paths":["/tmp/a.png"]}"#,
+                Request::DragIn {
+                    paths: vec!["/tmp/a.png".into()],
+                    dest: None,
+                    confirm: false,
+                    id: None,
+                },
             ),
             (
                 r#"{"cmd":"driver-logs"}"#,

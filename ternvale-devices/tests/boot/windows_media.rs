@@ -284,6 +284,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     };
     vm.validate()
         .map_err(|err| format!("linux config: {err}"))?;

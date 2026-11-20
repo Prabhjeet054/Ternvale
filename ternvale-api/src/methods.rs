@@ -33,6 +33,10 @@ pub enum Method {
     AppsStubsUninstall,
     AppsOpen,
     AppsApprove,
+    ClipboardOffer,
+    DragIn,
+    DragOut,
+    DragCancel,
 }
 
 impl Method {
@@ -68,6 +72,10 @@ impl Method {
             Self::AppsStubsUninstall => "apps.stubs.uninstall",
             Self::AppsOpen => "apps.open",
             Self::AppsApprove => "apps.approve",
+            Self::ClipboardOffer => "clipboard.offer",
+            Self::DragIn => "drag.in",
+            Self::DragOut => "drag.out",
+            Self::DragCancel => "drag.cancel",
         }
     }
 
@@ -108,4 +116,8 @@ pub const METHODS: &[Method] = &[
     Method::AppsStubsUninstall,
     Method::AppsOpen,
     Method::AppsApprove,
+    Method::ClipboardOffer,
+    Method::DragIn,
+    Method::DragOut,
+    Method::DragCancel,
 ];

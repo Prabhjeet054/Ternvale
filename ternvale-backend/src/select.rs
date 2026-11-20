@@ -128,6 +128,7 @@ mod tests {
             agent: Default::default(),
             gpu: None,
             input: None,
+            clipboard: None,
         }
     }
 

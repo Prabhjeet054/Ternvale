@@ -427,6 +427,9 @@ pub fn handle_line_with(
     if let Some(response) = crate::apps_cmd::handle(&request, agent, launchers) {
         return response;
     }
+    if let Some(response) = crate::dnd::handle(&request, agent, control.name()) {
+        return response;
+    }
     if let Some(handled) = crate::power::handle(&request, control, agent, power) {
         return match handled {
             Ok(mut response) => {
@@ -643,6 +646,12 @@ pub fn handle_line_with(
         }
         Request::AppList | Request::AppLaunch { .. } => {
             return Response::error("internal: app request not handled");
+        }
+        Request::ClipboardOffer { .. }
+        | Request::DragIn { .. }
+        | Request::DragOutPromise { .. }
+        | Request::DragCancel { .. } => {
+            return Response::error("internal: clipboard/dnd request not handled");
         }
         Request::X86Metrics {
             engine,

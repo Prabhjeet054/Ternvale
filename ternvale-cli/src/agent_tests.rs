@@ -68,6 +68,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     }
 }
 

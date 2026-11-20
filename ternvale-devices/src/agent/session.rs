@@ -304,6 +304,79 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
                     "camera_frame_ok"
                 );
             }
+            Some(Message::ClipboardOffer {
+                seq, formats, echo, ..
+            }) => {
+                tracing::info!(
+                    target: "ternvale::agent",
+                    seq,
+                    echo,
+                    count = formats.len(),
+                    "guest clipboard offer"
+                );
+            }
+            Some(Message::ClipboardTake { seq, format }) => {
+                tracing::debug!(target: "ternvale::agent", seq, format = %format, "guest clipboard take");
+            }
+            Some(Message::ClipboardPayload {
+                seq,
+                format,
+                last,
+                data,
+                echo,
+                ..
+            }) => {
+                tracing::debug!(
+                    target: "ternvale::agent",
+                    seq,
+                    format = %format,
+                    last,
+                    echo,
+                    n = data.0.len(),
+                    "guest clipboard payload"
+                );
+                if last && format == "text" {
+                    if let Ok(text) = String::from_utf8(data.0) {
+                        let sink = ternvale_vmm::lockwatch::lock(
+                            &shared.clipboard_sink,
+                            "agent-clipboard-sink",
+                        )
+                        .clone();
+                        if let Some(sink) = sink {
+                            sink(text);
+                        }
+                    }
+                }
+            }
+            Some(Message::ClipboardPayloadOk { seq, written }) => {
+                tracing::trace!(target: "ternvale::agent", seq, written, "clipboard_payload_ok");
+            }
+            Some(Message::DragOffer {
+                id,
+                names,
+                outbound,
+                ..
+            }) => {
+                tracing::info!(
+                    target: "ternvale::agent",
+                    id = %id,
+                    count = names.len(),
+                    outbound,
+                    "guest drag offer"
+                );
+            }
+            Some(Message::DragAccept { id, dest }) => {
+                tracing::info!(target: "ternvale::agent", id = %id, dest = %dest, "guest drag accept");
+            }
+            Some(Message::DragCancel { id, reason }) => {
+                tracing::info!(target: "ternvale::agent", id = %id, reason = %reason, "guest drag cancel");
+            }
+            Some(Message::DragProgress { id, done, total }) => {
+                tracing::debug!(target: "ternvale::agent", id = %id, done, total, "guest drag progress");
+            }
+            Some(Message::DragDone { id }) => {
+                tracing::info!(target: "ternvale::agent", id = %id, "guest drag done");
+            }
             Some(other) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from agent ignored");
             }

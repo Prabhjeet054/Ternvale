@@ -289,6 +289,24 @@ enum VMConfigParser {
         upsertTableBool(in: text, table: "agent", key: "open_on_host", value: enabled)
     }
 
+    /// `[clipboard] rich` (default false).
+    static func parseClipboardRich(in text: String) -> Bool {
+        sectionBool(in: text, table: "clipboard", key: "rich") ?? false
+    }
+
+    /// `[clipboard] dnd` (default false).
+    static func parseClipboardDnd(in text: String) -> Bool {
+        sectionBool(in: text, table: "clipboard", key: "dnd") ?? false
+    }
+
+    static func replacingClipboardRich(in text: String, enabled: Bool) -> String {
+        upsertTableBool(in: text, table: "clipboard", key: "rich", value: enabled)
+    }
+
+    static func replacingClipboardDnd(in text: String, enabled: Bool) -> String {
+        upsertTableBool(in: text, table: "clipboard", key: "dnd", value: enabled)
+    }
+
     /// `[vsock] agent` (default true when the table exists).
     static func parseClipboardAgent(in text: String) -> Bool {
         guard text.contains("[vsock]") else { return false }

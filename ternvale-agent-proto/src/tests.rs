@@ -53,6 +53,20 @@ fn all_messages() -> Vec<Message> {
             text: "hello".into(),
             truncated: false,
         },
+        Message::ClipboardOffer {
+            seq: 1,
+            formats: vec!["png".into()],
+            sizes: vec![4],
+            files: Vec::new(),
+            echo: 0,
+        },
+        Message::DragOffer {
+            id: "1".into(),
+            names: vec!["a.txt".into()],
+            sizes: vec![1],
+            outbound: false,
+            echo: 0,
+        },
     ]
 }
 

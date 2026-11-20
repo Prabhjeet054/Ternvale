@@ -35,6 +35,10 @@ public enum TernvaleMethod: String, Codable, CaseIterable {
     case appsStubsUninstall = "apps.stubs.uninstall"
     case appsOpen = "apps.open"
     case appsApprove = "apps.approve"
+    case clipboardOffer = "clipboard.offer"
+    case dragIn = "drag.in"
+    case dragOut = "drag.out"
+    case dragCancel = "drag.cancel"
 }
 
 /// Event kinds from `subscribe`.

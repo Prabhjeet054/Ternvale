@@ -124,6 +124,7 @@ fn serve_requests(
         .ok()
         .map(|clone| Arc::new(Mutex::new(clone)));
     let mut idle_deadline = Instant::now() + config.idle_timeout;
+    let mut assembler = crate::rich::Assembler::default();
     loop {
         let message = match next(stream, reader, stop, idle_deadline, "read request")? {
             Next::Stopped => return Ok(SessionEnd::Stopped),
@@ -156,6 +157,144 @@ fn serve_requests(
                         text: ternvale_agent_proto::ClipboardText(text),
                     },
                 )
+            }
+            Message::ClipboardOffer {
+                seq, formats, echo, ..
+            } => {
+                if assembler.is_loop(echo) {
+                    tracing::debug!(target: "ternvale::agent", seq, echo, "clipboard offer skipped (echo)");
+                    Ok(())
+                } else if let Some(format) = crate::rich::take_from_offer(&formats) {
+                    send_host(
+                        stream,
+                        writer.as_ref(),
+                        &Message::ClipboardTake {
+                            seq,
+                            format: format.to_string(),
+                        },
+                    )
+                } else {
+                    tracing::warn!(target: "ternvale::agent", seq, "clipboard offer has no usable format");
+                    Ok(())
+                }
+            }
+            Message::ClipboardTake { seq, format } => {
+                let text = actions.clipboard_get().unwrap_or_default();
+                assembler.remember_echo(seq);
+                let bytes = if format == "text" {
+                    text.into_bytes()
+                } else {
+                    Vec::new()
+                };
+                let mut last_ok = Ok(());
+                for chunk in crate::rich::chunk_payload(seq, &format, seq, &bytes) {
+                    last_ok = send_host(stream, writer.as_ref(), &chunk);
+                    if last_ok.is_err() {
+                        break;
+                    }
+                }
+                last_ok
+            }
+            Message::ClipboardPayload {
+                seq,
+                format,
+                offset,
+                last,
+                data,
+                echo,
+            } => {
+                if assembler.is_loop(echo) {
+                    tracing::debug!(target: "ternvale::agent", seq, "clipboard payload skipped (echo)");
+                    Ok(())
+                } else {
+                    match assembler.push(seq, &format, offset, last, &data.0) {
+                        Ok(Some((format, blob))) => {
+                            assembler.remember_echo(echo);
+                            crate::rich::apply_payload(&format, &blob)?;
+                            if format == "text" {
+                                let text = String::from_utf8_lossy(&blob);
+                                actions.clipboard_set(&text)?;
+                            }
+                            send_host(
+                                stream,
+                                writer.as_ref(),
+                                &Message::ClipboardPayloadOk {
+                                    seq,
+                                    written: data.0.len() as u64,
+                                },
+                            )
+                        }
+                        Ok(None) => send_host(
+                            stream,
+                            writer.as_ref(),
+                            &Message::ClipboardPayloadOk {
+                                seq,
+                                written: data.0.len() as u64,
+                            },
+                        ),
+                        Err(error) => {
+                            tracing::warn!(target: "ternvale::agent", error = %error, "clipboard payload dropped");
+                            Ok(())
+                        }
+                    }
+                }
+            }
+            Message::ClipboardPayloadOk { seq, written } => {
+                tracing::trace!(target: "ternvale::agent", seq, written, "clipboard_payload_ok");
+                Ok(())
+            }
+            Message::DragOffer {
+                id,
+                names,
+                outbound,
+                ..
+            } => {
+                tracing::info!(
+                    target: "ternvale::agent",
+                    id = %id,
+                    count = names.len(),
+                    outbound,
+                    "drag offer"
+                );
+                if outbound {
+                    Ok(())
+                } else {
+                    let dest = crate::dnd::ensure_stage()?.join(&id);
+                    std::fs::create_dir_all(&dest).map_err(|source| AgentError::Action {
+                        action: "create drag dest",
+                        source,
+                    })?;
+                    crate::dnd::harness_record_drop(&id, &names);
+                    send_host(
+                        stream,
+                        writer.as_ref(),
+                        &Message::DragAccept {
+                            id,
+                            dest: dest.display().to_string(),
+                        },
+                    )
+                }
+            }
+            Message::DragAccept { id, dest } => {
+                let path = if dest.is_empty() {
+                    crate::dnd::ensure_stage()?.join(&id)
+                } else {
+                    std::path::PathBuf::from(&dest)
+                };
+                crate::dnd::inject_drop(&id, &path, &[])?;
+                send_host(stream, writer.as_ref(), &Message::DragDone { id })
+            }
+            Message::DragCancel { id, reason } => {
+                tracing::info!(target: "ternvale::agent", id = %id, reason = %reason, "drag cancel");
+                crate::dnd::cleanup(&id)
+            }
+            Message::DragProgress { id, done, total } => {
+                tracing::debug!(target: "ternvale::agent", id = %id, done, total, "drag progress");
+                Ok(())
+            }
+            Message::DragDone { id } => {
+                tracing::info!(target: "ternvale::agent", id = %id, "drag done");
+                Ok(())
             }
             Message::ShareMount { tag, mount_point } => actions.mount_share(&tag, &mount_point),
             Message::WindowListGet => {

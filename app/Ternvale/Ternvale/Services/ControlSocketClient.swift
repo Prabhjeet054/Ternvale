@@ -39,6 +39,24 @@ final class ControlSocketClient {
         (try? connect(vmName: vmName)) != nil
     }
 
+    func dragIn(vmName: String, paths: [String], confirm: Bool = false) throws -> ControlResponse {
+        try request(
+            vmName: vmName,
+            body: ["cmd": "drag-in", "paths": paths, "confirm": confirm]
+        )
+    }
+
+    func clipboardOffer(vmName: String, formats: [String]) throws -> ControlResponse {
+        try request(
+            vmName: vmName,
+            body: ["cmd": "clipboard-offer", "formats": formats]
+        )
+    }
+
+    func dragCancel(vmName: String, id: String) throws -> ControlResponse {
+        try request(vmName: vmName, body: ["cmd": "drag-cancel", "id": id])
+    }
+
     private func request(vmName: String, body: [String: Any]) throws -> ControlResponse {
         let socket = try connect(vmName: vmName)
         defer { close(socket) }
@@ -116,6 +134,15 @@ struct ControlResponse: Decodable {
     let error: String?
     let status: VMStatusPayload?
     let stats: StatsPayload?
+    let needsConfirmation: Bool?
+    let dragId: String?
+    let formats: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, error, status, stats, formats
+        case needsConfirmation = "needs_confirmation"
+        case dragId = "drag_id"
+    }
 }
 
 struct StatsPayload: Decodable {

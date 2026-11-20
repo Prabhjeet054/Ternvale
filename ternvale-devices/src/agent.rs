@@ -323,6 +323,14 @@ impl AgentServer {
                 | Message::CopyHash { .. }
                 | Message::DriverLogsGet { .. }
                 | Message::CameraFrame { .. }
+                | Message::ClipboardOffer { .. }
+                | Message::ClipboardTake { .. }
+                | Message::ClipboardPayload { .. }
+                | Message::DragOffer { .. }
+                | Message::DragAccept { .. }
+                | Message::DragCancel { .. }
+                | Message::DragProgress { .. }
+                | Message::DragDone { .. }
         ) {
             return Err(AgentServerError::NotARequest {
                 kind: message.kind(),

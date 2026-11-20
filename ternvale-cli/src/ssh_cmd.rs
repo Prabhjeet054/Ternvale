@@ -186,6 +186,7 @@ mod tests {
             backend: Default::default(),
             gpu: None,
             input: None,
+            clipboard: None,
         };
         assert_eq!(ssh_host_port(&config), Some(2222));
         config.nics.clear();

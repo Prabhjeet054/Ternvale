@@ -58,6 +58,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

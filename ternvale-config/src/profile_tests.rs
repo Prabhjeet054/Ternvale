@@ -121,6 +121,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     }
 }
 
@@ -327,6 +328,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     }
 }
 

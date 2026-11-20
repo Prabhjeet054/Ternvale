@@ -34,11 +34,11 @@ final class VMDisplayController: ObservableObject {
     @Published private(set) var wantCapture = false
 
     let input = DisplayInputSender()
+    private(set) var vmName: String?
 
     private let log = Logger(subsystem: "com.ternvale.app", category: "display")
     private var readerTask: Task<Void, Never>?
     private var link: DisplaySocketLink?
-    private var vmName: String?
 
     @MainActor
     func connect(vmName: String) {

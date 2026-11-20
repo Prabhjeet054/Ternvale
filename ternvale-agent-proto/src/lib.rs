@@ -12,6 +12,8 @@
 //! a version bump; changing or removing a message does.
 
 mod app;
+mod clip;
+mod drag;
 mod frame;
 mod hex;
 mod message;
@@ -21,6 +23,15 @@ mod window;
 pub use app::{
     validate_app_launch, validate_apps, validate_host_open, AppSource, GuestApp, MAX_APPS,
     MAX_APP_EXE, MAX_APP_EXT, MAX_APP_EXTS, MAX_APP_ICON, MAX_APP_ID, MAX_APP_NAME,
+};
+pub use clip::{
+    check_inline_len, is_clip_format, is_echo_seq, negotiate_format, validate_clipboard_offer,
+    validate_clipboard_payload, validate_clipboard_take, validate_reason, CLIP_FORMATS,
+    MAX_CLIP_FILES, MAX_CLIP_FORMATS, MAX_CLIP_INLINE,
+};
+pub use drag::{
+    validate_drag_accept, validate_drag_cancel, validate_drag_id, validate_drag_offer,
+    validate_drag_progress, MAX_DRAG_FILES, MAX_DRAG_ID,
 };
 pub use frame::{encode, read_message, write_message, FrameError};
 pub use hex::{decode as decode_hex, encode as encode_hex, HexBytes};

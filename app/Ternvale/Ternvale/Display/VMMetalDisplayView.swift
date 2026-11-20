@@ -50,6 +50,7 @@ final class DisplayMetalView: MTKView, MTKViewDelegate {
             metal.framebufferOnly = true
         }
         layer?.backgroundColor = NSColor.black.cgColor
+        registerForDraggedTypes([.fileURL])
     }
 
     @available(*, unavailable)
@@ -275,6 +276,43 @@ final class DisplayMetalView: MTKView, MTKViewDelegate {
         if event.buttonNumber == 2 { controller?.input.sendButton(2, pressed: false) }
     }
     override func scrollWheel(with event: NSEvent) { controller?.input.handleScroll(event) }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+        ]) ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let vm = controller?.vmName else { return false }
+        let urls =
+            sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [
+                .urlReadingFileURLsOnly: true
+            ]) as? [URL] ?? []
+        let paths = urls.map(\.path)
+        guard !paths.isEmpty else { return false }
+        let client = ControlSocketClient()
+        do {
+            var response = try client.dragIn(vmName: vm, paths: paths, confirm: false)
+            if response.needsConfirmation == true {
+                let alert = NSAlert()
+                alert.messageText = "Copy large files into the VM?"
+                alert.informativeText = response.error ?? "This transfer is larger than the confirmation size."
+                alert.addButton(withTitle: "Copy")
+                alert.addButton(withTitle: "Cancel")
+                if alert.runModal() != .alertFirstButtonReturn {
+                    if let id = response.dragId {
+                        _ = try? client.dragCancel(vmName: vm, id: id)
+                    }
+                    return false
+                }
+                response = try client.dragIn(vmName: vm, paths: paths, confirm: true)
+            }
+            return response.ok
+        } catch {
+            return false
+        }
+    }
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
         controller?.input.releaseAll()

@@ -191,7 +191,7 @@ fn parse(payload: &[u8], peer: &str) -> Result<Message, FrameError> {
     }
 }
 
-const KNOWN: [&str; 43] = [
+const KNOWN: [&str; 52] = [
     "hello",
     "welcome",
     "reject",
@@ -235,4 +235,13 @@ const KNOWN: [&str; 43] = [
     "host_open",
     "host_open_ok",
     "host_open_err",
+    "clipboard_offer",
+    "clipboard_take",
+    "clipboard_payload",
+    "clipboard_payload_ok",
+    "drag_offer",
+    "drag_accept",
+    "drag_cancel",
+    "drag_progress",
+    "drag_done",
 ];

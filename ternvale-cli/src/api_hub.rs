@@ -112,6 +112,65 @@ pub fn hub_call(method: Method, params: Option<&Value>) -> Result<Response, ApiE
                 Err(error) => Ok(Response::error(format!("{error:#}"))),
             }
         }
+        Method::ClipboardOffer | Method::DragIn | Method::DragOut | Method::DragCancel => {
+            let n = name()?;
+            let req = match method {
+                Method::ClipboardOffer => Request::ClipboardOffer {
+                    formats: map
+                        .get("formats")
+                        .and_then(Value::as_array)
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    confirm: map.get("confirm").and_then(Value::as_bool).unwrap_or(false),
+                    dest: map.get("dest").and_then(Value::as_str).map(str::to_string),
+                },
+                Method::DragIn => Request::DragIn {
+                    paths: map
+                        .get("paths")
+                        .and_then(Value::as_array)
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    dest: map.get("dest").and_then(Value::as_str).map(str::to_string),
+                    confirm: map.get("confirm").and_then(Value::as_bool).unwrap_or(false),
+                    id: map.get("id").and_then(Value::as_str).map(str::to_string),
+                },
+                Method::DragOut => Request::DragOutPromise {
+                    names: map
+                        .get("names")
+                        .and_then(Value::as_array)
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    sizes: map
+                        .get("sizes")
+                        .and_then(Value::as_array)
+                        .map(|a| a.iter().filter_map(Value::as_u64).collect())
+                        .unwrap_or_default(),
+                    id: map.get("id").and_then(Value::as_str).map(str::to_string),
+                },
+                Method::DragCancel => Request::DragCancel {
+                    id: map
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                        .ok_or_else(|| ApiError::InvalidParams("id required".into()))?,
+                },
+                _ => unreachable!(),
+            };
+            crate::api_library::forward(&n, &req)
+                .map_err(|e| ApiError::Application(format!("{e:#}")))
+        }
         Method::Stop
         | Method::Pause
         | Method::Resume

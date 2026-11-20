@@ -128,6 +128,7 @@ fn dummy_config(name: &str) -> VmConfig {
         backend: Default::default(),
         gpu: None,
         input: None,
+        clipboard: None,
     }
 }
 
