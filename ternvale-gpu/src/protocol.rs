@@ -242,7 +242,24 @@ pub enum Command {
         /// Scanout whose preferred timing the EDID describes.
         scanout_id: u32,
     },
-    /// A type this 2D device does not implement (3D, capsets, blobs, cursor).
+    /// `UPDATE_CURSOR` / `MOVE_CURSOR` on `cursorq` (virtio 1.2 §5.7.6.9).
+    Cursor {
+        /// Scanout the pointer is on.
+        scanout_id: u32,
+        /// Pointer X in scanout coordinates.
+        x: u32,
+        /// Pointer Y in scanout coordinates.
+        y: u32,
+        /// Cursor resource (0 hides the overlay). Ignored on move unless set.
+        resource_id: u32,
+        /// Hotspot X in the resource.
+        hot_x: u32,
+        /// Hotspot Y in the resource.
+        hot_y: u32,
+        /// `true` for `UPDATE_CURSOR` (new pixels); `false` for `MOVE_CURSOR`.
+        update: bool,
+    },
+    /// A type this 2D device does not implement (3D, capsets, blobs).
     Unsupported,
     /// `GET_CAPSET_INFO` (`gpu3d` only).
     #[cfg(feature = "gpu3d")]
@@ -515,6 +532,18 @@ pub fn parse(bytes: &[u8]) -> Result<(CtrlHdr, Command), ParseError> {
             need(8)?;
             Command::GetEdid {
                 scanout_id: le32(body, 0),
+            }
+        }
+        CMD_UPDATE_CURSOR | CMD_MOVE_CURSOR => {
+            need(32)?;
+            Command::Cursor {
+                scanout_id: le32(body, 0),
+                x: le32(body, 4),
+                y: le32(body, 8),
+                resource_id: le32(body, 16),
+                hot_x: le32(body, 20),
+                hot_y: le32(body, 24),
+                update: hdr.kind == CMD_UPDATE_CURSOR,
             }
         }
         #[cfg(feature = "gpu3d")]

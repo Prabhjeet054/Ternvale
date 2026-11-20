@@ -20,8 +20,10 @@ import AppKit
 import Darwin
 
 let wireMagic: UInt32 = 0x5044_5654  // "TVDP" read little-endian
-let wireVersion: UInt16 = 3
+let wireVersion: UInt16 = 4
 let kindFrame: UInt16 = 0x0001
+let kindCursor: UInt16 = 0x0002
+let kindCaptureHint: UInt16 = 0x0003
 let kindHello: UInt16 = 0x0101
 let kindPresented: UInt16 = 0x0102
 let kindSetSizeEx: UInt16 = 0x0206
@@ -159,15 +161,21 @@ func le16(_ b: [UInt8], _ at: Int) -> UInt16 { UInt16(b[at]) | UInt16(b[at + 1])
 func le32(_ b: [UInt8], _ at: Int) -> UInt32 { UInt32(le16(b, at)) | UInt32(le16(b, at + 2)) << 16 }
 func le64(_ b: [UInt8], _ at: Int) -> UInt64 { UInt64(le32(b, at)) | UInt64(le32(b, at + 4)) << 32 }
 
-/// The next frame, nil when the VMM closed the socket; exits on a bad header.
-func readFrame(_ link: Link) -> (FrameHeader, [UInt8])? {
+enum DisplayMsg {
+    case frame(FrameHeader, [UInt8])
+    case cursor(FrameHeader, [UInt8])
+    case captureHint(Bool)
+}
+
+/// The next VMM → viewer header, nil when the VMM closed the socket.
+func readDisplay(_ link: Link) -> DisplayMsg? {
     guard let raw = link.read(frameHeaderLen) else { return nil }
     guard le32(raw, 0) == wireMagic else { fail(String(format: "bad magic %#010x; not a ternvale presenter", le32(raw, 0))) }
     let version = le16(raw, 4)
     guard version == wireVersion else {
         fail("wire version \(version) is not supported (this viewer speaks \(wireVersion)); rebuild with scripts/build-viewer.sh")
     }
-    guard le16(raw, 6) == kindFrame else { fail("unknown message kind \(le16(raw, 6))") }
+    let kind = le16(raw, 6)
     let h = FrameHeader(
         width: le32(raw, 8), height: le32(raw, 12), stride: le32(raw, 16),
         format: le32(raw, 20), sequence: le64(raw, 24), payloadLen: le32(raw, 32),
@@ -175,19 +183,36 @@ func readFrame(_ link: Link) -> (FrameHeader, [UInt8])? {
         damageX: le32(raw, 44), damageY: le32(raw, 48),
         damageW: le32(raw, 52), damageH: le32(raw, 56), scaleX100: le32(raw, 60)
     )
-    let partial = h.flags & frameFlagPartial != 0
+    if kind == kindCaptureHint {
+        return .captureHint(h.flags & 1 != 0)
+    }
     let expected: UInt64 = {
         if h.width == 0 && h.height == 0 { return 0 }
-        if partial { return UInt64(h.damageW) * 4 * UInt64(h.damageH) }
+        if kind == kindCursor { return UInt64(h.width) * 4 * UInt64(h.height) }
+        if h.flags & frameFlagPartial != 0 { return UInt64(h.damageW) * 4 * UInt64(h.damageH) }
         return UInt64(h.stride) * UInt64(h.height)
     }()
     guard h.width <= maxDimension, h.height <= maxDimension,
           UInt64(h.stride) == UInt64(h.width) * 4,
           UInt64(h.payloadLen) == expected
     else { fail("frame \(h.width)x\(h.height) stride \(h.stride) does not match \(h.payloadLen) bytes") }
-    if h.payloadLen == 0 { return (h, []) }
-    guard let pixels = link.read(Int(h.payloadLen)) else { return nil }
-    return (h, pixels)
+    let pixels: [UInt8]
+    if h.payloadLen == 0 {
+        pixels = []
+    } else {
+        guard let body = link.read(Int(h.payloadLen)) else { return nil }
+        pixels = body
+    }
+    if kind == kindFrame { return .frame(h, pixels) }
+    if kind == kindCursor { return .cursor(h, pixels) }
+    fail("unknown message kind \(kind)")
+}
+
+func readFrame(_ link: Link) -> (FrameHeader, [UInt8])? {
+    while let msg = readDisplay(link) {
+        if case let .frame(h, pixels) = msg { return (h, pixels) }
+    }
+    return nil
 }
 
 func fnv1a(_ bytes: [UInt8]) -> UInt64 {
@@ -246,6 +271,7 @@ final class Viewer: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.collectionBehavior = [.fullScreenPrimary, .managed]
         surface = SurfaceView()
         surface.input = InputSender(link: link)
+        GamepadWatcher.shared.attach(input: surface.input!)
         window.contentView = surface
         if let metal = MetalScanout(metal: ()) {
             metal.owner = self
@@ -280,8 +306,14 @@ final class Viewer: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// Reader thread: at most one frame is in flight, so frames never queue up here.
     func pump() {
-        while let (h, pixels) = readFrame(link) {
-            DispatchQueue.main.async { self.show(h, pixels) }
+        while let msg = readDisplay(link) {
+            DispatchQueue.main.async {
+                switch msg {
+                case let .frame(h, pixels): self.show(h, pixels)
+                case let .cursor(h, pixels): self.surface.applyCursor(h, pixels)
+                case let .captureHint(on): self.surface.setCaptured(on, fromHint: true)
+                }
+            }
         }
         DispatchQueue.main.async { NSApp.terminate(nil) }
     }

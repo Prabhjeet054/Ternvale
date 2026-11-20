@@ -66,6 +66,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         agent: Default::default(),
         backend: Default::default(),
         gpu: None,
+        input: None,
     }
 }
 

@@ -119,6 +119,16 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
             Some(Message::Ping { seq }) => shared
                 .write(id, &Message::Pong { seq })
                 .map_err(|error| error.to_string())?,
+            Some(Message::PointerMode { relative }) => {
+                shared
+                    .relative_pointer
+                    .store(relative, std::sync::atomic::Ordering::Relaxed);
+                tracing::info!(
+                    target: "ternvale::agent",
+                    relative,
+                    "guest agent pointer mode"
+                );
+            }
             Some(Message::ClipboardSet { text }) => {
                 let sink =
                     ternvale_vmm::lockwatch::lock(&shared.clipboard_sink, "agent-clipboard-sink")

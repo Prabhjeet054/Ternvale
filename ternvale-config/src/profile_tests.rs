@@ -119,6 +119,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         agent: Default::default(),
         backend: Default::default(),
         gpu: None,
+        input: None,
     }
 }
 
@@ -323,6 +324,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         agent: Default::default(),
         backend: Default::default(),
         gpu: None,
+        input: None,
     }
 }
 

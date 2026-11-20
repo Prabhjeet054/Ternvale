@@ -139,6 +139,8 @@ pub(crate) struct Shared {
     shares: Vec<(String, String)>,
     /// Host pasteboard update when the guest pushes `ClipboardSet`.
     clipboard_sink: Mutex<Option<ClipboardSink>>,
+    /// Guest asked for relative pointer (games). Shared with the presenter.
+    relative_pointer: Arc<AtomicBool>,
     /// Next `Exec` / copy correlation id.
     next_id: AtomicU64,
 }
@@ -204,6 +206,7 @@ impl AgentServer {
             book: Mutex::new(Book::default()),
             shares,
             clipboard_sink: Mutex::new(None),
+            relative_pointer: Arc::new(AtomicBool::new(false)),
             next_id: AtomicU64::new(0),
         });
         let service = Arc::clone(&shared);
@@ -220,6 +223,12 @@ impl AgentServer {
             path: path.to_path_buf(),
             thread: Some(thread),
         })
+    }
+
+    /// Shared flag the presenter polls for capture hints.
+    #[tracing::instrument(level = "trace", target = "ternvale::agent", skip_all)]
+    pub fn relative_pointer_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.shared.relative_pointer)
     }
 
     /// Called when the guest pushes clipboard text (Windows listener).

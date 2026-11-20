@@ -12,9 +12,9 @@
 //! `RESOURCE_UNREF`, `RESOURCE_ATTACH_BACKING`, `RESOURCE_DETACH_BACKING`,
 //! `SET_SCANOUT`, `TRANSFER_TO_HOST_2D` and `RESOURCE_FLUSH`. Each scanout
 //! keeps a host-side pixel buffer ([`Frame`]) that [`GpuDisplay`] reads. The
-//! cursor queue completes with `RESP_OK_NODATA` and does not composite a
-//! pointer; 3D, capsets and blob resources answer `RESP_ERR_UNSPEC` unless
-//! `gpu3d` is enabled.
+//! cursor queue updates a host overlay (TVDP `KIND_CURSOR`) so the viewer can
+//! present `NSCursor` without compositing into scanout pixels; 3D, capsets and
+//! blob resources answer `RESP_ERR_UNSPEC` unless `gpu3d` is enabled.
 //! Host window resize raises `VIRTIO_GPU_EVENT_DISPLAY` and updates the EDID
 //! timing the next `GET_EDID` returns.
 //!
@@ -25,9 +25,9 @@
 //! [`Presenter`] (Step 44) streams one scanout to the dev viewer
 //! (`tools/ternvale-viewer`) over a Unix socket in the [`present_protocol`]
 //! format, capped at a frame rate; frame drops and flush-to-present latency
-//! are logged at DEBUG. Keyboard and pointer input from the viewer (wire
-//! version 3) goes to an [`InputTarget`] as it arrives. Damage rectangles
-//! and HiDPI/color flags ride on the 64-byte frame header.
+//! are logged at DEBUG. Keyboard, relative mouse, capture, and gamepad input from
+//! the viewer (wire version 4) goes to an [`InputTarget`] as it arrives. Damage
+//! rectangles and HiDPI/color flags ride on the 64-byte frame header.
 
 mod device;
 mod edid;
@@ -35,6 +35,7 @@ mod engine;
 mod gpu2d;
 #[cfg(feature = "gpu3d")]
 mod gpu3d;
+mod gpu_cursor;
 mod present;
 pub mod present_protocol;
 mod present_quality;
@@ -64,7 +65,7 @@ pub use present::{
 pub use present_protocol::{PointerButton, ViewerInput};
 pub use present_quality::{PresentColor, PresentLayout, PresentQuality};
 pub use resource::{PixelFormat, BYTES_PER_PIXEL};
-pub use scanout::{Frame, GpuDisplay};
+pub use scanout::{CursorOverlay, Frame, GpuDisplay};
 pub use worker::{CONTROL_QUEUE, CURSOR_QUEUE, MAX_REQUEST};
 
 #[cfg(test)]

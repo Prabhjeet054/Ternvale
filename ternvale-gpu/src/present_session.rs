@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use crate::present::{InputTarget, PresentConfig, PresentStats, Serving};
 use crate::present_protocol::{ViewerMessage, WireError, MESSAGE_LEN, VERSION};
-use crate::present_send::{next_dirty_scanout, send_frame};
+use crate::present_send::{next_dirty_scanout, send_capture_hint, send_cursor, send_frame};
 use crate::present_window::LatencyWindow;
 use crate::scanout::GpuDisplay;
 
@@ -112,7 +112,16 @@ pub(crate) fn serve(
                 read_messages(reader, &tx, input, stats, display, config.scanout)
             })
             .map_err(io("spawn viewer reader thread"))?;
-        let result = stream_frames(&mut stream, &rx, display, config, stats, stop, metrics);
+        let result = stream_frames(
+            &mut stream,
+            &rx,
+            display,
+            config,
+            stats,
+            stop,
+            metrics,
+            input,
+        );
         if let Err(e) = stream.shutdown(Shutdown::Both) {
             if e.kind() != ErrorKind::NotConnected {
                 tracing::debug!(target: "ternvale::gpu", error = %e, "shutdown of viewer socket failed");
@@ -187,6 +196,7 @@ fn read_messages(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn stream_frames(
     stream: &mut UnixStream,
     rx: &Receiver<Event>,
@@ -195,11 +205,14 @@ fn stream_frames(
     stats: &PresentStats,
     stop: &AtomicBool,
     metrics: Option<&ternvale_metrics::Metrics>,
+    input: Option<&dyn InputTarget>,
 ) -> Result<&'static str, SessionError> {
     let interval = config.interval();
     let mut next_tick = Instant::now();
     let n = display.scanouts();
     let mut last_sent: Vec<Option<u64>> = vec![None; n];
+    let mut last_cursor: Option<u64> = None;
+    let mut last_relative: Option<bool> = None;
     let mut in_flight: Option<InFlight> = None;
     let mut waited_on_viewer = false;
     let mut window = LatencyWindow::new(next_tick);
@@ -215,6 +228,22 @@ fn stream_frames(
             } else {
                 next_tick + interval
             };
+            let cursor_seq = display.cursor_sequence();
+            if last_cursor != Some(cursor_seq) && cursor_seq > 0 {
+                match send_cursor(stream, display) {
+                    Ok(seq) => last_cursor = Some(seq),
+                    Err(e) => break Err(e),
+                }
+            }
+            let relative = input.is_some_and(InputTarget::relative_wanted);
+            if last_relative != Some(relative) {
+                if last_relative.is_some() || relative {
+                    if let Err(e) = send_capture_hint(stream, relative) {
+                        break Err(e);
+                    }
+                }
+                last_relative = Some(relative);
+            }
             if let Some(scanout) = next_dirty_scanout(display, config, &last_sent) {
                 if in_flight.is_some() {
                     waited_on_viewer = true;

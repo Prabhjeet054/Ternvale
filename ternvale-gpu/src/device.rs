@@ -193,7 +193,7 @@ impl VirtioGpu {
             scanouts = config.modes.len(),
             modes = ?config.modes,
             gpu3d = config.gpu3d,
-            "virtio-gpu device ready (no cursor)"
+            "virtio-gpu device ready"
         );
         Ok(Self {
             config,

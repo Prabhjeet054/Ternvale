@@ -3,8 +3,10 @@
 //! position, so the guest's own keyboard layout decides what a key types.
 //!
 //! The Mac `Help` key (where PC keyboards have Insert) maps to `KEY_INSERT`,
-//! and `fn` is not forwarded. JIS Eisu/Kana have no mapping yet: TODO(verify)
-//! whether `KEY_HANJA`/`KEY_HANGEUL` (QEMU's choice) suit Japanese guests.
+//! and `fn` is not forwarded. Dead keys are not composed here: the guest
+//! layout (including AZERTY and IMEs) sees physical `KEY_*` codes. JIS
+//! Eisu/Kana map to `KEY_MUHENKAN`/`KEY_KATAKANAHIRAGANA` (TODO(verify)
+//! against a Japanese Windows guest).
 
 /// `(kVK, KEY_*)` pairs.
 const MAP: &[(u16, u16)] = &[
@@ -104,7 +106,9 @@ const MAP: &[(u16, u16)] = &[
     (0x63, 61),  // F3
     (0x64, 66),  // F8
     (0x65, 67),  // F9
+    (0x66, 94),  // JIS Eisu -> KEY_MUHENKAN
     (0x67, 87),  // F11
+    (0x68, 93),  // JIS Kana -> KEY_KATAKANAHIRAGANA
     (0x69, 183), // F13
     (0x6a, 186), // F16
     (0x6b, 184), // F14

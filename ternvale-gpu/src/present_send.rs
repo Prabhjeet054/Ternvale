@@ -5,7 +5,9 @@ use std::os::unix::net::UnixStream;
 use std::time::Instant;
 
 use crate::present::{PresentConfig, PresentStats};
-use crate::present_protocol::{FrameHeader, FRAME_FLAG_DISPLAY_P3, FRAME_FLAG_PARTIAL};
+use crate::present_protocol::{
+    FrameHeader, FRAME_FLAG_DISPLAY_P3, FRAME_FLAG_PARTIAL, KIND_CAPTURE_HINT, KIND_CURSOR,
+};
 use crate::present_session::{io, InFlight, SessionError};
 use crate::present_window::LatencyWindow;
 use crate::scanout::GpuDisplay;
@@ -162,6 +164,83 @@ pub(crate) fn send_frame(
         warned: false,
         upload_bytes: upload,
     })
+}
+
+/// Stream the cursor overlay independently of in-flight frames.
+#[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
+pub(crate) fn send_cursor(
+    stream: &mut UnixStream,
+    display: &GpuDisplay,
+) -> Result<u64, SessionError> {
+    let overlay = display.cursor();
+    let (width, height, pixels) = if overlay.visible {
+        (overlay.width, overlay.height, overlay.pixels.clone())
+    } else {
+        (0, 0, Vec::new())
+    };
+    let too_big = || SessionError::Frame {
+        width,
+        height,
+        bytes: pixels.len(),
+    };
+    let header = FrameHeader {
+        width,
+        height,
+        stride: width.saturating_mul(4),
+        format: overlay.format,
+        sequence: overlay.sequence,
+        payload_len: u32::try_from(pixels.len()).map_err(|_| too_big())?,
+        flags: 0,
+        scanout: overlay.scanout,
+        damage_x: overlay.hot_x,
+        damage_y: overlay.hot_y,
+        damage_w: overlay.x,
+        damage_h: overlay.y,
+        scale_x100: 100,
+    };
+    stream
+        .write_all(&header.encode_as(KIND_CURSOR))
+        .and_then(|()| stream.write_all(&pixels))
+        .map_err(io("write cursor to viewer"))?;
+    tracing::trace!(
+        target: "ternvale::gpu",
+        sequence = overlay.sequence,
+        width,
+        height,
+        visible = overlay.visible,
+        hot_x = overlay.hot_x,
+        hot_y = overlay.hot_y,
+        "cursor overlay sent"
+    );
+    Ok(overlay.sequence)
+}
+
+/// Tell the viewer whether the guest wants relative / captured pointer.
+#[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all, fields(relative))]
+pub(crate) fn send_capture_hint(
+    stream: &mut UnixStream,
+    relative: bool,
+) -> Result<(), SessionError> {
+    let header = FrameHeader {
+        width: 0,
+        height: 0,
+        stride: 0,
+        format: 0,
+        sequence: 0,
+        payload_len: 0,
+        flags: u32::from(relative),
+        scanout: 0,
+        damage_x: 0,
+        damage_y: 0,
+        damage_w: 0,
+        damage_h: 0,
+        scale_x100: 100,
+    };
+    stream
+        .write_all(&header.encode_as(KIND_CAPTURE_HINT))
+        .map_err(io("write capture hint to viewer"))?;
+    tracing::debug!(target: "ternvale::gpu", relative, "capture hint sent");
+    Ok(())
 }
 
 struct PackedFrame {

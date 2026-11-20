@@ -379,6 +379,7 @@ fn boot_once(
         agent: Default::default(),
         backend: Default::default(),
         gpu: None,
+        input: None,
     };
     tracing::info!(
         target: "ternvale::boot",

@@ -23,7 +23,7 @@ fn header() -> FrameHeader {
 fn frame_header_round_trips_little_endian() {
     let bytes = header().encode();
     assert_eq!(&bytes[0..4], b"TVDP");
-    assert_eq!(&bytes[4..8], &[3, 0, 1, 0], "version 3, kind FRAME");
+    assert_eq!(&bytes[4..8], &[4, 0, 1, 0], "version 4, kind FRAME");
     assert_eq!(&bytes[8..12], &640u32.to_le_bytes());
     assert_eq!(&bytes[24..32], &0x1122_3344_5566_7788u64.to_le_bytes());
     assert_eq!(&bytes[36..40], &0u32.to_le_bytes(), "flags");
@@ -139,7 +139,7 @@ fn viewer_messages_round_trip() {
     }
     let hello = ViewerMessage::Hello { version: VERSION }.encode();
     assert_eq!(&hello[6..8], &KIND_HELLO.to_le_bytes());
-    assert_eq!(&hello[8..16], &3u64.to_le_bytes());
+    assert_eq!(&hello[8..16], &4u64.to_le_bytes());
 }
 
 #[test]
@@ -181,6 +181,28 @@ fn input_messages_round_trip_with_documented_layout() {
             ViewerInput::Scroll { dx: 1, dy: -1 },
             KIND_SCROLL,
             0xffff_ffff_0000_0001,
+        ),
+        (
+            ViewerInput::RelMotion { dx: -2, dy: 3 },
+            KIND_REL,
+            0x0000_0003_ffff_fffe,
+        ),
+        (ViewerInput::Capture { on: true }, KIND_CAPTURE, 1),
+        (
+            ViewerInput::GamepadButton {
+                code: 0x130,
+                pressed: true,
+            },
+            KIND_GP_BTN,
+            0x1_0130,
+        ),
+        (
+            ViewerInput::GamepadAxis {
+                code: 0,
+                value: -32768,
+            },
+            KIND_GP_AXIS,
+            u64::from((-32768i32) as u32) << 16,
         ),
     ];
     for (input, kind, value) in cases {

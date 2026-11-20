@@ -126,6 +126,7 @@ fn dummy_config(name: &str) -> VmConfig {
         agent: Default::default(),
         backend: Default::default(),
         gpu: None,
+        input: None,
     }
 }
 

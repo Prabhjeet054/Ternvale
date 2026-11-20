@@ -217,6 +217,7 @@ fn serve_requests(
             | Message::Welcome { .. }
             | Message::Reject { .. }
             | Message::Pong { .. }
+            | Message::PointerMode { .. }
             | Message::ClipboardGetOk { .. }
             | Message::WindowListOk { .. }
             | Message::ExecOutput { .. }

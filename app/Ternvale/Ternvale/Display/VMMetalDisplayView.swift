@@ -16,6 +16,10 @@ struct VMMetalDisplayView: NSViewRepresentable {
         if let frame = controller.latestFrame {
             nsView.submit(frame: frame)
         }
+        nsView.applyCursor(controller.cursorOverlay)
+        if controller.wantCapture {
+            nsView.setCaptured(true, fromHint: true)
+        }
     }
 }
 
@@ -26,6 +30,8 @@ final class DisplayMetalView: MTKView, MTKViewDelegate {
     private var texture: MTLTexture?
     private var frameSize = CGSize.zero
     private var tracking: NSTrackingArea?
+    private var captured = false
+    private var guestCursor: NSCursor?
 
     override init(frame frameRect: NSRect, device: MTLDevice?) {
         let dev = device ?? MTLCreateSystemDefaultDevice()
@@ -191,12 +197,58 @@ final class DisplayMetalView: MTKView, MTKViewDelegate {
         return (x, y)
     }
 
-    private func movePointer(_ event: NSEvent) {
-        guard let (x, y) = pointerNormalized(event) else { return }
-        controller?.input.pointer(x: x, y: y)
+    func setCaptured(_ on: Bool, fromHint: Bool) {
+        guard captured != on else { return }
+        captured = on
+        if !fromHint { controller?.input.capture(on) }
+        if on { NSCursor.hide() } else {
+            NSCursor.unhide()
+            guestCursor?.set()
+        }
     }
 
-    override func keyDown(with event: NSEvent) { controller?.input.handleKeyDown(event) }
+    func applyCursor(_ overlay: GuestCursorOverlay?) {
+        guard let overlay, overlay.width > 0, overlay.height > 0 else {
+            guestCursor = nil
+            if !captured { NSCursor.arrow.set() }
+            return
+        }
+        let pixels = [UInt8](overlay.pixels)
+        guestCursor = nsCursorApp(
+            width: Int(overlay.width),
+            height: Int(overlay.height),
+            hotX: Int(overlay.hotX),
+            hotY: Int(overlay.hotY),
+            pixels: pixels
+        )
+        if !captured { guestCursor?.set() }
+    }
+
+    private func movePointer(_ event: NSEvent) {
+        if captured {
+            let dx = Int32(event.deltaX.rounded())
+            let dy = Int32(event.deltaY.rounded())
+            if dx != 0 || dy != 0 { controller?.input.rel(dx: dx, dy: dy) }
+            return
+        }
+        guard let (x, y) = pointerNormalized(event) else { return }
+        controller?.input.pointer(x: x, y: y)
+        guestCursor?.set()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 0x05,
+           event.modifierFlags.contains(.control),
+           event.modifierFlags.contains(.option) {
+            setCaptured(!captured, fromHint: false)
+            return
+        }
+        if captured && event.keyCode == 0x35 {
+            setCaptured(false, fromHint: false)
+            return
+        }
+        controller?.input.handleKeyDown(event)
+    }
     override func keyUp(with event: NSEvent) { controller?.input.handleKeyUp(event) }
     override func flagsChanged(with event: NSEvent) { controller?.input.handleFlagsChanged(event) }
     override func mouseMoved(with event: NSEvent) { movePointer(event) }
@@ -232,4 +284,29 @@ final class DisplayMetalView: MTKView, MTKViewDelegate {
 
 private extension GuestDisplayFrame {
     var strideBytes: UInt32 { width * 4 }
+}
+
+func nsCursorApp(width: Int, height: Int, hotX: Int, hotY: Int, pixels: [UInt8]) -> NSCursor? {
+    guard width > 0, height > 0, pixels.count >= width * height * 4 else { return nil }
+    var rgba = [UInt8](repeating: 0, count: width * height * 4)
+    for i in 0..<(width * height) {
+        let b = pixels[i * 4], g = pixels[i * 4 + 1], r = pixels[i * 4 + 2], a = pixels[i * 4 + 3]
+        rgba[i * 4] = r
+        rgba[i * 4 + 1] = g
+        rgba[i * 4 + 2] = b
+        rgba[i * 4 + 3] = a
+    }
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+        colorSpaceName: .deviceRGB, bytesPerRow: width * 4, bitsPerPixel: 32
+    ), let dest = rep.bitmapData else { return nil }
+    rgba.withUnsafeBufferPointer { buf in
+        if let base = buf.baseAddress {
+            dest.update(from: base, count: buf.count)
+        }
+    }
+    let image = NSImage(size: NSSize(width: width, height: height))
+    image.addRepresentation(rep)
+    return NSCursor(image: image, hotSpot: NSPoint(x: hotX, y: hotY))
 }

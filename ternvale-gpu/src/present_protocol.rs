@@ -16,8 +16,9 @@
 pub const MAGIC: u32 = u32::from_le_bytes(*b"TVDP");
 /// Wire version; a peer with another version is refused. Version 2 added
 /// input messages. Version 3 added damage rects, scanout id, scale, and
-/// color-space flags (64-byte frame header).
-pub const VERSION: u16 = 3;
+/// color-space flags (64-byte frame header). Version 4 added cursor overlay
+/// headers, capture hints, relative motion, and gamepad events.
+pub const VERSION: u16 = 4;
 /// Bytes in a [`FrameHeader`].
 pub const FRAME_HEADER_LEN: usize = 64;
 /// Payload is `damage_w × damage_h` packed rows, not the full frame.
@@ -28,6 +29,11 @@ pub const FRAME_FLAG_DISPLAY_P3: u32 = 1 << 1;
 pub const MESSAGE_LEN: usize = 16;
 /// VMM → viewer: one frame.
 pub const KIND_FRAME: u16 = 0x0001;
+/// VMM → viewer: cursor overlay (same 64-byte header; payload is the bitmap).
+/// `damage_x`/`damage_y` are the hotspot; `damage_w`/`damage_h` are pointer X/Y.
+pub const KIND_CURSOR: u16 = 0x0002;
+/// VMM → viewer: recommend pointer capture (`flags` bit 0 = relative mode).
+pub const KIND_CAPTURE_HINT: u16 = 0x0003;
 /// viewer → VMM: first message, `value` = the viewer's wire version.
 pub const KIND_HELLO: u16 = 0x0101;
 /// viewer → VMM: frame `value` (its sequence) is on screen.
@@ -50,6 +56,14 @@ pub const KIND_SET_SIZE: u16 = 0x0205;
 /// viewer → VMM: resize a specific scanout; `value` = width (0..16) |
 /// height (16..32) | scanout (48..64).
 pub const KIND_SET_SIZE_EX: u16 = 0x0206;
+/// viewer → VMM: relative pointer; `value` = dx as i32 | dy as i32 << 32.
+pub const KIND_REL: u16 = 0x0207;
+/// viewer → VMM: pointer capture on/off; `value` bit 0.
+pub const KIND_CAPTURE: u16 = 0x0208;
+/// viewer → VMM: gamepad button; `value` = code (0..16) | pressed << 16.
+pub const KIND_GP_BTN: u16 = 0x0209;
+/// viewer → VMM: gamepad axis; `value` = code (0..16) | (i32 as u32) << 16.
+pub const KIND_GP_AXIS: u16 = 0x020a;
 /// Largest pointer coordinate (matches the tablet's `ABS_X`/`ABS_Y` max).
 pub const POINTER_MAX: u32 = 0x7fff;
 /// Largest width or height a frame may claim (the device's own limit).
@@ -146,6 +160,21 @@ impl FrameHeader {
         out[0..4].copy_from_slice(&MAGIC.to_le_bytes());
         out[4..6].copy_from_slice(&VERSION.to_le_bytes());
         out[6..8].copy_from_slice(&KIND_FRAME.to_le_bytes());
+        self.encode_body(&mut out);
+        out
+    }
+
+    /// Encode as `kind` (frame, cursor overlay, or capture hint).
+    pub fn encode_as(&self, kind: u16) -> [u8; FRAME_HEADER_LEN] {
+        let mut out = [0u8; FRAME_HEADER_LEN];
+        out[0..4].copy_from_slice(&MAGIC.to_le_bytes());
+        out[4..6].copy_from_slice(&VERSION.to_le_bytes());
+        out[6..8].copy_from_slice(&kind.to_le_bytes());
+        self.encode_body(&mut out);
+        out
+    }
+
+    fn encode_body(&self, out: &mut [u8; FRAME_HEADER_LEN]) {
         out[8..12].copy_from_slice(&self.width.to_le_bytes());
         out[12..16].copy_from_slice(&self.height.to_le_bytes());
         out[16..20].copy_from_slice(&self.stride.to_le_bytes());
@@ -159,16 +188,47 @@ impl FrameHeader {
         out[52..56].copy_from_slice(&self.damage_w.to_le_bytes());
         out[56..60].copy_from_slice(&self.damage_h.to_le_bytes());
         out[60..64].copy_from_slice(&self.scale_x100.to_le_bytes());
-        out
+    }
+
+    /// Kind field of a 64-byte VMM → viewer header.
+    pub fn peek_kind(bytes: &[u8]) -> Result<u16, WireError> {
+        check_preamble("frame header", bytes, FRAME_HEADER_LEN)
+    }
+
+    /// Parse a 64-byte header of any known VMM → viewer kind.
+    pub fn decode_any(bytes: &[u8]) -> Result<(u16, Self), WireError> {
+        let kind = Self::peek_kind(bytes)?;
+        match kind {
+            KIND_FRAME | KIND_CURSOR | KIND_CAPTURE_HINT => {}
+            kind => return Err(WireError::Kind { kind }),
+        }
+        let header = Self::from_fields(bytes);
+        if kind == KIND_FRAME {
+            header.check_geometry()?;
+        } else if kind == KIND_CURSOR {
+            header.check_cursor_geometry()?;
+        } else if header.payload_len != 0 {
+            return Err(WireError::Geometry {
+                width: header.width,
+                height: header.height,
+                stride: header.stride,
+                payload_len: header.payload_len,
+            });
+        }
+        Ok((kind, header))
     }
 
     /// Parse and check a header the way the viewer does.
     pub fn decode(bytes: &[u8]) -> Result<Self, WireError> {
-        let kind = check_preamble("frame header", bytes, FRAME_HEADER_LEN)?;
+        let (kind, header) = Self::decode_any(bytes)?;
         if kind != KIND_FRAME {
             return Err(WireError::Kind { kind });
         }
-        let header = Self {
+        Ok(header)
+    }
+
+    fn from_fields(bytes: &[u8]) -> Self {
+        Self {
             width: le32(bytes, 8),
             height: le32(bytes, 12),
             stride: le32(bytes, 16),
@@ -182,40 +242,53 @@ impl FrameHeader {
             damage_w: le32(bytes, 52),
             damage_h: le32(bytes, 56),
             scale_x100: le32(bytes, 60),
-        };
-        let partial = header.flags & FRAME_FLAG_PARTIAL != 0;
-        let expected_payload = if header.width == 0 && header.height == 0 {
+        }
+    }
+
+    fn geometry_err(&self) -> WireError {
+        WireError::Geometry {
+            width: self.width,
+            height: self.height,
+            stride: self.stride,
+            payload_len: self.payload_len,
+        }
+    }
+
+    fn check_geometry(&self) -> Result<(), WireError> {
+        let partial = self.flags & FRAME_FLAG_PARTIAL != 0;
+        let expected_payload = if self.width == 0 && self.height == 0 {
             0
         } else if partial {
-            u64::from(header.damage_w) * 4 * u64::from(header.damage_h)
+            u64::from(self.damage_w) * 4 * u64::from(self.damage_h)
         } else {
-            u64::from(header.stride) * u64::from(header.height)
+            u64::from(self.stride) * u64::from(self.height)
         };
-        let rect_ok = if header.width == 0 && header.height == 0 {
+        let rect_ok = if self.width == 0 && self.height == 0 {
             true
         } else {
             RectLike {
-                x: header.damage_x,
-                y: header.damage_y,
-                w: header.damage_w,
-                h: header.damage_h,
+                x: self.damage_x,
+                y: self.damage_y,
+                w: self.damage_w,
+                h: self.damage_h,
             }
-            .fits(header.width, header.height)
+            .fits(self.width, self.height)
         };
-        let fits = header.width <= MAX_DIMENSION
-            && header.height <= MAX_DIMENSION
-            && u64::from(header.stride) == u64::from(header.width) * 4
-            && u64::from(header.payload_len) == expected_payload
+        let fits = self.width <= MAX_DIMENSION
+            && self.height <= MAX_DIMENSION
+            && u64::from(self.stride) == u64::from(self.width) * 4
+            && u64::from(self.payload_len) == expected_payload
             && rect_ok;
-        if !fits {
-            return Err(WireError::Geometry {
-                width: header.width,
-                height: header.height,
-                stride: header.stride,
-                payload_len: header.payload_len,
-            });
-        }
-        Ok(header)
+        fits.then_some(()).ok_or_else(|| self.geometry_err())
+    }
+
+    fn check_cursor_geometry(&self) -> Result<(), WireError> {
+        let expected = u64::from(self.width) * 4 * u64::from(self.height);
+        let fits = self.width <= MAX_DIMENSION
+            && self.height <= MAX_DIMENSION
+            && u64::from(self.stride) == u64::from(self.width) * 4
+            && u64::from(self.payload_len) == expected;
+        fits.then_some(()).ok_or_else(|| self.geometry_err())
     }
 }
 
@@ -310,6 +383,32 @@ pub enum ViewerInput {
         /// Positive scrolls up.
         dy: i32,
     },
+    /// Relative pointer motion (captured / game mode).
+    RelMotion {
+        /// Positive is right.
+        dx: i32,
+        /// Positive is down.
+        dy: i32,
+    },
+    /// Viewer entered or left pointer capture.
+    Capture {
+        /// Captured (relative) when true.
+        on: bool,
+    },
+    /// Gamepad digital control. `code` is a Linux `BTN_*` value.
+    GamepadButton {
+        /// `BTN_SOUTH` and friends.
+        code: u16,
+        /// Down (true) or up.
+        pressed: bool,
+    },
+    /// Gamepad absolute axis. `code` is a Linux `ABS_*` value.
+    GamepadAxis {
+        /// `ABS_X` and friends.
+        code: u16,
+        /// Signed axis (sticks typically ±32767).
+        value: i32,
+    },
 }
 
 impl ViewerInput {
@@ -331,6 +430,17 @@ impl ViewerInput {
             Self::Scroll { dx, dy } => (
                 KIND_SCROLL,
                 u64::from(dx as u32) | u64::from(dy as u32) << 32,
+            ),
+            Self::RelMotion { dx, dy } => {
+                (KIND_REL, u64::from(dx as u32) | u64::from(dy as u32) << 32)
+            }
+            Self::Capture { on } => (KIND_CAPTURE, u64::from(on)),
+            Self::GamepadButton { code, pressed } => {
+                (KIND_GP_BTN, u64::from(code) | u64::from(pressed) << 16)
+            }
+            Self::GamepadAxis { code, value } => (
+                KIND_GP_AXIS,
+                u64::from(code) | u64::from(value as u32) << 16,
             ),
         }
     }
@@ -362,7 +472,20 @@ impl ViewerInput {
                 dx: value as u32 as i32,
                 dy: (value >> 32) as u32 as i32,
             },
-            KIND_KEY | KIND_BUTTON => return Some(bad),
+            KIND_REL => Self::RelMotion {
+                dx: value as u32 as i32,
+                dy: (value >> 32) as u32 as i32,
+            },
+            KIND_CAPTURE if value >> 1 == 0 => Self::Capture { on: value == 1 },
+            KIND_GP_BTN if value >> 17 == 0 => Self::GamepadButton {
+                code: value as u16,
+                pressed: value >> 16 & 1 == 1,
+            },
+            KIND_GP_AXIS => Self::GamepadAxis {
+                code: value as u16,
+                value: (value >> 16) as u32 as i32,
+            },
+            KIND_KEY | KIND_BUTTON | KIND_CAPTURE | KIND_GP_BTN => return Some(bad),
             _ => return None,
         };
         Some(Ok(input))

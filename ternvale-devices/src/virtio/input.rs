@@ -1,12 +1,14 @@
-//! virtio-input (device id 18, virtio 1.2 §5.8): a keyboard or an absolute
-//! (tablet) pointer.
+//! virtio-input (device id 18, virtio 1.2 §5.8): keyboard, tablet, relative
+//! mouse, or gamepad.
 //!
 //! Queue 0 (eventq) carries 8-byte `virtio_input_event`s to the guest. The
 //! host fills it through an [`InputSink`] from its own thread, never the vCPU.
 //! An eventq kick never makes the vCPU wait for that thread (see
 //! `Shared::kick_eventq`).
 //! Queue 1 (statusq) carries guest events such as keyboard LEDs; they are
-//! logged and completed. Only `VIRTIO_F_VERSION_1` is offered.
+//! logged and completed. Force-feedback / rumble (`EV_FF`) is not offered:
+//! statusq is LED-only today (TODO(verify) a virtio-input FF path; do not
+//! fake rumble on the host). Only `VIRTIO_F_VERSION_1` is offered.
 
 mod codes;
 mod config;
@@ -23,8 +25,11 @@ use super::irq::{IrqHook, VirtioIrq};
 use super::queue::SplitQueue;
 use super::{QueueNotify, VirtioDevice, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 pub use codes::{
-    type_name as input_type_name, InputEvent, ABS_MAX_VALUE, ABS_X, ABS_Y, BTN_LEFT, BTN_MIDDLE,
-    BTN_RIGHT, EV_ABS, EV_KEY, EV_REL, EV_REP, EV_SYN, REL_HWHEEL, REL_WHEEL, SYN_REPORT,
+    type_name as input_type_name, InputEvent, ABS_HAT0X, ABS_HAT0Y, ABS_MAX_VALUE, ABS_RX, ABS_RY,
+    ABS_RZ, ABS_STICK_MAX, ABS_X, ABS_Y, ABS_Z, BTN_EAST, BTN_LEFT, BTN_MIDDLE, BTN_MODE,
+    BTN_NORTH, BTN_RIGHT, BTN_SELECT, BTN_SOUTH, BTN_START, BTN_THUMBL, BTN_THUMBR, BTN_TL,
+    BTN_TL2, BTN_TR, BTN_TR2, BTN_WEST, EV_ABS, EV_KEY, EV_REL, EV_REP, EV_SYN, REL_HWHEEL,
+    REL_WHEEL, REL_X, REL_Y, SYN_REPORT,
 };
 pub use config::InputKind;
 pub use config::{
@@ -344,3 +349,7 @@ mod tests;
 #[cfg(test)]
 #[path = "input_sink_tests.rs"]
 mod sink_tests;
+
+#[cfg(test)]
+#[path = "input_quality_tests.rs"]
+mod quality_tests;

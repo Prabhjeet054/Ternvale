@@ -2,6 +2,14 @@ import AppKit
 import Foundation
 import os
 
+struct GuestCursorOverlay: Equatable {
+    let width: UInt32
+    let height: UInt32
+    let hotX: UInt32
+    let hotY: UInt32
+    let pixels: Data
+}
+
 struct GuestDisplayFrame: Equatable {
     let width: UInt32
     let height: UInt32
@@ -22,6 +30,8 @@ final class VMDisplayController: ObservableObject {
     @Published private(set) var guestPixelSize: CGSize = .zero
     @Published private(set) var isConnected = false
     @Published private(set) var statusText = "Display idle"
+    @Published private(set) var cursorOverlay: GuestCursorOverlay?
+    @Published private(set) var wantCapture = false
 
     let input = DisplayInputSender()
 
@@ -105,10 +115,29 @@ final class VMDisplayController: ObservableObject {
             guard let raw = link.read(count: PresentWire.frameHeaderLen) else { break }
             do {
                 let header = try PresentWireCodec.decodeFrameHeader(raw)
+                let kind = PresentWireCodec.le16(raw, 6)
                 var pixels = Data()
                 if header.payloadLen > 0 {
                     guard let bytes = link.read(count: Int(header.payloadLen)) else { break }
                     pixels = Data(bytes)
+                }
+                if kind == PresentWire.kindCaptureHint {
+                    await MainActor.run { self.wantCapture = header.flags & 1 != 0 }
+                    continue
+                }
+                if kind == PresentWire.kindCursor {
+                    await MainActor.run {
+                        self.cursorOverlay = header.width == 0
+                            ? nil
+                            : GuestCursorOverlay(
+                                width: header.width,
+                                height: header.height,
+                                hotX: header.damageX,
+                                hotY: header.damageY,
+                                pixels: pixels
+                            )
+                    }
+                    continue
                 }
                 let frame = GuestDisplayFrame(
                     width: header.width,

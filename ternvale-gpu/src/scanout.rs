@@ -43,6 +43,34 @@ struct Inner {
     frames: Vec<Mutex<Frame>>,
     on_host_resize: Mutex<Vec<HostResizeHook>>,
     quality: Mutex<PresentQuality>,
+    cursor: Mutex<CursorOverlay>,
+}
+
+/// Guest cursor bitmap shown as a host overlay (not composited into `Frame`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CursorOverlay {
+    /// virtio-gpu scanout the pointer is on.
+    pub scanout: u32,
+    /// Pointer X in scanout pixels.
+    pub x: u32,
+    /// Pointer Y in scanout pixels.
+    pub y: u32,
+    /// Hotspot X inside `pixels`.
+    pub hot_x: u32,
+    /// Hotspot Y inside `pixels`.
+    pub hot_y: u32,
+    /// Bitmap width (`0` while hidden).
+    pub width: u32,
+    /// Bitmap height.
+    pub height: u32,
+    /// `VIRTIO_GPU_FORMAT_*`.
+    pub format: u32,
+    /// `height` rows of `width × 4` bytes (same layout as the resource).
+    pub pixels: Vec<u8>,
+    /// `false` when the guest hid the cursor (`resource_id` 0).
+    pub visible: bool,
+    /// Bumped on every cursorq command that changed the overlay.
+    pub sequence: u64,
 }
 
 /// What one scanout shows.
@@ -134,6 +162,7 @@ impl GpuDisplay {
                 frames: modes.iter().map(|_| Mutex::new(Frame::default())).collect(),
                 on_host_resize: Mutex::new(Vec::new()),
                 quality: Mutex::new(PresentQuality::default()),
+                cursor: Mutex::new(CursorOverlay::default()),
             }),
         }
     }
@@ -244,6 +273,33 @@ impl GpuDisplay {
         let slot = self.inner.frames.get(scanout)?;
         let mut frame = ternvale_vmm::lockwatch::lock(slot, "gpu-scanout-frame");
         Some(f(&mut frame))
+    }
+
+    /// Current cursor overlay (cloned; the bitmap is small).
+    #[tracing::instrument(level = "trace", target = "ternvale::gpu", skip_all)]
+    pub fn cursor(&self) -> CursorOverlay {
+        ternvale_vmm::lockwatch::lock(&self.inner.cursor, "gpu-cursor").clone()
+    }
+
+    /// Cursor update counter, without copying pixels.
+    #[tracing::instrument(level = "trace", target = "ternvale::gpu", skip_all)]
+    pub fn cursor_sequence(&self) -> u64 {
+        ternvale_vmm::lockwatch::lock(&self.inner.cursor, "gpu-cursor").sequence
+    }
+
+    pub(crate) fn set_cursor(&self, overlay: CursorOverlay) {
+        *ternvale_vmm::lockwatch::lock(&self.inner.cursor, "gpu-cursor") = overlay;
+    }
+
+    pub(crate) fn hide_cursor(&self) {
+        let mut cursor = ternvale_vmm::lockwatch::lock(&self.inner.cursor, "gpu-cursor");
+        if cursor.visible || cursor.sequence > 0 {
+            cursor.visible = false;
+            cursor.width = 0;
+            cursor.height = 0;
+            cursor.pixels.clear();
+            cursor.sequence = cursor.sequence.saturating_add(1);
+        }
     }
 }
 

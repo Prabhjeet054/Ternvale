@@ -5,7 +5,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::present_protocol::{FrameHeader, ViewerMessage, FRAME_HEADER_LEN, VERSION};
+use crate::present_protocol::{
+    FrameHeader, ViewerMessage, FRAME_HEADER_LEN, KIND_CAPTURE_HINT, KIND_CURSOR, KIND_FRAME,
+    VERSION,
+};
 use crate::present_session;
 use crate::resource::PixelFormat;
 use crate::test_log;
@@ -71,12 +74,32 @@ impl FakeViewer {
         self.0
             .set_read_timeout(Some(Duration::from_secs(5)))
             .expect("timeout");
+        loop {
+            let mut raw = [0u8; FRAME_HEADER_LEN];
+            self.0.read_exact(&mut raw).expect("frame header");
+            let (kind, header) = FrameHeader::decode_any(&raw).expect("valid header");
+            let mut pixels = vec![0u8; header.payload_len as usize];
+            self.0.read_exact(&mut pixels).expect("frame payload");
+            if kind == KIND_FRAME {
+                return (header, pixels);
+            }
+            if kind != KIND_CURSOR && kind != KIND_CAPTURE_HINT {
+                panic!("unexpected TVDP kind {kind:#06x}");
+            }
+        }
+    }
+
+    /// Next 64-byte VMM header and payload (frame, cursor, or capture hint).
+    pub(super) fn read_any(&mut self) -> (u16, FrameHeader, Vec<u8>) {
+        self.0
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("timeout");
         let mut raw = [0u8; FRAME_HEADER_LEN];
-        self.0.read_exact(&mut raw).expect("frame header");
-        let header = FrameHeader::decode(&raw).expect("valid header");
+        self.0.read_exact(&mut raw).expect("header");
+        let (kind, header) = FrameHeader::decode_any(&raw).expect("valid header");
         let mut pixels = vec![0u8; header.payload_len as usize];
-        self.0.read_exact(&mut pixels).expect("frame payload");
-        (header, pixels)
+        self.0.read_exact(&mut pixels).expect("payload");
+        (kind, header, pixels)
     }
 
     pub(super) fn ack(&mut self, header: &FrameHeader) {

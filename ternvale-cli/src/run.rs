@@ -13,13 +13,16 @@
 
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use ternvale_agent_proto::AGENT_PORT;
 use ternvale_backend::StopMode;
-use ternvale_config::{BlockDevice, GpuSection, Nic, Profile, Share, VirtioTransport, VmConfig};
+use ternvale_config::{
+    BlockDevice, CmdMap, GpuSection, Nic, Profile, Share, VirtioTransport, VmConfig,
+};
 use ternvale_devices::{
     attach_blocks_crypto, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon,
     VirtioConsole, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
@@ -336,6 +339,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     let audio = config.audio_enabled();
     let gpu3d = config.gpu3d();
     let gpu = config.gpu_section();
+    let cmd_map = config.input_section().cmd_map;
     let metrics = Arc::clone(control.metrics());
     let ram_mib = config.ram_mib;
     let ram_min_mib = config.balloon_floor_mib();
@@ -357,6 +361,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
             display: plan.as_ref(),
             gpu3d,
             gpu: gpu.clone(),
+            cmd_map,
             agent: agent.clone(),
             metrics,
             audio,
@@ -461,13 +466,15 @@ struct Wanted<'a> {
     share: Option<&'a Share>,
     /// Windows guests: reserved names, illegal chars, MAX_PATH, case fold.
     windows_names: bool,
-    /// `--display window`: a virtio-gpu after vsock, then a virtio-input
-    /// keyboard and tablet (all PCI with `virtio-pci`).
+    /// `--display window`: a virtio-gpu after vsock, then virtio-input
+    /// keyboard, tablet, mouse, and gamepad (PCI with `virtio-pci`).
     display: Option<&'a DisplayPlan>,
     /// Per-VM Venus 3D (`[gpu] gpu3d`). Default false.
     gpu3d: bool,
     /// `[gpu]` display quality (scale, color, scanout count).
     gpu: GpuSection,
+    /// `[input] cmd_map`.
+    cmd_map: CmdMap,
     /// Guest agent, for `SetResolution` when the SwiftUI window is resized.
     agent: Option<Arc<ternvale_devices::AgentServer>>,
     /// Step 61 tables for presentation latency / upload bytes.
@@ -618,7 +625,7 @@ fn attach_devices(
         devices.push((base, size, device));
         mmio_after_net += 1;
     }
-    let display_slots = usize::from(wanted.display.is_some()) * 3;
+    let display_slots = usize::from(wanted.display.is_some()) * 5;
     if let Some(plan) = wanted.display {
         let slot = u32::try_from(mmio_after_net)
             .map_err(|_| MachineError::Attach("virtio-gpu slot does not fit in u32".into()))?;
@@ -629,8 +636,18 @@ fn attach_devices(
             crate::display::gpu_config_from_section(&wanted.gpu, wanted.gpu3d),
         )?;
         devices.extend(mapped);
-        let (mapped, input) =
-            crate::display_input::attach_input(attach, wanted.transport, slot + 1)?;
+        let relative = wanted
+            .agent
+            .as_ref()
+            .map(|agent| agent.relative_pointer_flag())
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        let (mapped, input) = crate::display_input::attach_input(
+            attach,
+            wanted.transport,
+            slot + 1,
+            wanted.cmd_map,
+            relative,
+        )?;
         devices.extend(mapped);
         let started = plan
             .start_with(

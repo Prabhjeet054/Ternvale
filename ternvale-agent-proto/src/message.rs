@@ -78,6 +78,13 @@ pub enum Message {
         /// Unix seconds (UTC).
         unix_secs: i64,
     },
+    /// Agent → host: the foreground app wants a relative / captured pointer
+    /// (games). Additive; older hosts ignore unknown types, older agents never
+    /// send this.
+    PointerMode {
+        /// Relative motion / capture recommended.
+        relative: bool,
+    },
     /// Host → agent: list mapped top-level windows (answer with `WindowListOk`, v3+).
     WindowListGet,
     /// Agent → host: answer to `WindowListGet`.
@@ -272,6 +279,7 @@ impl Message {
             Self::ShareMount { .. } => "share_mount",
             Self::Shutdown => "shutdown",
             Self::TimeSync { .. } => "time_sync",
+            Self::PointerMode { .. } => "pointer_mode",
             Self::WindowListGet => "window_list_get",
             Self::WindowListOk { .. } => "window_list_ok",
             Self::Exec { .. } => "exec",

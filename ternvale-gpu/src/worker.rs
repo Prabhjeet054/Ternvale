@@ -12,11 +12,10 @@ use ternvale_devices::{VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 use ternvale_vmm::GuestMemory;
 
 use crate::engine::GpuEngine;
-use crate::protocol;
 
 /// Queue 0: `controlq` (virtio 1.2 §5.7.2).
 pub const CONTROL_QUEUE: u16 = 0;
-/// Queue 1: `cursorq`. Commands complete with `RESP_OK_NODATA`; the host does not composite a cursor.
+/// Queue 1: `cursorq`. Updates the host overlay and completes with `RESP_OK_NODATA`.
 pub const CURSOR_QUEUE: u16 = 1;
 /// Largest request read from one chain: an attach-backing with the full
 /// `MAX_BACKING_ENTRIES` is 24 + 8 + 16384 × 16 bytes.
@@ -94,31 +93,13 @@ pub fn serve(
         let response = if index == CONTROL_QUEUE {
             gpu.handle(mem, &request)
         } else {
-            cursor(&request)
+            crate::gpu_cursor::handle(&mut gpu.two_d, &request)
         };
         let written = scatter(mem, &chain.writable, &response);
         tracing::trace!(target: "ternvale::gpu", queue = index, head = chain.head, request_len = request.len(), response_len = written, "virtio-gpu request completed");
         completed |= queue.add_used(mem, chain.head, written);
     }
     completed
-}
-
-#[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
-fn cursor(request: &[u8]) -> Vec<u8> {
-    match protocol::parse_hdr(request) {
-        Ok(hdr) => {
-            tracing::debug!(
-                target: "ternvale::gpu",
-                cmd = protocol::type_name(hdr.kind),
-                "virtio-gpu cursor command acknowledged (not composited)"
-            );
-            protocol::response_hdr(&hdr, protocol::RESP_OK_NODATA).to_vec()
-        }
-        Err(error) => {
-            tracing::warn!(target: "ternvale::gpu", error = %error, "malformed virtio-gpu cursor request");
-            Vec::new()
-        }
-    }
 }
 
 /// The device-readable bytes of a chain, up to [`MAX_REQUEST`].

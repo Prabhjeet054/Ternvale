@@ -8,8 +8,8 @@ use crate::disk::Disk;
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
 use crate::{
-    AudioSection, GpuSection, IsoSection, Nic, PowerSection, Profile, Share, TpmSection,
-    UsbSection, VsockSection,
+    AudioSection, GpuSection, InputSection, IsoSection, Nic, PowerSection, Profile, Share,
+    TpmSection, UsbSection, VsockSection,
 };
 
 const RAM_QUANTUM_MIB: u64 = 16;
@@ -119,6 +119,9 @@ pub struct VmConfig {
     /// virtio-gpu 3D. Omitted: `gpu3d = false`. See [`GpuSection`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gpu: Option<GpuSection>,
+    /// Host keyboard mapping. Omitted: Command stays Meta. See [`InputSection`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<InputSection>,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.

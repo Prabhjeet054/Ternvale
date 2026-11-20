@@ -99,7 +99,22 @@ impl Gpu2d {
             }
             *state = ScanoutState::default();
         }
+        self.display.hide_cursor();
         tracing::debug!(target: "ternvale::gpu", resources, "virtio-gpu 2d state reset");
+    }
+
+    pub(crate) fn resource_ref(&self, id: u32) -> Option<&Resource> {
+        self.resources.get(&id)
+    }
+
+    pub(crate) fn display(&self) -> &GpuDisplay {
+        &self.display
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_resource_for_test(&mut self, id: u32, resource: Resource) {
+        self.hostmem += resource.pixels.len() as u64;
+        self.resources.insert(id, resource);
     }
 
     #[cfg(test)]
@@ -132,6 +147,10 @@ impl Gpu2d {
             Command::GetEdid { scanout_id } => {
                 return self.get_edid(&hdr, scanout_id);
             }
+            Command::Cursor { .. } => Err((
+                protocol::RESP_ERR_UNSPEC,
+                "cursor command arrived on controlq".to_string(),
+            )),
             Command::ResourceCreate2d {
                 resource_id,
                 format,

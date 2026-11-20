@@ -13,6 +13,10 @@ let kindPointer: UInt16 = 0x0202
 let kindButton: UInt16 = 0x0203
 let kindScroll: UInt16 = 0x0204
 let kindSetSize: UInt16 = 0x0205
+let kindRel: UInt16 = 0x0207
+let kindCapture: UInt16 = 0x0208
+let kindGpBtn: UInt16 = 0x0209
+let kindGpAxis: UInt16 = 0x020a
 let pointerMax = 32767.0
 
 /// Device-dependent modifier bits (IOKit `NX_DEVICE*KEYMASK`) by key code, so
@@ -76,6 +80,22 @@ final class InputSender {
         send(kindSetSize, UInt64(width) | UInt64(height) << 32)
     }
 
+    func rel(dx: Int32, dy: Int32) {
+        send(kindRel, UInt64(UInt32(bitPattern: dx)) | UInt64(UInt32(bitPattern: dy)) << 32)
+    }
+
+    func capture(_ on: Bool) {
+        send(kindCapture, on ? 1 : 0)
+    }
+
+    func gamepadButton(_ code: UInt16, _ pressed: Bool) {
+        send(kindGpBtn, UInt64(code) | (pressed ? 1 << 16 : 0))
+    }
+
+    func gamepadAxis(_ code: UInt16, _ value: Int32) {
+        send(kindGpAxis, UInt64(code) | UInt64(UInt32(bitPattern: value)) << 16)
+    }
+
     func releaseAll() {
         for code in keysDown { key(code, false) }
         for index in buttonsDown { button(index, false) }
@@ -104,6 +124,9 @@ final class SurfaceView: NSView {
     var frameSize = CGSize.zero
     private var tracking: NSTrackingArea?
     private var scrollAccum = CGPoint.zero
+    private var captured = false
+    private var banner: NSTextField?
+    private var guestCursor: NSCursor?
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -119,6 +142,16 @@ final class SurfaceView: NSView {
 
     override func keyDown(with event: NSEvent) {
         if event.isARepeat { return }  // the guest autorepeats (EV_REP)
+        if event.keyCode == 0x05,
+           event.modifierFlags.contains(.control),
+           event.modifierFlags.contains(.option) {
+            setCaptured(!captured, fromHint: false)
+            return
+        }
+        if captured && event.keyCode == 0x35 {
+            setCaptured(false, fromHint: false)
+            return
+        }
         input?.key(event.keyCode, true)
         // AppKit sends no keyUp for a key released while Command is held.
         if event.modifierFlags.contains(.command) { input?.key(event.keyCode, false) }
@@ -137,13 +170,71 @@ final class SurfaceView: NSView {
         input?.key(event.keyCode, event.modifierFlags.rawValue & mask != 0)
     }
 
+    func setCaptured(_ on: Bool, fromHint: Bool) {
+        guard captured != on else { return }
+        captured = on
+        input?.capture(on)
+        if on {
+            NSCursor.hide()
+            showBanner("Pointer captured — Esc to release (⌃⌥G toggles)")
+        } else {
+            NSCursor.unhide()
+            banner?.removeFromSuperview()
+            banner = nil
+            guestCursor?.set()
+        }
+        if !fromHint {
+            window?.title = on
+                ? (window?.title ?? "Ternvale") + " — captured"
+                : (window?.title ?? "Ternvale").replacingOccurrences(of: " — captured", with: "")
+        }
+    }
+
+    func applyCursor(_ h: FrameHeader, _ pixels: [UInt8]) {
+        if h.width == 0 || h.height == 0 || pixels.isEmpty {
+            guestCursor = nil
+            if !captured { NSCursor.arrow.set() }
+            return
+        }
+        if let cursor = nsCursor(width: Int(h.width), height: Int(h.height),
+                                 hotX: Int(h.damageX), hotY: Int(h.damageY), pixels: pixels) {
+            guestCursor = cursor
+            if !captured { cursor.set() }
+        }
+    }
+
+    private func showBanner(_ text: String) {
+        banner?.removeFromSuperview()
+        let label = NSTextField(labelWithString: text)
+        label.drawsBackground = true
+        label.backgroundColor = NSColor.black.withAlphaComponent(0.7)
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 13)
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+        ])
+        banner = label
+    }
+
     private func move(_ event: NSEvent) {
-        guard frameSize.width > 0, frameSize.height > 0, let input else { return }
+        guard let input else { return }
+        if captured {
+            let dx = Int32(event.deltaX.rounded())
+            let dy = Int32(event.deltaY.rounded())
+            if dx != 0 || dy != 0 { input.rel(dx: dx, dy: dy) }
+            return
+        }
+        guard frameSize.width > 0, frameSize.height > 0 else { return }
         let p = convert(event.locationInWindow, from: nil)
         let scale = min(bounds.width / frameSize.width, bounds.height / frameSize.height)
         let (w, h) = (frameSize.width * scale, frameSize.height * scale)
         let (ox, oy) = ((bounds.width - w) / 2, (bounds.height - h) / 2)
         input.pointer(x: Double((p.x - ox) / w), y: Double(1 - (p.y - oy) / h))
+        guestCursor?.set()
     }
 
     override func mouseMoved(with event: NSEvent) { move(event) }

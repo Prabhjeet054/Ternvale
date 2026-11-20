@@ -126,6 +126,7 @@ mod tests {
             x86_emulation: Default::default(),
             agent: Default::default(),
             gpu: None,
+            input: None,
         }
     }
 

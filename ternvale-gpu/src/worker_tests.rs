@@ -189,7 +189,7 @@ fn cursor_queue_commands_complete_with_ok_nodata() {
     request.extend_from_slice(&[0u8; 32]);
     let (response, logs) = test_log::capture(|| rig.submit(CURSOR_QUEUE, &request, &[24]));
     assert_eq!(kind(&response), protocol::RESP_OK_NODATA);
-    assert!(logs.contains("cursor command acknowledged"), "{logs}");
+    assert!(logs.contains("cursor overlay updated"), "{logs}");
 }
 
 /// `[gpu] gpu3d = false` (Rig default): 3D opcodes stay off the Venus path.

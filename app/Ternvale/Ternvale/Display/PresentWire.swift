@@ -1,9 +1,9 @@
 import Foundation
 
-/// TVDP wire format (`ternvale-gpu/src/present_protocol.rs`) version 3.
+/// TVDP wire format (`ternvale-gpu/src/present_protocol.rs`) version 4.
 enum PresentWire {
     static let magic: UInt32 = 0x5044_5654
-    static let version: UInt16 = 3
+    static let version: UInt16 = 4
     static let frameHeaderLen = 64
     static let messageLen = 16
     static let maxDimension: UInt32 = 16_384
@@ -11,6 +11,8 @@ enum PresentWire {
     static let flagDisplayP3: UInt32 = 2
 
     static let kindFrame: UInt16 = 0x0001
+    static let kindCursor: UInt16 = 0x0002
+    static let kindCaptureHint: UInt16 = 0x0003
     static let kindHello: UInt16 = 0x0101
     static let kindPresented: UInt16 = 0x0102
     static let kindKey: UInt16 = 0x0201
@@ -19,6 +21,10 @@ enum PresentWire {
     static let kindScroll: UInt16 = 0x0204
     static let kindSetSize: UInt16 = 0x0205
     static let kindSetSizeEx: UInt16 = 0x0206
+    static let kindRel: UInt16 = 0x0207
+    static let kindCapture: UInt16 = 0x0208
+    static let kindGpBtn: UInt16 = 0x0209
+    static let kindGpAxis: UInt16 = 0x020a
     static let pointerMax = 32767.0
 }
 
@@ -53,8 +59,12 @@ enum PresentWireCodec {
         guard magic == PresentWire.magic else { throw PresentWireError.badMagic(magic) }
         let version = le16(raw, 4)
         guard version == PresentWire.version else { throw PresentWireError.badVersion(version) }
-        guard le16(raw, 6) == PresentWire.kindFrame else {
-            throw PresentWireError.badKind(le16(raw, 6))
+        let kind = le16(raw, 6)
+        guard kind == PresentWire.kindFrame
+            || kind == PresentWire.kindCursor
+            || kind == PresentWire.kindCaptureHint
+        else {
+            throw PresentWireError.badKind(kind)
         }
         let h = PresentFrameHeader(
             width: le32(raw, 8),
@@ -71,10 +81,12 @@ enum PresentWireCodec {
             damageH: le32(raw, 56),
             scaleX100: le32(raw, 60)
         )
-        let partial = h.flags & PresentWire.flagPartial != 0
         let expected: UInt64 = {
             if h.width == 0 && h.height == 0 { return 0 }
-            if partial { return UInt64(h.damageW) * 4 * UInt64(h.damageH) }
+            if kind == PresentWire.kindCursor { return UInt64(h.width) * 4 * UInt64(h.height) }
+            if h.flags & PresentWire.flagPartial != 0 {
+                return UInt64(h.damageW) * 4 * UInt64(h.damageH)
+            }
             return UInt64(h.stride) * UInt64(h.height)
         }()
         guard h.width <= PresentWire.maxDimension, h.height <= PresentWire.maxDimension,

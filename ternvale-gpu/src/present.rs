@@ -116,6 +116,11 @@ pub struct PresentStats {
 pub trait InputTarget: Send + Sync {
     /// Forward one input message.
     fn deliver(&self, input: ViewerInput);
+
+    /// Guest agent (or host policy) wants relative / captured pointer.
+    fn relative_wanted(&self) -> bool {
+        false
+    }
 }
 
 impl PresentStats {
@@ -344,3 +349,7 @@ mod viewer_tests;
 #[cfg(test)]
 #[path = "present_quality_check.rs"]
 mod quality_check;
+
+#[cfg(test)]
+#[path = "present_input_quality.rs"]
+mod input_quality;

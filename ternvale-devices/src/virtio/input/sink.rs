@@ -20,7 +20,9 @@ use ternvale_vmm::GuestMemory;
 use super::super::irq::VirtioIrq;
 use super::super::queue::SplitQueue;
 use super::super::QueueNotify;
-use super::codes::{self, InputEvent, ABS_MAX_VALUE, ABS_X, ABS_Y, REL_HWHEEL, REL_WHEEL};
+use super::codes::{
+    self, InputEvent, ABS_MAX_VALUE, ABS_X, ABS_Y, REL_HWHEEL, REL_WHEEL, REL_X, REL_Y,
+};
 use super::config::InputKind;
 
 /// Most events held for the guest before reports are dropped. Releases of held
@@ -379,6 +381,26 @@ impl InputSink {
             InputEvent::abs(ABS_X, x.min(ABS_MAX_VALUE)),
             InputEvent::abs(ABS_Y, y.min(ABS_MAX_VALUE)),
         ])
+    }
+
+    /// Relative pointer delta (`REL_X` / `REL_Y`).
+    pub fn rel_xy(&self, dx: i32, dy: i32) -> bool {
+        if dx == 0 && dy == 0 {
+            return true;
+        }
+        let mut events = Vec::with_capacity(2);
+        if dx != 0 {
+            events.push(InputEvent::rel(REL_X, dx));
+        }
+        if dy != 0 {
+            events.push(InputEvent::rel(REL_Y, dy));
+        }
+        self.report(&events)
+    }
+
+    /// One absolute axis (gamepad sticks / triggers / hat).
+    pub fn abs_axis(&self, code: u16, value: i32) -> bool {
+        self.report(&[InputEvent::abs(code, value as u32)])
     }
 
     /// Wheel clicks: `dy > 0` scrolls up, `dx > 0` scrolls right.

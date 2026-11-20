@@ -2,8 +2,10 @@
 //! `select`/`subsel`, then reads `size` and up to 128 bytes of the union.
 
 use super::codes::{
-    ABS_MAX_VALUE, ABS_X, ABS_Y, BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, EV_ABS, EV_KEY, EV_REL, EV_REP,
-    EV_SYN, REL_HWHEEL, REL_WHEEL,
+    ABS_HAT0X, ABS_HAT0Y, ABS_MAX_VALUE, ABS_RX, ABS_RY, ABS_RZ, ABS_STICK_MAX, ABS_X, ABS_Y,
+    ABS_Z, BTN_EAST, BTN_LEFT, BTN_MIDDLE, BTN_MODE, BTN_NORTH, BTN_RIGHT, BTN_SELECT, BTN_SOUTH,
+    BTN_START, BTN_THUMBL, BTN_THUMBR, BTN_TL, BTN_TL2, BTN_TR, BTN_TR2, BTN_WEST, EV_ABS, EV_KEY,
+    EV_REL, EV_REP, EV_SYN, REL_HWHEEL, REL_WHEEL, REL_X, REL_Y,
 };
 use super::keymap;
 
@@ -42,6 +44,10 @@ pub enum InputKind {
     /// Absolute pointer (`ABS_X`/`ABS_Y` 0..=32767) with three buttons and
     /// both wheels.
     Tablet,
+    /// Relative mouse (`REL_X`/`REL_Y`) for capture / games.
+    Mouse,
+    /// Virtual HID gamepad (Linux evdev mapping).
+    Gamepad,
 }
 
 impl InputKind {
@@ -50,6 +56,8 @@ impl InputKind {
         match self {
             Self::Keyboard => "keyboard",
             Self::Tablet => "tablet",
+            Self::Mouse => "mouse",
+            Self::Gamepad => "gamepad",
         }
     }
 
@@ -58,13 +66,17 @@ impl InputKind {
         match self {
             Self::Keyboard => "Ternvale Virtio Keyboard",
             Self::Tablet => "Ternvale Virtio Tablet",
+            Self::Mouse => "Ternvale Virtio Mouse",
+            Self::Gamepad => "Ternvale Virtio Gamepad",
         }
     }
 
     fn product(self) -> u16 {
         match self {
             Self::Keyboard => 0x0001,
+            Self::Mouse => 0x0002,
             Self::Tablet => 0x0003,
+            Self::Gamepad => 0x0004,
         }
     }
 
@@ -75,6 +87,17 @@ impl InputKind {
             (Self::Tablet, EV_KEY) => vec![BTN_LEFT, BTN_RIGHT, BTN_MIDDLE],
             (Self::Tablet, EV_ABS) => vec![ABS_X, ABS_Y],
             (Self::Tablet, EV_REL) => vec![REL_HWHEEL, REL_WHEEL],
+            (Self::Mouse, EV_KEY) => vec![BTN_LEFT, BTN_RIGHT, BTN_MIDDLE],
+            (Self::Mouse, EV_REL) => vec![REL_X, REL_Y, REL_HWHEEL, REL_WHEEL],
+            (Self::Gamepad, EV_KEY) => vec![
+                BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR, BTN_TL2, BTN_TR2,
+                BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR,
+            ],
+            (Self::Gamepad, EV_ABS) => {
+                vec![
+                    ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y,
+                ]
+            }
             _ => Vec::new(),
         }
     }
@@ -102,8 +125,22 @@ pub fn payload(kind: InputKind, select: u8, subsel: u8) -> Vec<u8> {
                 .flat_map(|v: &u32| v.to_le_bytes())
                 .collect()
         }
+        (CFG_ABS_INFO, axis) if kind == InputKind::Gamepad => gamepad_absinfo(u16::from(axis)),
         _ => Vec::new(),
     }
+}
+
+fn gamepad_absinfo(axis: u16) -> Vec<u8> {
+    let (min, max) = match axis {
+        ABS_X | ABS_Y | ABS_RX | ABS_RY => (-ABS_STICK_MAX, ABS_STICK_MAX),
+        ABS_Z | ABS_RZ => (0, 255),
+        ABS_HAT0X | ABS_HAT0Y => (-1, 1),
+        _ => return Vec::new(),
+    };
+    [min as u32, max as u32, 0, 0, 0]
+        .iter()
+        .flat_map(|v: &u32| v.to_le_bytes())
+        .collect()
 }
 
 fn ev_bits(kind: InputKind, ev_type: u16) -> Vec<u8> {
