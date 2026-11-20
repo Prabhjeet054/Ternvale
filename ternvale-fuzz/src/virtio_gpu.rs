@@ -20,6 +20,7 @@ pub fn run(data: &[u8]) {
     let config = GpuConfig {
         modes: vec![(64, 64)],
         gpu3d: false,
+        ..GpuConfig::default()
     };
     let opened = VirtioGpu::new(config, Arc::clone(&guest.memory), Arc::clone(&guest.irq));
     let Ok(gpu) = opened else {

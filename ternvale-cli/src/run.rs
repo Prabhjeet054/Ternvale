@@ -19,7 +19,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use ternvale_agent_proto::AGENT_PORT;
 use ternvale_backend::StopMode;
-use ternvale_config::{BlockDevice, Nic, Profile, Share, VirtioTransport, VmConfig};
+use ternvale_config::{BlockDevice, GpuSection, Nic, Profile, Share, VirtioTransport, VmConfig};
 use ternvale_devices::{
     attach_blocks_crypto, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon,
     VirtioConsole, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
@@ -237,6 +237,7 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     let plan = match mode {
         DisplayMode::Window => Some(
             DisplayPlan::new(&config.name, &socket, fps)
+                .map(|plan| plan.with_gpu(&config.gpu_section()))
                 .with_context(|| format!("prepare --display window for vm {}", config.name))?,
         ),
         DisplayMode::None => None,
@@ -334,6 +335,8 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();
     let gpu3d = config.gpu3d();
+    let gpu = config.gpu_section();
+    let metrics = Arc::clone(control.metrics());
     let ram_mib = config.ram_mib;
     let ram_min_mib = config.balloon_floor_mib();
     let cpus = config.cpus;
@@ -353,7 +356,9 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
             windows_names,
             display: plan.as_ref(),
             gpu3d,
+            gpu: gpu.clone(),
             agent: agent.clone(),
+            metrics,
             audio,
             ram_mib,
             ram_min_mib,
@@ -461,8 +466,12 @@ struct Wanted<'a> {
     display: Option<&'a DisplayPlan>,
     /// Per-VM Venus 3D (`[gpu] gpu3d`). Default false.
     gpu3d: bool,
+    /// `[gpu]` display quality (scale, color, scanout count).
+    gpu: GpuSection,
     /// Guest agent, for `SetResolution` when the SwiftUI window is resized.
     agent: Option<Arc<ternvale_devices::AgentServer>>,
+    /// Step 61 tables for presentation latency / upload bytes.
+    metrics: Arc<ternvale_metrics::Metrics>,
     /// Attach virtio-sound on the next free virtio-mmio slot.
     audio: bool,
     ram_mib: u64,
@@ -613,14 +622,23 @@ fn attach_devices(
     if let Some(plan) = wanted.display {
         let slot = u32::try_from(mmio_after_net)
             .map_err(|_| MachineError::Attach("virtio-gpu slot does not fit in u32".into()))?;
-        let (mapped, display) =
-            crate::display::attach_gpu(attach, wanted.transport, slot, wanted.gpu3d)?;
+        let (mapped, display) = crate::display::attach_gpu(
+            attach,
+            wanted.transport,
+            slot,
+            crate::display::gpu_config_from_section(&wanted.gpu, wanted.gpu3d),
+        )?;
         devices.extend(mapped);
         let (mapped, input) =
             crate::display_input::attach_input(attach, wanted.transport, slot + 1)?;
         devices.extend(mapped);
         let started = plan
-            .start_with(display, Some(input), wanted.agent.clone())
+            .start_with(
+                display,
+                Some(input),
+                wanted.agent.clone(),
+                Some(Arc::clone(&wanted.metrics)),
+            )
             .map_err(|error| MachineError::Attach(format!("{error:#}")))?;
         *lockwatch::lock(session, "display-session") = Some(started);
     }

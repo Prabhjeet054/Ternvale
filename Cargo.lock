@@ -1700,8 +1700,10 @@ dependencies = [
 name = "ternvale-gpu"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "ternvale-devices",
  "ternvale-gpu3d-host",
+ "ternvale-metrics",
  "ternvale-vmm",
  "thiserror 2.0.21",
  "tracing",

@@ -102,6 +102,7 @@ pub fn run() -> Result<(), String> {
         let config = GpuConfig {
             modes: vec![MODE],
             gpu3d: false,
+            ..GpuConfig::default()
         };
         let gpu = VirtioGpu::attach(
             SLOT,

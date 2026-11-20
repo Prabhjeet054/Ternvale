@@ -139,6 +139,29 @@ impl Rect {
             height: (y1 - u64::from(y0)) as u32,
         })
     }
+
+    /// Axis-aligned bounding box of `self` and `other`. Empty (`width == 0`)
+    /// rectangles are ignored.
+    pub fn union(self, other: Rect) -> Rect {
+        if self.width == 0 || self.height == 0 {
+            return other;
+        }
+        if other.width == 0 || other.height == 0 {
+            return self;
+        }
+        let x0 = self.x.min(other.x);
+        let y0 = self.y.min(other.y);
+        let x1 = (u64::from(self.x) + u64::from(self.width))
+            .max(u64::from(other.x) + u64::from(other.width));
+        let y1 = (u64::from(self.y) + u64::from(self.height))
+            .max(u64::from(other.y) + u64::from(other.height));
+        Rect {
+            x: x0,
+            y: y0,
+            width: (x1 - u64::from(x0)) as u32,
+            height: (y1 - u64::from(y0)) as u32,
+        }
+    }
 }
 
 impl fmt::Display for Rect {

@@ -22,5 +22,7 @@ if [[ "${1:-}" != "--force" && -x "$out" && $stale -eq 0 ]]; then
     exit 0
 fi
 mkdir -p "$out_dir"
-swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -framework AppKit -o "$out" "${srcs[@]}"
+swiftc -O -swift-version 5 -target arm64-apple-macos14.0 \
+  -framework AppKit -framework Metal -framework QuartzCore \
+  -o "$out" "${srcs[@]}"
 echo "build-viewer: built $out" >&2

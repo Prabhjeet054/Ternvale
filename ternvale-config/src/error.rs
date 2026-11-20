@@ -200,6 +200,15 @@ pub enum ConfigError {
         reason: String,
     },
 
+    /// A `[gpu]` display-quality field is invalid.
+    #[error("{field}: {reason}")]
+    InvalidGpu {
+        /// Field, such as `gpu.scale`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
+
     /// A `[[shares]]` entry is invalid.
     #[error("{field}: {reason}")]
     InvalidShare {

@@ -117,6 +117,7 @@ fn plan(scratch: &Scratch, viewer: PathBuf) -> DisplayPlan {
         viewer: Some(viewer),
         socket: scratch.0.join("vm.display.sock"),
         fps: 30,
+        quality: ternvale_gpu::PresentQuality::default(),
     }
 }
 

@@ -1,12 +1,14 @@
 import Foundation
 
-/// TVDP wire format (`ternvale-gpu/src/present_protocol.rs`).
+/// TVDP wire format (`ternvale-gpu/src/present_protocol.rs`) version 3.
 enum PresentWire {
     static let magic: UInt32 = 0x5044_5654
-    static let version: UInt16 = 2
-    static let frameHeaderLen = 40
+    static let version: UInt16 = 3
+    static let frameHeaderLen = 64
     static let messageLen = 16
     static let maxDimension: UInt32 = 16_384
+    static let flagPartial: UInt32 = 1
+    static let flagDisplayP3: UInt32 = 2
 
     static let kindFrame: UInt16 = 0x0001
     static let kindHello: UInt16 = 0x0101
@@ -16,6 +18,7 @@ enum PresentWire {
     static let kindButton: UInt16 = 0x0203
     static let kindScroll: UInt16 = 0x0204
     static let kindSetSize: UInt16 = 0x0205
+    static let kindSetSizeEx: UInt16 = 0x0206
     static let pointerMax = 32767.0
 }
 
@@ -26,6 +29,13 @@ struct PresentFrameHeader: Equatable {
     var format: UInt32
     var sequence: UInt64
     var payloadLen: UInt32
+    var flags: UInt32
+    var scanout: UInt32
+    var damageX: UInt32
+    var damageY: UInt32
+    var damageW: UInt32
+    var damageH: UInt32
+    var scaleX100: UInt32
 }
 
 enum PresentWireError: Error {
@@ -52,11 +62,24 @@ enum PresentWireCodec {
             stride: le32(raw, 16),
             format: le32(raw, 20),
             sequence: le64(raw, 24),
-            payloadLen: le32(raw, 32)
+            payloadLen: le32(raw, 32),
+            flags: le32(raw, 36),
+            scanout: le32(raw, 40),
+            damageX: le32(raw, 44),
+            damageY: le32(raw, 48),
+            damageW: le32(raw, 52),
+            damageH: le32(raw, 56),
+            scaleX100: le32(raw, 60)
         )
+        let partial = h.flags & PresentWire.flagPartial != 0
+        let expected: UInt64 = {
+            if h.width == 0 && h.height == 0 { return 0 }
+            if partial { return UInt64(h.damageW) * 4 * UInt64(h.damageH) }
+            return UInt64(h.stride) * UInt64(h.height)
+        }()
         guard h.width <= PresentWire.maxDimension, h.height <= PresentWire.maxDimension,
               UInt64(h.stride) == UInt64(h.width) * 4,
-              UInt64(h.payloadLen) == UInt64(h.stride) * UInt64(h.height)
+              UInt64(h.payloadLen) == expected
         else { throw PresentWireError.badGeometry }
         return h
     }

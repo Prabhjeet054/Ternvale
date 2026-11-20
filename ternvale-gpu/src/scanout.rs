@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::gpu2d::MAX_DIMENSION;
+use crate::present_quality::PresentQuality;
 use crate::protocol::Rect;
 use crate::resource::{PixelFormat, Resource, BYTES_PER_PIXEL};
 
@@ -41,6 +42,7 @@ struct Inner {
     modes: Mutex<Vec<(u32, u32)>>,
     frames: Vec<Mutex<Frame>>,
     on_host_resize: Mutex<Vec<HostResizeHook>>,
+    quality: Mutex<PresentQuality>,
 }
 
 /// What one scanout shows.
@@ -59,15 +61,20 @@ pub struct Frame {
     /// When the `RESOURCE_FLUSH` (or `SET_SCANOUT`) behind `sequence` reached
     /// the device; the presenter measures flush-to-present latency from here.
     pub updated: Option<Instant>,
+    /// Accumulated `RESOURCE_FLUSH` rectangle in scanout coordinates, waiting
+    /// for the presenter. `None` means "send the whole buffer".
+    pub dirty: Option<Rect>,
 }
 
 impl Frame {
     /// Bytes per row.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
     pub fn stride(&self) -> usize {
         self.width as usize * BYTES_PER_PIXEL as usize
     }
 
     /// The four bytes of pixel (`x`, `y`), if inside the frame.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all, fields(x, y))]
     pub fn pixel(&self, x: u32, y: u32) -> Option<[u8; 4]> {
         if x >= self.width || y >= self.height {
             return None;
@@ -76,6 +83,39 @@ impl Frame {
         let mut out = [0u8; 4];
         out.copy_from_slice(self.pixels.get(at..at + 4)?);
         Some(out)
+    }
+
+    /// Pack `dirty` (or the full buffer) as tightly row-major pixels.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
+    pub fn pack_dirty(&self) -> (Rect, Vec<u8>, bool) {
+        let full = Rect {
+            x: 0,
+            y: 0,
+            width: self.width,
+            height: self.height,
+        };
+        if self.width == 0 || self.height == 0 {
+            return (full, Vec::new(), false);
+        }
+        let rect = self.dirty.unwrap_or(full);
+        let partial = rect != full;
+        let bpp = BYTES_PER_PIXEL as usize;
+        let mut out = vec![0u8; rect.width as usize * rect.height as usize * bpp];
+        let src_stride = self.stride();
+        let dst_stride = rect.width as usize * bpp;
+        for row in 0..rect.height as usize {
+            let src = (rect.y as usize + row) * src_stride + rect.x as usize * bpp;
+            let dst = row * dst_stride;
+            out[dst..dst + dst_stride].copy_from_slice(&self.pixels[src..src + dst_stride]);
+        }
+        (rect, out, partial)
+    }
+
+    fn mark_dirty(&mut self, rect: Rect) {
+        self.dirty = Some(match self.dirty {
+            None => rect,
+            Some(old) => old.union(rect),
+        });
     }
 }
 
@@ -93,11 +133,32 @@ impl GpuDisplay {
                 modes: Mutex::new(modes.to_vec()),
                 frames: modes.iter().map(|_| Mutex::new(Frame::default())).collect(),
                 on_host_resize: Mutex::new(Vec::new()),
+                quality: Mutex::new(PresentQuality::default()),
             }),
         }
     }
 
+    /// HiDPI / color / window layout used by EDID and the presenter.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
+    pub fn set_quality(&self, quality: PresentQuality) {
+        tracing::info!(
+            target: "ternvale::gpu",
+            scale_x100 = quality.scale_x100,
+            dpi = quality.dpi(),
+            display_p3 = quality.display_p3(),
+            "display quality applied"
+        );
+        *ternvale_vmm::lockwatch::lock(&self.inner.quality, "gpu-display-quality") = quality;
+    }
+
+    /// Current presentation quality.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
+    pub fn quality(&self) -> PresentQuality {
+        *ternvale_vmm::lockwatch::lock(&self.inner.quality, "gpu-display-quality")
+    }
+
     /// Called when the viewer asks for a new mode (`GET_DISPLAY_INFO` / EDID).
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
     pub fn add_host_resize_hook(&self, hook: HostResizeHook) {
         ternvale_vmm::lockwatch::lock(&self.inner.on_host_resize, "gpu-host-resize-hook")
             .push(hook);
@@ -206,6 +267,12 @@ pub(crate) fn show(frame: &mut Frame, resource: &Resource, rect: Rect) {
     copy_into(frame, resource, rect, rect);
     frame.sequence += 1;
     frame.updated = Some(Instant::now());
+    frame.dirty = Some(Rect {
+        x: 0,
+        y: 0,
+        width: rect.width,
+        height: rect.height,
+    });
 }
 
 /// Blank `frame` (scanout disabled).
@@ -231,6 +298,12 @@ pub(crate) fn copy_into(frame: &mut Frame, resource: &Resource, view: Rect, dama
         let dst = (sy - view.y as usize) * dst_stride + (damage.x - view.x) as usize * bpp;
         frame.pixels[dst..dst + row].copy_from_slice(&resource.pixels[src..src + row]);
     }
+    frame.mark_dirty(Rect {
+        x: damage.x - view.x,
+        y: damage.y - view.y,
+        width: damage.width,
+        height: damage.height,
+    });
     row as u64 * u64::from(damage.height)
 }
 

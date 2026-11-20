@@ -11,7 +11,7 @@ pub const BLOCK_LEN: usize = 128;
 /// padding, then `edid[1024]` (Linux `virtio_gpu.h`).
 pub const WIRE_EDID_LEN: usize = 1024;
 
-/// Build a 128-byte EDID 1.3 for `width` × `height` at 60 Hz.
+/// Build a 128-byte EDID 1.3 for `width` × `height` at 60 Hz and ~96 DPI.
 #[tracing::instrument(
     level = "debug",
     target = "ternvale::gpu",
@@ -19,6 +19,19 @@ pub const WIRE_EDID_LEN: usize = 1024;
     fields(width, height)
 )]
 pub fn block_for_mode(width: u32, height: u32) -> [u8; BLOCK_LEN] {
+    block_for_mode_dpi(width, height, 96)
+}
+
+/// EDID with physical size chosen so `DPI ≈ dpi` (`96` or `192` for 1× / 2×).
+/// Guest pixels are sRGB; byte 24 still sets the sRGB flag (EDID 1.3).
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::gpu",
+    skip_all,
+    fields(width, height, dpi)
+)]
+pub fn block_for_mode_dpi(width: u32, height: u32, dpi: u32) -> [u8; BLOCK_LEN] {
+    let dpi = dpi.max(1);
     let mut edid = [0u8; BLOCK_LEN];
     edid[0..8].copy_from_slice(&[0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00]);
     // Manufacturer "TVL" packed as three 5-bit letters (A=1).
@@ -29,6 +42,9 @@ pub fn block_for_mode(width: u32, height: u32) -> [u8; BLOCK_LEN] {
     edid[18] = 1;
     edid[19] = 3;
     edid[20] = 0x80; // digital input
+    let (hmm, vmm) = physical_mm(width.max(1), height.max(1), dpi);
+    edid[21] = ((hmm / 10).min(255)) as u8;
+    edid[22] = ((vmm / 10).min(255)) as u8;
     edid[23] = 0x78; // gamma 2.2
     edid[24] = 0x0a; // sRGB + preferred timing
                      // sRGB chromaticity (common template).
@@ -37,17 +53,27 @@ pub fn block_for_mode(width: u32, height: u32) -> [u8; BLOCK_LEN] {
         edid[38 + i * 2] = 0x01;
         edid[39 + i * 2] = 0x01;
     }
-    write_dtd(&mut edid[54..72], width.max(1), height.max(1));
+    write_dtd(&mut edid[54..72], width.max(1), height.max(1), dpi);
     write_name(&mut edid[72..90]);
     edid[127] = checksum(&edid[..127]);
     tracing::debug!(
         target: "ternvale::gpu",
         width,
         height,
+        dpi,
+        hmm,
+        vmm,
         checksum = format!("{:#04x}", edid[127]),
         "generated EDID 1.3 block"
     );
     edid
+}
+
+/// Image size in millimetres at `dpi` (capped at 4095 mm).
+fn physical_mm(width: u32, height: u32, dpi: u32) -> (u32, u32) {
+    let hmm = ((u64::from(width) * 254) / (u64::from(dpi) * 10)).min(4095) as u32;
+    let vmm = ((u64::from(height) * 254) / (u64::from(dpi) * 10)).min(4095) as u32;
+    (hmm.max(1), vmm.max(1))
 }
 
 /// Pad `block` into the 1024-byte virtio-gpu EDID buffer.
@@ -58,7 +84,7 @@ pub fn wire_edid(block: &[u8; BLOCK_LEN]) -> [u8; WIRE_EDID_LEN] {
     out
 }
 
-fn write_dtd(out: &mut [u8], width: u32, height: u32) {
+fn write_dtd(out: &mut [u8], width: u32, height: u32, dpi: u32) {
     let hactive = width.min(4095);
     let vactive = height.min(4095);
     let hblank = 160u32;
@@ -78,8 +104,7 @@ fn write_dtd(out: &mut [u8], width: u32, height: u32) {
     out[9] = 32; // hsync width
     out[10] = (10 << 4) | 5; // vsync offset / width (low)
     out[11] = 0;
-    let hmm = (hactive * 16 / 96).min(4095); // ~96 dpi mm
-    let vmm = (vactive * 16 / 96).min(4095);
+    let (hmm, vmm) = physical_mm(hactive, vactive, dpi);
     out[12] = (hmm & 0xff) as u8;
     out[13] = (vmm & 0xff) as u8;
     out[14] = (((hmm >> 8) & 0xf) << 4 | ((vmm >> 8) & 0xf)) as u8;
@@ -119,6 +144,21 @@ mod tests {
         assert_eq!((h, v), (1920, 1080));
         assert_eq!(edid[18], 1);
         assert_eq!(edid[19], 3);
+        let hidpi = block_for_mode_dpi(1920, 1080, 192);
+        let hmm = u32::from(hidpi[54 + 12]) | (u32::from(hidpi[54 + 14] >> 4) << 8);
+        let hmm96 = u32::from(edid[54 + 12]) | (u32::from(edid[54 + 14] >> 4) << 8);
+        assert!(
+            hmm < hmm96,
+            "2× scale EDID is physically smaller: {hmm} vs {hmm96}"
+        );
+        assert_eq!(hidpi[21], (hmm / 10) as u8);
+        let (mm96, _) = physical_mm(1920, 1080, 96);
+        let (mm192, _) = physical_mm(1920, 1080, 192);
+        assert_eq!(mm96, 508, "96 DPI 1920px is 508 mm");
+        assert_eq!(
+            mm192, 254,
+            "192 DPI is half the millimetres (sharper px/mm)"
+        );
     }
 
     #[test]

@@ -8,6 +8,12 @@ struct GuestDisplayFrame: Equatable {
     let format: UInt32
     let sequence: UInt64
     let pixels: Data
+    let flags: UInt32
+    let damageX: UInt32
+    let damageY: UInt32
+    let damageW: UInt32
+    let damageH: UInt32
+    let scaleX100: UInt32
 }
 
 /// Reads TVDP frames from the presenter and acks them after Metal presents.
@@ -109,7 +115,13 @@ final class VMDisplayController: ObservableObject {
                     height: header.height,
                     format: header.format,
                     sequence: header.sequence,
-                    pixels: pixels
+                    pixels: pixels,
+                    flags: header.flags,
+                    damageX: header.damageX,
+                    damageY: header.damageY,
+                    damageW: header.damageW,
+                    damageH: header.damageH,
+                    scaleX100: header.scaleX100
                 )
                 await MainActor.run {
                     self.latestFrame = frame

@@ -259,6 +259,7 @@ fn virtio_pci_identity_class_and_a_frame_end_to_end() {
         GpuConfig {
             modes: vec![(1280, 800), (800, 600)],
             gpu3d: false,
+            ..GpuConfig::default()
         },
         Arc::clone(&memory),
         Arc::clone(&irq),

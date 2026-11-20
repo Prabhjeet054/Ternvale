@@ -34,6 +34,12 @@ pub(super) fn update(display: &GpuDisplay, tag: u8, step: u64) {
         frame.pixels = vec![tag; (W * H * 4) as usize];
         frame.sequence += step;
         frame.updated = Some(Instant::now());
+        frame.dirty = Some(crate::protocol::Rect {
+            x: 0,
+            y: 0,
+            width: W,
+            height: H,
+        });
     });
 }
 
@@ -93,7 +99,7 @@ pub(super) fn session(
     session_with(config, display, viewer)
 }
 
-fn session_with(
+pub(super) fn session_with(
     config: PresentConfig,
     display: &GpuDisplay,
     viewer: impl FnOnce(UnixStream) + Send + 'static,
@@ -118,6 +124,7 @@ pub(super) fn session_input(
         stats: &stats,
         stop: &stop,
         input,
+        metrics: None,
     };
     let (result, logs) =
         test_log::capture(|| present_session::serve(ours, &serving).map_err(|e| e.to_string()));
@@ -400,4 +407,39 @@ fn presenter_rejects_bad_config() {
         );
     }
     assert!(!path.exists());
+}
+
+#[test]
+fn presenter_uploads_only_the_dirty_rectangle() {
+    let display = display();
+    display.with_frame(0, |frame| {
+        frame.width = W;
+        frame.height = H;
+        frame.format = Some(PixelFormat::B8g8r8x8);
+        frame.pixels = vec![0x11; (W * H * 4) as usize];
+        frame.sequence = 1;
+        frame.updated = Some(Instant::now());
+        frame.dirty = Some(crate::protocol::Rect {
+            x: 1,
+            y: 0,
+            width: 2,
+            height: 1,
+        });
+    });
+    let (result, _, stats) = session(120, &display, |stream| {
+        let mut viewer = FakeViewer::hello(stream);
+        let (header, pixels) = viewer.frame();
+        assert_eq!(
+            header.flags & crate::present_protocol::FRAME_FLAG_PARTIAL,
+            1
+        );
+        assert_eq!(header.payload_len, 8);
+        assert_eq!(pixels.len(), 8);
+        assert_eq!(header.damage_x, 1);
+        assert_eq!(header.damage_w, 2);
+        viewer.ack(&header);
+        std::thread::sleep(Duration::from_millis(20));
+    });
+    assert_eq!(result, Ok("viewer closed the connection"));
+    assert_eq!(stats.upload_bytes.load(Ordering::Relaxed), 8);
 }

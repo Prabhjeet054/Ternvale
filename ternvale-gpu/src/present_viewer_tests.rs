@@ -12,7 +12,7 @@ use super::*;
 
 /// Build the viewer with scripts/build-viewer.sh once per run; `None` (test
 /// skipped) without swiftc.
-fn built_viewer() -> Option<PathBuf> {
+pub(super) fn built_viewer() -> Option<PathBuf> {
     static BUILT: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     BUILT.get_or_init(build_viewer).clone()
 }

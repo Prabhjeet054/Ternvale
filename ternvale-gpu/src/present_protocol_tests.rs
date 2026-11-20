@@ -1,4 +1,5 @@
 use super::*;
+use super::{FRAME_FLAG_PARTIAL, VERSION};
 
 fn header() -> FrameHeader {
     FrameHeader {
@@ -8,6 +9,13 @@ fn header() -> FrameHeader {
         format: 2,
         sequence: 0x1122_3344_5566_7788,
         payload_len: 2560 * 480,
+        flags: 0,
+        scanout: 0,
+        damage_x: 0,
+        damage_y: 0,
+        damage_w: 640,
+        damage_h: 480,
+        scale_x100: 100,
     }
 }
 
@@ -15,11 +23,25 @@ fn header() -> FrameHeader {
 fn frame_header_round_trips_little_endian() {
     let bytes = header().encode();
     assert_eq!(&bytes[0..4], b"TVDP");
-    assert_eq!(&bytes[4..8], &[2, 0, 1, 0], "version 2, kind FRAME");
+    assert_eq!(&bytes[4..8], &[3, 0, 1, 0], "version 3, kind FRAME");
     assert_eq!(&bytes[8..12], &640u32.to_le_bytes());
     assert_eq!(&bytes[24..32], &0x1122_3344_5566_7788u64.to_le_bytes());
-    assert_eq!(&bytes[36..40], &[0; 4], "reserved");
+    assert_eq!(&bytes[36..40], &0u32.to_le_bytes(), "flags");
     assert_eq!(FrameHeader::decode(&bytes), Ok(header()));
+}
+
+#[test]
+fn partial_damage_payload_is_packed_rect() {
+    let header = FrameHeader {
+        flags: FRAME_FLAG_PARTIAL,
+        payload_len: 4 * 3 * 4,
+        damage_x: 10,
+        damage_y: 5,
+        damage_w: 4,
+        damage_h: 3,
+        ..header()
+    };
+    assert_eq!(FrameHeader::decode(&header.encode()), Ok(header));
 }
 
 #[test]
@@ -31,6 +53,13 @@ fn empty_frame_means_no_scanout() {
         format: 0,
         sequence: 3,
         payload_len: 0,
+        flags: 0,
+        scanout: 0,
+        damage_x: 0,
+        damage_y: 0,
+        damage_w: 0,
+        damage_h: 0,
+        scale_x100: 100,
     };
     assert_eq!(FrameHeader::decode(&blank.encode()), Ok(blank));
 }
@@ -84,8 +113,8 @@ fn frame_header_rejects_bad_magic_version_kind_and_geometry() {
     }
 
     assert!(matches!(
-        FrameHeader::decode(&header().encode()[..39]),
-        Err(WireError::Short { need: 40, .. })
+        FrameHeader::decode(&header().encode()[..63]),
+        Err(WireError::Short { need: 64, .. })
     ));
 }
 
@@ -98,6 +127,11 @@ fn viewer_messages_round_trip() {
             width: 1920,
             height: 1080,
         },
+        ViewerMessage::SetSizeEx {
+            scanout: 2,
+            width: 800,
+            height: 600,
+        },
     ] {
         let bytes = message.encode();
         assert_eq!(bytes.len(), MESSAGE_LEN);
@@ -105,7 +139,7 @@ fn viewer_messages_round_trip() {
     }
     let hello = ViewerMessage::Hello { version: VERSION }.encode();
     assert_eq!(&hello[6..8], &KIND_HELLO.to_le_bytes());
-    assert_eq!(&hello[8..16], &2u64.to_le_bytes());
+    assert_eq!(&hello[8..16], &3u64.to_le_bytes());
 }
 
 #[test]

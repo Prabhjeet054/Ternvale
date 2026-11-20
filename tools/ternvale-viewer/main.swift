@@ -20,11 +20,14 @@ import AppKit
 import Darwin
 
 let wireMagic: UInt32 = 0x5044_5654  // "TVDP" read little-endian
-let wireVersion: UInt16 = 2
+let wireVersion: UInt16 = 3
 let kindFrame: UInt16 = 0x0001
 let kindHello: UInt16 = 0x0101
 let kindPresented: UInt16 = 0x0102
-let frameHeaderLen = 40
+let kindSetSizeEx: UInt16 = 0x0206
+let frameHeaderLen = 64
+let frameFlagPartial: UInt32 = 1
+let frameFlagDisplayP3: UInt32 = 2
 let maxDimension: UInt32 = 16_384
 
 func warn(_ message: String) {
@@ -42,6 +45,7 @@ struct Options {
     var headless = false
     var frames = 0
     var scriptInput = false
+    var perScanout = false
 }
 
 func parseOptions() -> Options {
@@ -60,8 +64,9 @@ func parseOptions() -> Options {
             guard let n = Int(value(arg)), n >= 0 else { fail("--frames needs a count") }
             options.frames = n
         case "--script-input": options.scriptInput = true
+        case "--per-scanout": options.perScanout = true
         default:
-            fail("unknown argument \(arg)\nusage: ternvale-viewer --socket <path> [--title <text>] [--headless [--frames N] [--script-input]]")
+            fail("unknown argument \(arg)\nusage: ternvale-viewer --socket <path> [--title <text>] [--headless [--frames N] [--script-input]] [--per-scanout]")
         }
     }
     if options.socket.isEmpty { fail("--socket <path> is required") }
@@ -141,6 +146,13 @@ struct FrameHeader {
     var format: UInt32
     var sequence: UInt64
     var payloadLen: UInt32
+    var flags: UInt32
+    var scanout: UInt32
+    var damageX: UInt32
+    var damageY: UInt32
+    var damageW: UInt32
+    var damageH: UInt32
+    var scaleX100: UInt32
 }
 
 func le16(_ b: [UInt8], _ at: Int) -> UInt16 { UInt16(b[at]) | UInt16(b[at + 1]) << 8 }
@@ -156,42 +168,26 @@ func readFrame(_ link: Link) -> (FrameHeader, [UInt8])? {
         fail("wire version \(version) is not supported (this viewer speaks \(wireVersion)); rebuild with scripts/build-viewer.sh")
     }
     guard le16(raw, 6) == kindFrame else { fail("unknown message kind \(le16(raw, 6))") }
-    let h = FrameHeader(width: le32(raw, 8), height: le32(raw, 12), stride: le32(raw, 16),
-                        format: le32(raw, 20), sequence: le64(raw, 24), payloadLen: le32(raw, 32))
+    let h = FrameHeader(
+        width: le32(raw, 8), height: le32(raw, 12), stride: le32(raw, 16),
+        format: le32(raw, 20), sequence: le64(raw, 24), payloadLen: le32(raw, 32),
+        flags: le32(raw, 36), scanout: le32(raw, 40),
+        damageX: le32(raw, 44), damageY: le32(raw, 48),
+        damageW: le32(raw, 52), damageH: le32(raw, 56), scaleX100: le32(raw, 60)
+    )
+    let partial = h.flags & frameFlagPartial != 0
+    let expected: UInt64 = {
+        if h.width == 0 && h.height == 0 { return 0 }
+        if partial { return UInt64(h.damageW) * 4 * UInt64(h.damageH) }
+        return UInt64(h.stride) * UInt64(h.height)
+    }()
     guard h.width <= maxDimension, h.height <= maxDimension,
           UInt64(h.stride) == UInt64(h.width) * 4,
-          UInt64(h.payloadLen) == UInt64(h.stride) * UInt64(h.height)
+          UInt64(h.payloadLen) == expected
     else { fail("frame \(h.width)x\(h.height) stride \(h.stride) does not match \(h.payloadLen) bytes") }
     if h.payloadLen == 0 { return (h, []) }
     guard let pixels = link.read(Int(h.payloadLen)) else { return nil }
     return (h, pixels)
-}
-
-/// Core Graphics layout for a `VIRTIO_GPU_FORMAT_*` (names give memory byte
-/// order, virtio 1.2 §5.7.6.8). Alpha is ignored: the window is opaque.
-func bitmapInfo(_ format: UInt32) -> CGBitmapInfo? {
-    let little = CGBitmapInfo.byteOrder32Little.rawValue
-    let big = CGBitmapInfo.byteOrder32Big.rawValue
-    let skipFirst = CGImageAlphaInfo.noneSkipFirst.rawValue
-    let skipLast = CGImageAlphaInfo.noneSkipLast.rawValue
-    switch format {
-    case 1, 2: return CGBitmapInfo(rawValue: little | skipFirst)  // B,G,R,A|X
-    case 3, 4: return CGBitmapInfo(rawValue: big | skipFirst)  // A|X,R,G,B
-    case 67, 134: return CGBitmapInfo(rawValue: big | skipLast)  // R,G,B,A|X
-    case 68, 121: return CGBitmapInfo(rawValue: little | skipLast)  // X|A,B,G,R
-    default: return nil
-    }
-}
-
-func makeImage(_ h: FrameHeader, _ pixels: [UInt8]) -> CGImage? {
-    guard h.width > 0, h.height > 0, let info = bitmapInfo(h.format),
-          let provider = CGDataProvider(data: Data(pixels) as CFData)
-    else { return nil }
-    return CGImage(width: Int(h.width), height: Int(h.height), bitsPerComponent: 8,
-                   bitsPerPixel: 32, bytesPerRow: Int(h.stride),
-                   space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-                   bitmapInfo: info, provider: provider, decode: nil,
-                   shouldInterpolate: false, intent: .defaultIntent)
 }
 
 func fnv1a(_ bytes: [UInt8]) -> UInt64 {
@@ -218,15 +214,21 @@ func runHeadless(_ link: Link, frames: Int, scriptInput: Bool) -> Never {
 final class Viewer: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let link: Link
     let title: String
+    let perScanout: Bool
     var window: NSWindow!
     var surface: SurfaceView!
+    var metal: MetalScanout?
+    var extras: [UInt32: (NSWindow, SurfaceView, MetalScanout)] = [:]
     var shown: (UInt32, UInt32) = (0, 0)
-    var refresh: CADisplayLink?
-    var pendingAck: UInt64?
 
-    init(link: Link, title: String) {
+    init(link: Link, title: String, perScanout: Bool) {
         self.link = link
         self.title = title
+        self.perScanout = perScanout
+    }
+
+    func ackPresented(_ sequence: UInt64) {
+        if !link.send(kind: kindPresented, value: sequence) { NSApp.terminate(nil) }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -241,17 +243,24 @@ final class Viewer: NSObject, NSApplicationDelegate, NSWindowDelegate {
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "\(title) — waiting for scanout"
+        window.collectionBehavior = [.fullScreenPrimary, .managed]
         surface = SurfaceView()
         surface.input = InputSender(link: link)
-        surface.wantsLayer = true
-        surface.layer?.backgroundColor = NSColor.black.cgColor
-        surface.layer?.contentsGravity = .resizeAspect
-        surface.layer?.magnificationFilter = .nearest
         window.contentView = surface
+        if let metal = MetalScanout(metal: ()) {
+            metal.owner = self
+            metal.attach(to: surface, p3: false)
+            self.metal = metal
+        }
         window.delegate = self
         window.acceptsMouseMovedEvents = true
         window.makeFirstResponder(surface)
         window.center()
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        let viewItem = NSMenuItem()
+        viewItem.submenu = viewMenu
+        NSApp.mainMenu?.addItem(viewItem)
         if SelfTest.requested {
             // Don't take focus: whatever the person at the keyboard types would
             // land in the guest and garble the scripted input.
@@ -259,25 +268,9 @@ final class Viewer: NSObject, NSApplicationDelegate, NSWindowDelegate {
         } else {
             window.makeKeyAndOrderFront(nil)
         }
-        let refresh = surface.displayLink(target: self, selector: #selector(onRefresh(_:)))
-        refresh.add(to: .main, forMode: .common)
-        refresh.isPaused = true
-        self.refresh = refresh
         if !SelfTest.requested { NSApp.activate(ignoringOtherApps: true) }
         Thread { self.pump() }.start()
         SelfTest.startIfRequested(window: window, surface: surface)
-    }
-
-    /// First display refresh after a frame was committed: the window server has
-    /// composited it by now, so this is when it counts as on screen.
-    /// TODO(verify): Apple documents the callback as firing once per display
-    /// frame for the view's screen, not its exact phase relative to scan-out;
-    /// treat the ack as on-glass to within one refresh interval.
-    @objc func onRefresh(_ sender: CADisplayLink) {
-        sender.isPaused = true
-        guard let sequence = pendingAck else { return }
-        pendingAck = nil
-        if !link.send(kind: kindPresented, value: sequence) { NSApp.terminate(nil) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -288,37 +281,60 @@ final class Viewer: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Reader thread: at most one frame is in flight, so frames never queue up here.
     func pump() {
         while let (h, pixels) = readFrame(link) {
-            let image = makeImage(h, pixels)
-            if image == nil && h.width > 0 { warn("cannot draw format \(h.format); showing black") }
-            DispatchQueue.main.async { self.show(h, image) }
+            DispatchQueue.main.async { self.show(h, pixels) }
         }
         DispatchQueue.main.async { NSApp.terminate(nil) }
     }
 
-    func show(_ h: FrameHeader, _ image: CGImage?) {
-        if (h.width, h.height) != shown {
+    func show(_ h: FrameHeader, _ pixels: [UInt8]) {
+        guard let target = window(for: h.scanout) else {
+            ackPresented(h.sequence)
+            return
+        }
+        let scale = max(1, Int(h.scaleX100 == 0 ? 100 : h.scaleX100))
+        if (h.width, h.height) != shown && h.scanout == 0 {
             shown = (h.width, h.height)
-            surface.frameSize = CGSize(width: CGFloat(h.width), height: CGFloat(h.height))
-            window.title = h.width > 0 ? "\(title) — \(h.width)×\(h.height)" : "\(title) — no scanout"
+            target.surface.frameSize = CGSize(width: CGFloat(h.width), height: CGFloat(h.height))
+            target.window.title = h.width > 0 ? "\(title) — \(h.width)×\(h.height)" : "\(title) — no scanout"
             if h.width > 0 {
-                var size = NSSize(width: CGFloat(h.width), height: CGFloat(h.height))
-                if let visible = window.screen?.visibleFrame.size {
-                    let scale = min(1, visible.width / size.width, (visible.height - 40) / size.height)
-                    size = NSSize(width: size.width * scale, height: size.height * scale)
+                let points = CGFloat(scale) / 100
+                var size = NSSize(width: CGFloat(h.width) / points, height: CGFloat(h.height) / points)
+                if let visible = target.window.screen?.visibleFrame.size {
+                    let fit = min(1, visible.width / size.width, (visible.height - 40) / size.height)
+                    size = NSSize(width: size.width * fit, height: size.height * fit)
                 }
-                window.contentAspectRatio = NSSize(width: CGFloat(h.width), height: CGFloat(h.height))
-                window.setContentSize(size)
+                target.window.contentAspectRatio = size
+                target.window.setContentSize(size)
             }
         }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        surface.layer?.contents = image
-        CATransaction.commit()
-        // Hand the frame to the window server now rather than at the end of
-        // this run-loop turn; the ack waits for the next refresh (onRefresh).
-        CATransaction.flush()
-        pendingAck = h.sequence
-        refresh?.isPaused = false
+        target.metal.applyColor(p3: h.flags & frameFlagDisplayP3 != 0)
+        target.metal.submit(header: h, pixels: pixels)
+    }
+
+    func window(for scanout: UInt32) -> (window: NSWindow, surface: SurfaceView, metal: MetalScanout)? {
+        if scanout == 0, let metal {
+            return (window, surface, metal)
+        }
+        if let extra = extras[scanout] { return extra }
+        guard perScanout, let metal = MetalScanout(metal: ()) else {
+            if let metal { return (window, surface, metal) }
+            return nil
+        }
+        let extra = NSWindow(
+            contentRect: NSRect(x: 40, y: 40, width: 1280, height: 800),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        extra.title = "\(title) — scanout \(scanout)"
+        extra.collectionBehavior = [.fullScreenPrimary, .managed]
+        let view = SurfaceView()
+        extra.contentView = view
+        metal.owner = self
+        metal.attach(to: view, p3: false)
+        extra.makeKeyAndOrderFront(nil)
+        extras[scanout] = (extra, view, metal)
+        return (extra, view, metal)
     }
 }
 
@@ -329,6 +345,6 @@ guard link.send(kind: kindHello, value: UInt64(wireVersion)) else { fail("could 
 if options.headless { runHeadless(link, frames: options.frames, scriptInput: options.scriptInput) }
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
-let viewer = Viewer(link: link, title: options.title)
+let viewer = Viewer(link: link, title: options.title, perScanout: options.perScanout)
 app.delegate = viewer
 app.run()

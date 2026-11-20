@@ -18,6 +18,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::present_protocol::ViewerInput;
+use crate::present_quality::PresentQuality;
 use crate::present_session;
 use crate::scanout::GpuDisplay;
 
@@ -39,6 +40,10 @@ pub struct PresentConfig {
     pub scanout: usize,
     /// How often a session logs its `display present window` statistics.
     pub report_every: Duration,
+    /// Send every scanout (multi-display). When false, only [`Self::scanout`].
+    pub all_scanouts: bool,
+    /// HiDPI / color space copied onto each frame header.
+    pub quality: PresentQuality,
 }
 
 impl Default for PresentConfig {
@@ -47,12 +52,15 @@ impl Default for PresentConfig {
             fps: DEFAULT_FPS,
             scanout: 0,
             report_every: DEFAULT_REPORT_EVERY,
+            all_scanouts: false,
+            quality: PresentQuality::default(),
         }
     }
 }
 
 impl PresentConfig {
     /// Time between frames.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
     pub fn interval(&self) -> Duration {
         Duration::from_secs(1) / self.fps.max(1)
     }
@@ -98,6 +106,8 @@ pub struct PresentStats {
     pub latency_samples: AtomicU64,
     /// Input messages received from viewers.
     pub inputs: AtomicU64,
+    /// Pixel bytes written to the viewer (damage uploads).
+    pub upload_bytes: AtomicU64,
 }
 
 /// Where viewer input goes (the VM's virtio-input devices). Called on the
@@ -110,6 +120,7 @@ pub trait InputTarget: Send + Sync {
 
 impl PresentStats {
     /// Mean flush-to-present latency in µs, if any frame was measured.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
     pub fn average_latency_us(&self) -> Option<u64> {
         let samples = self.latency_samples.load(Ordering::Relaxed);
         (samples > 0).then(|| self.latency_sum_us.load(Ordering::Relaxed) / samples)
@@ -141,7 +152,7 @@ impl Presenter {
         socket: &Path,
         config: PresentConfig,
     ) -> Result<Self, PresentError> {
-        Self::start_with_input(display, socket, config, None)
+        Self::start_with_input_metrics(display, socket, config, None, None)
     }
 
     /// [`Presenter::start`], forwarding viewer input to `input`.
@@ -152,6 +163,28 @@ impl Presenter {
         socket: &Path,
         config: PresentConfig,
         input: Option<Arc<dyn InputTarget>>,
+    ) -> Result<Self, PresentError> {
+        Self::start_with_input_metrics(display, socket, config, input, None)
+    }
+
+    /// [`Presenter::start_with_input`] plus Step 61 presentation counters.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::gpu",
+        skip_all,
+        fields(
+            socket = %socket.display(),
+            fps = config.fps,
+            input = input.is_some(),
+            metrics = metrics.is_some()
+        )
+    )]
+    pub fn start_with_input_metrics(
+        display: GpuDisplay,
+        socket: &Path,
+        config: PresentConfig,
+        input: Option<Arc<dyn InputTarget>>,
+        metrics: Option<Arc<ternvale_metrics::Metrics>>,
     ) -> Result<Self, PresentError> {
         if config.fps == 0 || config.fps > MAX_FPS {
             return Err(PresentError::Config(format!(
@@ -185,7 +218,7 @@ impl Presenter {
         let stop = Arc::new(AtomicBool::new(false));
         let stats = Arc::new(PresentStats::default());
         let thread = {
-            let (stop, stats) = (stop.clone(), stats.clone());
+            let (stop, stats, metrics) = (stop.clone(), stats.clone(), metrics.clone());
             std::thread::Builder::new()
                 .name("ternvale-gpu-present".into())
                 .spawn(move || {
@@ -195,13 +228,21 @@ impl Presenter {
                         stats: &stats,
                         stop: &stop,
                         input: input.as_deref(),
+                        metrics: metrics.as_deref(),
                     };
                     listen(&listener, &serving)
                 })
                 .map_err(PresentError::Spawn)?
         };
-        tracing::info!(target: "ternvale::gpu", socket = %socket.display(), fps = config.fps,
-            "display presenter listening");
+        tracing::info!(
+            target: "ternvale::gpu",
+            socket = %socket.display(),
+            fps = config.fps,
+            all_scanouts = config.all_scanouts,
+            scale_x100 = config.quality.scale_x100,
+            display_p3 = config.quality.display_p3(),
+            "display presenter listening"
+        );
         Ok(Self {
             socket: socket.to_path_buf(),
             stop,
@@ -249,6 +290,7 @@ impl Drop for Presenter {
             avg_flush_to_present_us = s.average_latency_us().unwrap_or(0),
             max_flush_to_present_us = s.latency_max_us.load(Ordering::Relaxed),
             inputs = s.inputs.load(Ordering::Relaxed),
+            upload_bytes = s.upload_bytes.load(Ordering::Relaxed),
             "display presenter stopped");
     }
 }
@@ -260,6 +302,7 @@ pub(crate) struct Serving<'a> {
     pub(crate) stats: &'a PresentStats,
     pub(crate) stop: &'a AtomicBool,
     pub(crate) input: Option<&'a dyn InputTarget>,
+    pub(crate) metrics: Option<&'a ternvale_metrics::Metrics>,
 }
 
 /// Accept viewers one after another until stopped.
@@ -297,3 +340,7 @@ mod input_tests;
 #[cfg(test)]
 #[path = "present_viewer_tests.rs"]
 mod viewer_tests;
+
+#[cfg(test)]
+#[path = "present_quality_check.rs"]
+mod quality_check;

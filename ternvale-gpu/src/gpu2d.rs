@@ -214,12 +214,18 @@ impl Gpu2d {
             );
             return protocol::response_hdr(hdr, protocol::RESP_ERR_INVALID_SCANOUT_ID).to_vec();
         };
-        let block = crate::edid::block_for_mode(mode.0, mode.1);
+        let dpi = self.display.quality().dpi();
+        let block = if dpi == 96 {
+            crate::edid::block_for_mode(mode.0, mode.1)
+        } else {
+            crate::edid::block_for_mode_dpi(mode.0, mode.1, dpi)
+        };
         tracing::debug!(
             target: "ternvale::gpu",
             scanout_id,
             width = mode.0,
             height = mode.1,
+            dpi,
             "GET_EDID"
         );
         protocol::edid_response(hdr, &block)

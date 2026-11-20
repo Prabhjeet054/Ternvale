@@ -13,6 +13,7 @@ pub(crate) struct LatencyWindow {
     started: Instant,
     presented: u64,
     dropped: u64,
+    upload_bytes: u64,
     sum_us: u64,
     samples: u64,
     max_us: u64,
@@ -24,6 +25,7 @@ impl LatencyWindow {
             started: now,
             presented: 0,
             dropped: 0,
+            upload_bytes: 0,
             sum_us: 0,
             samples: 0,
             max_us: 0,
@@ -43,6 +45,11 @@ impl LatencyWindow {
     /// Guest updates that were never sent.
     pub(crate) fn dropped(&mut self, count: u64) {
         self.dropped += count;
+    }
+
+    /// Pixel bytes uploaded this window.
+    pub(crate) fn uploaded(&mut self, bytes: u64) {
+        self.upload_bytes = self.upload_bytes.saturating_add(bytes);
     }
 
     /// Mean flush-to-present latency in this window, µs.
@@ -69,10 +76,18 @@ impl LatencyWindow {
         } else {
             self.presented as f64 / window.as_secs_f64()
         };
-        tracing::debug!(target: "ternvale::gpu", why, window_ms, presented = self.presented,
-            fps = %format!("{fps:.1}"), dropped = self.dropped,
-            avg_flush_to_present_us = self.average_us(), max_flush_to_present_us = self.max_us,
-            "display present window");
+        tracing::debug!(
+            target: "ternvale::gpu",
+            why,
+            window_ms,
+            presented = self.presented,
+            fps = %format!("{fps:.1}"),
+            dropped = self.dropped,
+            upload_bytes = self.upload_bytes,
+            avg_flush_to_present_us = self.average_us(),
+            max_flush_to_present_us = self.max_us,
+            "display present window"
+        );
         *self = Self::new(now);
     }
 }

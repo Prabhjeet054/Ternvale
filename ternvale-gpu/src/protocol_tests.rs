@@ -165,6 +165,15 @@ fn responses_echo_the_fence_only_when_asked() {
 }
 
 #[test]
+fn rect_union_covers_both_regions() {
+    let a = rect(10, 5, 4, 3);
+    let b = rect(12, 6, 8, 2);
+    let u = a.union(b);
+    assert_eq!(u, rect(10, 5, 10, 3));
+    assert_eq!(Rect::default().union(a), a);
+}
+
+#[test]
 fn display_info_lists_each_mode_enabled_and_the_rest_empty() {
     let out = display_info(&CtrlHdr::default(), &[(1280, 800), (640, 480)]);
     assert_eq!(out.len(), DISPLAY_INFO_LEN);

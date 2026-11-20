@@ -265,6 +265,7 @@ impl VmConfig {
             .validate(self.effective_firmware_tables())?;
         self.usb_section().validate()?;
         self.audio_section().validate()?;
+        self.gpu_section().validate()?;
         if self.shares.len() > 1 {
             return Err(ConfigError::InvalidShare {
                 field: "shares",

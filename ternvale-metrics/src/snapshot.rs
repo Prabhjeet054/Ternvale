@@ -29,6 +29,26 @@ pub struct Snapshot {
     /// Usermode x86 engines: translated process counts and failures.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub x86: Vec<X86EngineSnapshot>,
+    /// Native Metal presenter (Step 109). Omitted when unused.
+    #[serde(default, skip_serializing_if = "present_is_quiet")]
+    pub present: PresentSnapshot,
+}
+
+fn present_is_quiet(present: &PresentSnapshot) -> bool {
+    present.frames == 0 && present.dropped == 0 && present.upload_bytes == 0
+}
+
+/// virtio-gpu host presentation (flush-to-present).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PresentSnapshot {
+    /// Frames written to the viewer.
+    pub frames: u64,
+    /// Guest updates never sent (FPS cap / busy viewer).
+    pub dropped: u64,
+    /// Pixel bytes uploaded (damage rects, not full frames when partial).
+    pub upload_bytes: u64,
+    /// Flush-to-present latency.
+    pub latency: HistSnapshot,
 }
 
 /// One x86 translation engine in [`Snapshot::x86`].

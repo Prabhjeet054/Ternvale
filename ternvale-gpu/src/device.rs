@@ -21,6 +21,7 @@ use crate::engine::GpuEngine;
 use crate::gpu2d::{GpuStats, MAX_DIMENSION};
 #[cfg(feature = "gpu3d")]
 use crate::gpu3d::CAPSET_COUNT;
+use crate::present_quality::PresentQuality;
 use crate::protocol::MAX_SCANOUTS;
 use crate::scanout::GpuDisplay;
 use crate::worker::{self, Kick};
@@ -64,6 +65,8 @@ pub struct GpuConfig {
     pub modes: Vec<(u32, u32)>,
     /// Runtime Venus 3D. Default false; the `gpu3d` cargo feature is also required.
     pub gpu3d: bool,
+    /// HiDPI / color / multi-window presentation.
+    pub quality: PresentQuality,
 }
 
 impl Default for GpuConfig {
@@ -71,12 +74,14 @@ impl Default for GpuConfig {
         Self {
             modes: vec![DEFAULT_MODE],
             gpu3d: false,
+            quality: PresentQuality::default(),
         }
     }
 }
 
 impl GpuConfig {
     /// Check scanout count and sizes.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu", skip_all)]
     pub fn validate(&self) -> Result<(), GpuError> {
         if self.modes.is_empty() || self.modes.len() > MAX_SCANOUTS {
             return Err(GpuError::BadConfig(format!(
@@ -161,6 +166,7 @@ impl VirtioGpu {
     ) -> Result<Self, GpuError> {
         config.validate()?;
         let display = GpuDisplay::new(&config.modes);
+        display.set_quality(config.quality);
         let events_read = Arc::new(AtomicU32::new(0));
         let irq_line = Arc::clone(&irq);
         display.add_host_resize_hook(Box::new({

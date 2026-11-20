@@ -18,8 +18,12 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use ternvale_agent_proto::Message;
 use ternvale_config::VirtioTransport;
+use ternvale_config::{GpuColorSpace, GpuSection, GpuWindows};
 use ternvale_devices::{AgentServer, AgentState};
-use ternvale_gpu::{GpuConfig, GpuDisplay, InputTarget, PresentConfig, Presenter, VirtioGpu};
+use ternvale_gpu::{
+    GpuConfig, GpuDisplay, InputTarget, PresentColor, PresentConfig, PresentLayout, PresentQuality,
+    Presenter, VirtioGpu, DEFAULT_MODE,
+};
 use ternvale_vmm::{DeviceAttach, MachineError, MmioDevice};
 
 use crate::paths::{MAX_SOCKET_PATH, RUN_DIR_ENV};
@@ -122,6 +126,8 @@ pub struct DisplayPlan {
     pub socket: PathBuf,
     /// Frame-rate cap.
     pub fps: u32,
+    /// HiDPI / color / multi-scanout.
+    pub quality: PresentQuality,
 }
 
 impl DisplayPlan {
@@ -140,7 +146,15 @@ impl DisplayPlan {
             viewer,
             socket: socket_path(control)?,
             fps,
+            quality: PresentQuality::default(),
         })
+    }
+
+    /// Copy `[gpu]` scale, color space, and window layout onto the plan.
+    #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
+    pub fn with_gpu(mut self, gpu: &GpuSection) -> Self {
+        self.quality = quality_from_section(gpu);
+        self
     }
 
     /// Start presenting `display`, forwarding window input to `input`, and
@@ -151,7 +165,7 @@ impl DisplayPlan {
         display: GpuDisplay,
         input: Option<Arc<dyn InputTarget>>,
     ) -> Result<DisplaySession> {
-        self.start_with(display, input, None)
+        self.start_with(display, input, None, None)
     }
 
     /// Start presenting and, when `agent` is connected, send `SetResolution`
@@ -162,6 +176,7 @@ impl DisplayPlan {
         display: GpuDisplay,
         input: Option<Arc<dyn InputTarget>>,
         agent: Option<Arc<AgentServer>>,
+        metrics: Option<Arc<ternvale_metrics::Metrics>>,
     ) -> Result<DisplaySession> {
         if let Some(agent) = agent {
             display.add_host_resize_hook(Box::new(move |_scanout, width, height| {
@@ -193,17 +208,26 @@ impl DisplayPlan {
         }
         let config = PresentConfig {
             fps: self.fps,
+            all_scanouts: self.quality.layout == PresentLayout::PerScanout,
+            quality: self.quality,
             ..PresentConfig::default()
         };
-        let presenter = Presenter::start_with_input(display, &self.socket, config, input)
-            .with_context(|| format!("start the display presenter on {}", self.socket.display()))?;
+        let presenter =
+            Presenter::start_with_input_metrics(display, &self.socket, config, input, metrics)
+                .with_context(|| {
+                    format!("start the display presenter on {}", self.socket.display())
+                })?;
         let viewer = match &self.viewer {
             Some(viewer) => {
-                let child = Command::new(viewer)
-                    .arg("--socket")
+                let mut cmd = Command::new(viewer);
+                cmd.arg("--socket")
                     .arg(&self.socket)
                     .arg("--title")
-                    .arg(format!("Ternvale — {}", self.name))
+                    .arg(format!("Ternvale — {}", self.name));
+                if self.quality.layout == PresentLayout::PerScanout {
+                    cmd.arg("--per-scanout");
+                }
+                let child = cmd
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::inherit())
@@ -270,18 +294,38 @@ pub type Mapped = (u64, u64, Box<dyn MmioDevice>);
 
 /// Add a virtio-gpu: on `slot` for virtio-mmio, else on the next PCI function.
 /// Returns the MMIO device to map (none for PCI) and the frame handle.
-#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(slot, transport = %transport))]
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(gpu3d, displays = gpu.display_count(), scale = gpu.scale()))]
+pub fn gpu_config_from_section(gpu: &GpuSection, gpu3d: bool) -> GpuConfig {
+    let count = gpu.display_count().max(1) as usize;
+    GpuConfig {
+        gpu3d,
+        modes: vec![DEFAULT_MODE; count],
+        quality: quality_from_section(gpu),
+    }
+}
+
+fn quality_from_section(gpu: &GpuSection) -> PresentQuality {
+    PresentQuality {
+        scale_x100: gpu.scale().saturating_mul(100),
+        color: match gpu.color_space {
+            GpuColorSpace::DisplayP3 => PresentColor::DisplayP3,
+            GpuColorSpace::Srgb => PresentColor::Srgb,
+        },
+        layout: match gpu.windows {
+            GpuWindows::PerScanout => PresentLayout::PerScanout,
+            GpuWindows::One => PresentLayout::One,
+        },
+    }
+}
+
+#[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(slot, transport = %transport, gpu3d = config.gpu3d))]
 pub fn attach_gpu(
     attach: &DeviceAttach,
     transport: VirtioTransport,
     slot: u32,
-    gpu3d: bool,
+    config: GpuConfig,
 ) -> Result<(Option<Mapped>, GpuDisplay), MachineError> {
-    let config = GpuConfig {
-        gpu3d,
-        ..GpuConfig::default()
-    };
-    if gpu3d {
+    if config.gpu3d {
         tracing::info!(
             target: "ternvale::gpu3d",
             "attaching virtio-gpu with Venus 3D (gpu3d = true)"

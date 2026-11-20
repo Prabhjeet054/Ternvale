@@ -39,6 +39,15 @@ pub struct Metrics {
     interrupts: Counter,
     policy: [AtomicU64; POLICY_RULES.len()],
     x86: X86Counters,
+    present: PresentCell,
+}
+
+#[derive(Debug, Default)]
+struct PresentCell {
+    frames: Counter,
+    dropped: Counter,
+    upload_bytes: Counter,
+    latency: Histogram,
 }
 
 #[derive(Debug)]
@@ -108,6 +117,7 @@ impl Metrics {
             interrupts: Counter::default(),
             policy: std::array::from_fn(|_| AtomicU64::new(0)),
             x86: X86Counters::default(),
+            present: PresentCell::default(),
         }
     }
 
@@ -250,6 +260,30 @@ impl Metrics {
         self.interrupts.inc();
     }
 
+    /// Native presenter: frames sent, dropped guest updates, upload bytes, optional latency.
+    #[inline]
+    #[tracing::instrument(level = "debug", target = "ternvale::metrics", skip_all)]
+    pub fn record_present(
+        &self,
+        frames: u64,
+        dropped: u64,
+        upload_bytes: u64,
+        latency: Option<Duration>,
+    ) {
+        if frames != 0 {
+            self.present.frames.add(frames);
+        }
+        if dropped != 0 {
+            self.present.dropped.add(dropped);
+        }
+        if upload_bytes != 0 {
+            self.present.upload_bytes.add(upload_bytes);
+        }
+        if let Some(elapsed) = latency {
+            self.present.latency.record(nanos(elapsed));
+        }
+    }
+
     /// One guest-TX frame dropped by network policy (`rule` is a [`POLICY_RULES`] name).
     #[inline]
     pub fn record_policy_drop(&self, rule: &str) {
@@ -270,6 +304,12 @@ impl Metrics {
             interrupts: self.interrupts.get(),
             net_policy: self.policy_snapshots(),
             x86: self.x86.snapshot(),
+            present: crate::snapshot::PresentSnapshot {
+                frames: self.present.frames.get(),
+                dropped: self.present.dropped.get(),
+                upload_bytes: self.present.upload_bytes.get(),
+                latency: self.present.latency.snapshot(),
+            },
         }
     }
 
@@ -297,6 +337,10 @@ impl Metrics {
             net_p50_ns = snap.net.latency.p50_ns,
             policy_drops = snap.net_policy.iter().map(|row| row.count).sum::<u64>(),
             x86_engines = snap.x86.len(),
+            present_frames = snap.present.frames,
+            present_dropped = snap.present.dropped,
+            present_upload_bytes = snap.present.upload_bytes,
+            present_p50_ns = snap.present.latency.p50_ns,
             "vm metrics summary"
         );
     }
@@ -417,6 +461,7 @@ mod tests {
         metrics.record_blk_disk(disk, 2, 1024, Some(Duration::from_micros(20)));
         metrics.record_net(1, 64, Some(Duration::from_micros(2)));
         metrics.record_interrupt();
+        metrics.record_present(3, 1, 4096, Some(Duration::from_micros(800)));
         metrics.record_policy_drop("allow_lan");
         metrics.record_policy_drop("allow_lan");
         let snap = metrics.snapshot();
@@ -439,5 +484,9 @@ mod tests {
         assert_eq!(snap.x86[0].engine, "qemu-user");
         assert_eq!(snap.x86[0].processes, 3);
         assert_eq!(snap.x86[0].failures, 1);
+        assert_eq!(snap.present.frames, 3);
+        assert_eq!(snap.present.dropped, 1);
+        assert_eq!(snap.present.upload_bytes, 4096);
+        assert!(snap.present.latency.samples > 0);
     }
 }

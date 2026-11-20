@@ -15,7 +15,7 @@ pub use histogram::{HistSnapshot, Histogram, BUCKETS};
 pub use kind::{ExitKind, EXIT_KINDS};
 pub use registry::{Metrics, MAX_BLK_DISKS, MAX_DEVICES, MAX_VCPUS, POLICY_RULES};
 pub use snapshot::{
-    DeviceSnapshot, ExitCount, IoSnapshot, NamedCount, NamedIoSnapshot, Snapshot, VcpuSnapshot,
-    X86EngineSnapshot,
+    DeviceSnapshot, ExitCount, IoSnapshot, NamedCount, NamedIoSnapshot, PresentSnapshot, Snapshot,
+    VcpuSnapshot, X86EngineSnapshot,
 };
 pub use x86::{X86Counters, X86_ENGINES};

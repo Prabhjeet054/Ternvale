@@ -423,7 +423,10 @@ mod tests {
     #[test]
     fn gpu3d_is_unsupported_on_vz() {
         let mut config = linux();
-        config.gpu = Some(ternvale_config::GpuSection { gpu3d: true });
+        config.gpu = Some(ternvale_config::GpuSection {
+            gpu3d: true,
+            ..Default::default()
+        });
         match VzPlan::from_config(&config) {
             Err(VzError::UnsupportedOption {
                 option,

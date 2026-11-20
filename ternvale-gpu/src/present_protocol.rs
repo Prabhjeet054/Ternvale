@@ -15,10 +15,15 @@
 /// `"TVDP"` read as a little-endian u32.
 pub const MAGIC: u32 = u32::from_le_bytes(*b"TVDP");
 /// Wire version; a peer with another version is refused. Version 2 added
-/// input messages.
-pub const VERSION: u16 = 2;
+/// input messages. Version 3 added damage rects, scanout id, scale, and
+/// color-space flags (64-byte frame header).
+pub const VERSION: u16 = 3;
 /// Bytes in a [`FrameHeader`].
-pub const FRAME_HEADER_LEN: usize = 40;
+pub const FRAME_HEADER_LEN: usize = 64;
+/// Payload is `damage_w × damage_h` packed rows, not the full frame.
+pub const FRAME_FLAG_PARTIAL: u32 = 1 << 0;
+/// Host Metal layer should use Display P3 (guest pixels remain sRGB).
+pub const FRAME_FLAG_DISPLAY_P3: u32 = 1 << 1;
 /// Bytes in every viewer → VMM message.
 pub const MESSAGE_LEN: usize = 16;
 /// VMM → viewer: one frame.
@@ -42,6 +47,9 @@ pub const KIND_SCROLL: u16 = 0x0204;
 /// viewer → VMM: host window resize; `value` = width (bits 0..32) |
 /// height (bits 32..64) for scanout 0.
 pub const KIND_SET_SIZE: u16 = 0x0205;
+/// viewer → VMM: resize a specific scanout; `value` = width (0..16) |
+/// height (16..32) | scanout (48..64).
+pub const KIND_SET_SIZE_EX: u16 = 0x0206;
 /// Largest pointer coordinate (matches the tablet's `ABS_X`/`ABS_Y` max).
 pub const POINTER_MAX: u32 = 0x7fff;
 /// Largest width or height a frame may claim (the device's own limit).
@@ -113,12 +121,26 @@ pub struct FrameHeader {
     pub format: u32,
     /// The scanout's update counter ([`crate::Frame::sequence`]).
     pub sequence: u64,
-    /// Pixel bytes after the header (`stride × height`).
+    /// Pixel bytes after the header (`stride × height`, or packed damage).
     pub payload_len: u32,
+    /// [`FRAME_FLAG_PARTIAL`] / [`FRAME_FLAG_DISPLAY_P3`].
+    pub flags: u32,
+    /// virtio-gpu scanout index.
+    pub scanout: u32,
+    /// Damaged rectangle (scanout coordinates). Full frame when not partial.
+    pub damage_x: u32,
+    /// Top of the damaged rectangle.
+    pub damage_y: u32,
+    /// Width of the damaged rectangle.
+    pub damage_w: u32,
+    /// Height of the damaged rectangle.
+    pub damage_h: u32,
+    /// `100` = 1×, `200` = 2× (host window points = pixels × 100 / scale).
+    pub scale_x100: u32,
 }
 
 impl FrameHeader {
-    /// The 40-byte wire form.
+    /// The 64-byte wire form.
     pub fn encode(&self) -> [u8; FRAME_HEADER_LEN] {
         let mut out = [0u8; FRAME_HEADER_LEN];
         out[0..4].copy_from_slice(&MAGIC.to_le_bytes());
@@ -130,6 +152,13 @@ impl FrameHeader {
         out[20..24].copy_from_slice(&self.format.to_le_bytes());
         out[24..32].copy_from_slice(&self.sequence.to_le_bytes());
         out[32..36].copy_from_slice(&self.payload_len.to_le_bytes());
+        out[36..40].copy_from_slice(&self.flags.to_le_bytes());
+        out[40..44].copy_from_slice(&self.scanout.to_le_bytes());
+        out[44..48].copy_from_slice(&self.damage_x.to_le_bytes());
+        out[48..52].copy_from_slice(&self.damage_y.to_le_bytes());
+        out[52..56].copy_from_slice(&self.damage_w.to_le_bytes());
+        out[56..60].copy_from_slice(&self.damage_h.to_le_bytes());
+        out[60..64].copy_from_slice(&self.scale_x100.to_le_bytes());
         out
     }
 
@@ -146,11 +175,38 @@ impl FrameHeader {
             format: le32(bytes, 20),
             sequence: le64(bytes, 24),
             payload_len: le32(bytes, 32),
+            flags: le32(bytes, 36),
+            scanout: le32(bytes, 40),
+            damage_x: le32(bytes, 44),
+            damage_y: le32(bytes, 48),
+            damage_w: le32(bytes, 52),
+            damage_h: le32(bytes, 56),
+            scale_x100: le32(bytes, 60),
+        };
+        let partial = header.flags & FRAME_FLAG_PARTIAL != 0;
+        let expected_payload = if header.width == 0 && header.height == 0 {
+            0
+        } else if partial {
+            u64::from(header.damage_w) * 4 * u64::from(header.damage_h)
+        } else {
+            u64::from(header.stride) * u64::from(header.height)
+        };
+        let rect_ok = if header.width == 0 && header.height == 0 {
+            true
+        } else {
+            RectLike {
+                x: header.damage_x,
+                y: header.damage_y,
+                w: header.damage_w,
+                h: header.damage_h,
+            }
+            .fits(header.width, header.height)
         };
         let fits = header.width <= MAX_DIMENSION
             && header.height <= MAX_DIMENSION
             && u64::from(header.stride) == u64::from(header.width) * 4
-            && u64::from(header.payload_len) == u64::from(header.stride) * u64::from(header.height);
+            && u64::from(header.payload_len) == expected_payload
+            && rect_ok;
         if !fits {
             return Err(WireError::Geometry {
                 width: header.width,
@@ -185,6 +241,31 @@ pub enum ViewerMessage {
         /// Rows.
         height: u32,
     },
+    /// Host wants a new advertised mode for a numbered scanout.
+    SetSizeEx {
+        /// Scanout index.
+        scanout: u32,
+        /// Pixels per row.
+        width: u32,
+        /// Rows.
+        height: u32,
+    },
+}
+
+struct RectLike {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+}
+
+impl RectLike {
+    fn fits(self, width: u32, height: u32) -> bool {
+        self.w > 0
+            && self.h > 0
+            && self.x.checked_add(self.w).is_some_and(|r| r <= width)
+            && self.y.checked_add(self.h).is_some_and(|b| b <= height)
+    }
 }
 
 /// Pointer button in a [`ViewerInput::Button`].
@@ -298,6 +379,14 @@ impl ViewerMessage {
             Self::SetSize { width, height } => {
                 (KIND_SET_SIZE, u64::from(width) | u64::from(height) << 32)
             }
+            Self::SetSizeEx {
+                scanout,
+                width,
+                height,
+            } => (
+                KIND_SET_SIZE_EX,
+                u64::from(width) | u64::from(height) << 16 | u64::from(scanout) << 48,
+            ),
         };
         let mut out = [0u8; MESSAGE_LEN];
         out[0..4].copy_from_slice(&MAGIC.to_le_bytes());
@@ -319,6 +408,11 @@ impl ViewerMessage {
             KIND_SET_SIZE => Ok(Self::SetSize {
                 width: value as u32,
                 height: (value >> 32) as u32,
+            }),
+            KIND_SET_SIZE_EX => Ok(Self::SetSizeEx {
+                width: (value as u16).into(),
+                height: ((value >> 16) as u16).into(),
+                scanout: (value >> 48) as u32,
             }),
             kind => match ViewerInput::parse(kind, value) {
                 Some(input) => input.map(Self::Input),

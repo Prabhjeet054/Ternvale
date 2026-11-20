@@ -17,6 +17,8 @@ ternvale-vmm = { path = "../ternvale-vmm", default-features = false }
 ternvale-devices = { path = "../ternvale-devices", default-features = false }
 # Host Venus decoder, blobs, fences, MoltenVK path (optional feature).
 ternvale-gpu3d-host = { path = "../ternvale-gpu3d-host", optional = true }
+# Step 61 presentation counters (latency, drops, upload bytes).
+ternvale-metrics = { path = "../ternvale-metrics" }
 
 [features]
 default = []
@@ -28,6 +30,8 @@ gpu3d = ["dep:ternvale-gpu3d-host", "ternvale-gpu3d-host/virgl"]
 # Process-wide capture subscriber so tests can assert the DEBUG command and TRACE flush
 # lines (already built for ternvale-log and ternvale-tpm).
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+# CLOCK_PROCESS_CPUTIME_ID for the Step 109 60s idle analog (RUSAGE / process CPU).
+libc = "0.2"
 
 [lints]
 workspace = true

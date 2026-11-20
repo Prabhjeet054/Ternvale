@@ -33,11 +33,16 @@ final class DisplayMetalView: MTKView, MTKViewDelegate {
         deviceMetal = dev
         queue = dev?.makeCommandQueue()
         framebufferOnly = false
-        colorPixelFormat = .bgra8Unorm
+        colorPixelFormat = .bgra8Unorm_srgb
         isPaused = true
         enableSetNeedsDisplay = false
         delegate = self
         wantsLayer = true
+        if let metal = layer as? CAMetalLayer {
+            metal.displaySyncEnabled = true
+            metal.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+            metal.framebufferOnly = true
+        }
         layer?.backgroundColor = NSColor.black.cgColor
     }
 
@@ -64,25 +69,38 @@ final class DisplayMetalView: MTKView, MTKViewDelegate {
     func submit(frame: GuestDisplayFrame) {
         guard frame.width > 0, frame.height > 0, !frame.pixels.isEmpty else { return }
         guard let deviceMetal else { return }
-        let desc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: metalFormat(frame.format),
-            width: Int(frame.width),
-            height: Int(frame.height),
-            mipmapped: false
-        )
-        desc.usage = [.shaderRead]
-        guard let tex = deviceMetal.makeTexture(descriptor: desc) else { return }
-        let stride = Int(frame.strideBytes)
+        let w = Int(frame.width)
+        let h = Int(frame.height)
+        if texture == nil || texture?.width != w || texture?.height != h {
+            let desc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: metalFormat(frame.format),
+                width: w,
+                height: h,
+                mipmapped: false
+            )
+            desc.usage = [.shaderRead]
+            texture = deviceMetal.makeTexture(descriptor: desc)
+        }
+        guard let tex = texture else { return }
+        let partial = frame.flags & PresentWire.flagPartial != 0
+        let dx = Int(partial ? frame.damageX : 0)
+        let dy = Int(partial ? frame.damageY : 0)
+        let dw = Int(partial ? frame.damageW : frame.width)
+        let dh = Int(partial ? frame.damageH : frame.height)
         frame.pixels.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return }
             tex.replace(
-                region: MTLRegionMake2D(0, 0, Int(frame.width), Int(frame.height)),
+                region: MTLRegionMake2D(dx, dy, dw, dh),
                 mipmapLevel: 0,
                 withBytes: base,
-                bytesPerRow: stride
+                bytesPerRow: dw * 4
             )
         }
-        texture = tex
+        if let metal = layer as? CAMetalLayer {
+            metal.colorspace = frame.flags & PresentWire.flagDisplayP3 != 0
+                ? CGColorSpace(name: CGColorSpace.displayP3)
+                : CGColorSpace(name: CGColorSpace.sRGB)
+        }
         frameSize = CGSize(width: CGFloat(frame.width), height: CGFloat(frame.height))
         pendingSequence = frame.sequence
         isPaused = false

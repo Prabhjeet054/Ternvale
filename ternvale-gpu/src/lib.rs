@@ -26,7 +26,8 @@
 //! (`tools/ternvale-viewer`) over a Unix socket in the [`present_protocol`]
 //! format, capped at a frame rate; frame drops and flush-to-present latency
 //! are logged at DEBUG. Keyboard and pointer input from the viewer (wire
-//! version 2) goes to an [`InputTarget`] as it arrives.
+//! version 3) goes to an [`InputTarget`] as it arrives. Damage rectangles
+//! and HiDPI/color flags ride on the 64-byte frame header.
 
 mod device;
 mod edid;
@@ -36,6 +37,8 @@ mod gpu2d;
 mod gpu3d;
 mod present;
 pub mod present_protocol;
+mod present_quality;
+mod present_send;
 mod present_session;
 mod present_window;
 pub mod protocol;
@@ -59,6 +62,7 @@ pub use present::{
     DEFAULT_REPORT_EVERY, MAX_FPS,
 };
 pub use present_protocol::{PointerButton, ViewerInput};
+pub use present_quality::{PresentColor, PresentLayout, PresentQuality};
 pub use resource::{PixelFormat, BYTES_PER_PIXEL};
 pub use scanout::{Frame, GpuDisplay};
 pub use worker::{CONTROL_QUEUE, CURSOR_QUEUE, MAX_REQUEST};

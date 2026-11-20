@@ -30,7 +30,7 @@ pub use cpu::CpuProfile;
 pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEPTH};
 pub use error::{ConfigError, TernvaleError};
 pub use firmware_tables::FirmwareTables;
-pub use gpu::GpuSection;
+pub use gpu::{GpuColorSpace, GpuSection, GpuWindows};
 pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BYTES};
 pub use nic::{ForwardProto, Nic, NicMode, PortForward};
 pub use policy::{parse_cidr, CidrPort, NicPolicy};
