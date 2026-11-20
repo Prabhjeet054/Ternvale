@@ -168,6 +168,29 @@ impl HostGpu {
     pub fn is_lost(&self) -> bool {
         self.state.is_lost()
     }
+
+    /// Guest `RESOURCE_UNREF` analog for a blob.
+    #[tracing::instrument(level = "debug", target = "ternvale::gpu3d", skip(self))]
+    pub fn destroy_blob(&mut self, resource_id: u32) {
+        if let Err(error) = self.unmap_blob(resource_id) {
+            tracing::debug!(
+                target: "ternvale::gpu3d",
+                resource_id,
+                error = %error,
+                "blob was not mapped; continuing destroy"
+            );
+        }
+        self.state.destroy_blob(resource_id);
+    }
+
+    /// `(contexts, blobs, mapped BAR slots)` for start/stop leak checks.
+    pub fn live_counts(&self) -> (usize, usize, usize) {
+        (
+            self.state.context_count(),
+            self.state.blob_count(),
+            self.pool.slot_count(),
+        )
+    }
 }
 
 impl Default for HostGpu {

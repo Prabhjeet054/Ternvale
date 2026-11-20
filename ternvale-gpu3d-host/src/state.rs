@@ -277,6 +277,31 @@ impl Gpu3dState {
         Ok(())
     }
 
+    /// Drop a blob id (guest `RESOURCE_UNREF` analog). Unknown ids are ignored.
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::gpu3d",
+        skip(self),
+        fields(resource_id)
+    )]
+    pub fn destroy_blob(&mut self, resource_id: u32) {
+        self.blobs.remove(&resource_id);
+        for set in self.attached.values_mut() {
+            set.remove(&resource_id);
+        }
+        tracing::debug!(target: "ternvale::gpu3d", resource_id, "blob resource destroyed");
+    }
+
+    /// Live context count (leak checks).
+    pub fn context_count(&self) -> usize {
+        self.contexts.len()
+    }
+
+    /// Live blob count (leak checks).
+    pub fn blob_count(&self) -> usize {
+        self.blobs.len()
+    }
+
     /// Blob metadata if present.
     pub fn blob(&self, resource_id: u32) -> Result<&Blob, Gpu3dError> {
         self.blobs.get(&resource_id).ok_or(Gpu3dError::BadId {

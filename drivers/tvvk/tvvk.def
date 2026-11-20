@@ -1,0 +1,14 @@
+LIBRARY tvvk
+EXPORTS
+    vk_icdNegotiateLoaderICDInterfaceVersion
+    vk_icdGetInstanceProcAddr
+    vk_icdGetPhysicalDeviceProcAddr
+    tvvk_export_nop
+    vkGetInstanceProcAddr
+    vkCreateInstance
+    vkDestroyInstance
+    vkEnumeratePhysicalDevices
+    vkGetPhysicalDeviceProperties
+    vkCreateDevice
+    vkDestroyDevice
+    vkGetDeviceProcAddr

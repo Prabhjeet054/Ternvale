@@ -197,6 +197,14 @@ impl HostVisiblePool {
             });
         };
         mapper.unmap(slot.ipa, slot.size)?;
+        if self.slots.is_empty() {
+            self.next = HOSTMEM_GPA;
+            tracing::debug!(
+                target: "ternvale::gpu3d",
+                resource_id,
+                "hostmem BAR bump reset after last unmap"
+            );
+        }
         tracing::debug!(
             target: "ternvale::gpu3d",
             resource_id,
@@ -204,6 +212,11 @@ impl HostVisiblePool {
             "unmapped host-visible blob"
         );
         Ok(())
+    }
+
+    /// Mapped BAR slots (leak checks).
+    pub fn slot_count(&self) -> usize {
+        self.slots.len()
     }
 }
 
@@ -228,6 +241,10 @@ mod tests {
         assert_eq!(mapper.mapped.len(), 1);
         pool.unmap_blob(&mut mapper, 1).expect("unmap");
         assert!(mapper.mapped.is_empty());
+        assert_eq!(pool.slot_count(), 0);
+        let again = pool.map_blob(&mut mapper, 2, 1, 0).expect("remap");
+        assert_eq!(again, ipa, "BAR bump must reset after last unmap");
+        pool.unmap_blob(&mut mapper, 2).expect("unmap2");
     }
 
     #[test]

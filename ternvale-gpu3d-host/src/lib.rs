@@ -13,6 +13,7 @@ mod renderer;
 mod state;
 #[cfg(feature = "virgl")]
 mod virgl;
+mod win_icd;
 
 pub use align::{HOSTMEM_BYTES, HOSTMEM_GPA, HV_PAGE, MOLTENVK_HOST_ALIGN, VIRTIO_BLOB_ALIGN};
 pub use decoder::{check_object_ids, decode_submit, CsCommand, MAX_COMMANDS, MAX_SUBMIT};
@@ -23,6 +24,7 @@ pub use renderer::{HostRenderer, StubRenderer};
 pub use state::{
     Blob, Fences, Gpu3dState, BLOB_MEM_GUEST, BLOB_MEM_HOST3D, BLOB_MEM_HOST3D_GUEST, CAPSET_VENUS,
 };
+pub use win_icd::{decode_nop, encode_nop, TVVK_CS_HEADER, TVVK_CS_NOP};
 
 #[cfg(feature = "virgl")]
 pub use virgl::fill_venus_capset;

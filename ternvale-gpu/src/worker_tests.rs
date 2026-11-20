@@ -206,6 +206,22 @@ fn gpu3d_runtime_off_rejects_ctx_create() {
     );
 }
 
+/// Kill switch must not take down 2D scanout (display-only fallback).
+#[test]
+fn gpu3d_runtime_off_still_serves_2d_display_info() {
+    let mut rig = Rig::new();
+    let mut request = hdr(protocol::CMD_CTX_CREATE, 0, 0);
+    request.extend_from_slice(&[0u8; 72]);
+    let rejected = rig.submit(CONTROL_QUEUE, &request, &[]);
+    assert_eq!(kind(&rejected), protocol::RESP_ERR_UNSPEC);
+    let display = rig.submit(CONTROL_QUEUE, &get_display_info(), &[10]);
+    assert_eq!(
+        kind(&display),
+        protocol::RESP_OK_DISPLAY_INFO,
+        "2D GET_DISPLAY_INFO must still work when gpu3d is off"
+    );
+}
+
 fn fill_backing_raw(mem: &mut GuestMemory, entries: &[(u64, u32)], bytes: &[u8]) {
     let mut at = 0usize;
     for &(addr, len) in entries {

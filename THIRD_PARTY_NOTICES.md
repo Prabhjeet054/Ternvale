@@ -37,7 +37,8 @@ guest installers. Review upstream terms before you redistribute them yourself.
 | virglrenderer | optional `dlopen` (`gpu3d` + `[gpu] gpu3d = true`) | MIT upstream; not vendored | no | No |
 | rutabaga_gfx | not linked | BSD-3-Clause; not vendored | no | No |
 | gfxstream | not linked (fallback candidate) | Apache-2.0; not vendored | no | No |
-| MoltenVK | host Vulkan ICD for virglrenderer Venus; not linked into Ternvale | Apache-2.0; user-installed | no | No |
+| MoltenVK | host Vulkan ICD for virglrenderer Venus; not linked into Ternvale | **Apache-2.0** (verified 2026-11-20, [KhronosGroup/MoltenVK LICENSE](https://github.com/KhronosGroup/MoltenVK/blob/main/LICENSE); community-maintained after Khronos deprecation) | no | No |
+| DXVK | guest D3D8/9/10/11 → Vulkan; `guest-tools/win3d/fetch-dxvk.ps1` after `yes` | **zlib/libpng** (verified 2026-11-20, [doitsujin/dxvk LICENSE](https://github.com/doitsujin/dxvk/blob/master/LICENSE); Rebohle, Ashton, Kertels, Ellison) | no | No |
 | FEX-Emu | Guest usermode x86 (`scripts/build-fex.sh`); not linked into the VMM | **MIT** (Ryan Houdek, 2019+) | no | No |
 | FEX RootFS (typically Ubuntu squashfs) | `ternvale x86 fetch-rootfs` after typing `yes` | Canonical / distro terms (not FEX MIT) | n/a | **No** (never bundled) |
 | qemu-user-static | Guest distro package via `ternvale x86 install-qemu-user` | **GPL** | **GPL** | **No** |
@@ -77,10 +78,28 @@ Ternvale.app. Guests install the distro package (`qemu-user-static` /
 
 ### GPU
 
-No Mesa, virglrenderer, gfxstream, or MoltenVK binary is redistributed. The
-`gpu3d` / `ternvale-gpu3d-host` code is Ternvale source (MIT OR Apache-2.0).
-virglrenderer is loaded at runtime when present (`TERNVALE_VIRGL_RENDERER`).
-See `docs/GPU_ACCELERATION.md` Step 107.
+No Mesa, virglrenderer, gfxstream, MoltenVK, or DXVK binary is redistributed.
+The `gpu3d` / `ternvale-gpu3d-host` / `drivers/tvvk` code is Ternvale source
+(MIT OR Apache-2.0). virglrenderer and MoltenVK load on the **host** when
+present. DXVK is fetch-only in the **guest** (`fetch-dxvk.ps1`). Yttrium /
+Mesa `vulkan_virtio` were **consulted, not copied** (MPL-2.0 on marked Yttrium
+files). See `docs/GPU_ACCELERATION.md` Steps 107–108.
+
+### DXVK (zlib) — shipping rule
+
+https://github.com/doitsujin/dxvk — zlib/libpng. Copyright Philip Rebohle,
+Joshua Ashton, Robin Kertels, Jeffrey Ellison. Ternvale **must not** link
+DXVK into the VMM or Ternvale.app. Official release DLLs are **Wine x86/x64**,
+not Windows ARM64 native. Guests fetch LICENSE (and optionally build from
+source) after typing `yes`.
+
+### MoltenVK (Apache-2.0) — shipping rule
+
+https://github.com/KhronosGroup/MoltenVK — Apache-2.0. Host ICD for
+virglrenderer Venus → Metal. User-installed (`brew install molten-vk` or
+`scripts/install-host-virgl.sh`). Not vendored. Khronos deprecated MoltenVK
+in 2026 in favor of **KosmicKrisp** on Apple silicon; TODO(verify) a later
+host ICD switch.
 
 ### tvgpu-dod (Windows KMDOD) — consulted, not copied
 

@@ -132,3 +132,89 @@ fn fuzz_decoder_ten_minutes() {
     );
     assert!(n > 0);
 }
+
+/// Production [`HostGpu::new`] without virglrenderer is the software stub, not Metal.
+#[test]
+fn host_gpu_without_virgl_logs_software_not_metal() {
+    let ((), log) = capture(|| {
+        let _gpu = HostGpu::new();
+    });
+    let lower = log.to_ascii_lowercase();
+    assert!(
+        lower.contains("software_stub") || lower.contains("stub renderer"),
+        "expected software path in logs:\n{log}"
+    );
+    assert!(
+        !lower.contains("host_gpu_path=virgl_moltenvk"),
+        "must not claim MoltenVK/Metal without virgl:\n{log}"
+    );
+}
+
+/// vkcube/DXVK start/stop analog: ctx + blob + nop CS + destroy; no leftover objects.
+#[test]
+fn win3d_app_start_stop_does_not_leak_host_objects() {
+    use crate::encode_nop;
+    use crate::state::BLOB_MEM_HOST3D;
+
+    let mut gpu = HostGpu::for_tests();
+    for i in 0..256u32 {
+        tracing::debug!(
+            target: "ternvale::gpu3d",
+            iteration = i,
+            "win3d start/stop analog"
+        );
+        gpu.ctx_create(1, CAPSET_VENUS, b"vkcube").expect("ctx");
+        gpu.create_blob(1, 3, BLOB_MEM_HOST3D, 4096).expect("blob");
+        gpu.map_blob(3, 0).expect("map");
+        gpu.submit(1, &encode_nop(), 1).expect("submit");
+        gpu.destroy_blob(3);
+        gpu.ctx_destroy(1);
+        assert_eq!(
+            gpu.live_counts(),
+            (0, 0, 0),
+            "leaked 3D objects after iteration {i}"
+        );
+    }
+}
+
+/// 30-minute start/stop soak. Override with `TERNVALE_WIN3D_SOAK_SECS` (0 skips).
+#[test]
+#[ignore = "win3d-soak-30m"]
+fn win3d_start_stop_thirty_minutes() {
+    use crate::encode_nop;
+    use crate::state::BLOB_MEM_HOST3D;
+
+    let secs: u64 = std::env::var("TERNVALE_WIN3D_SOAK_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1800);
+    if secs == 0 {
+        tracing::info!(target: "ternvale::gpu3d", "win3d soak skipped (0s)");
+        return;
+    }
+    let until = Instant::now() + Duration::from_secs(secs);
+    let mut gpu = HostGpu::for_tests();
+    let mut n = 0u64;
+    tracing::info!(
+        target: "ternvale::gpu3d",
+        secs,
+        "win3d start/stop soak starting"
+    );
+    while Instant::now() < until {
+        gpu.ctx_create(1, CAPSET_VENUS, b"d3d11").expect("ctx");
+        gpu.create_blob(1, 3, BLOB_MEM_HOST3D, 4096).expect("blob");
+        gpu.map_blob(3, 0).expect("map");
+        gpu.submit(1, &encode_nop(), 1).expect("submit");
+        gpu.destroy_blob(3);
+        gpu.ctx_destroy(1);
+        assert_eq!(gpu.live_counts(), (0, 0, 0));
+        n += 1;
+    }
+    tracing::info!(
+        target: "ternvale::gpu3d",
+        secs,
+        iterations = n,
+        "win3d start/stop soak finished; VM analog still live"
+    );
+    assert!(n > 0);
+}

@@ -1,0 +1,50 @@
+; Ternvale prototype Vulkan ICD (user-mode). Not a display miniport.
+; Registers Khronos ICD JSON. DCH software component.
+; Display remains tvgpu-dod (KMDOD). Fail closed when 3D probe fails.
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = SoftwareComponent
+ClassGuid   = {5c4c3332-344d-483c-8739-259e934c9cc8}
+Provider    = %Ternvale%
+DriverVer   = 11/20/2026,10.0.1.0
+CatalogFile = tvvk.cat
+PnpLockdown = 1
+DriverPackageType = PlugAndPlay
+DriverPackageDisplayName = %Tvvk.Desc%
+
+[DestinationDirs]
+tvvk_CopyFiles = 11
+DefaultDestDir = 11
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+tvvk.dll  = 1
+tvvk.json = 1
+
+[Manufacturer]
+%Ternvale% = Ternvale,NTarm64
+
+[Ternvale.NTarm64]
+%Tvvk.Desc% = tvvk_Inst, SWC\TERNVALE_TVVK
+
+[tvvk_Inst.NTARM64]
+CopyFiles = tvvk_CopyFiles
+AddReg    = tvvk_IcdReg
+
+[tvvk_CopyFiles]
+tvvk.dll
+tvvk.json
+
+[tvvk_IcdReg]
+HKLM,"SOFTWARE\Khronos\Vulkan\Drivers","%11%\tvvk.json",0x00010001,0
+
+[tvvk_Inst.NTARM64.Services]
+AddService = ,0x00000002,
+
+[Strings]
+Ternvale    = "Ternvale"
+DiskName    = "Ternvale Vulkan ICD prototype"
+Tvvk.Desc   = "Ternvale prototype Vulkan ICD (tvvk)"

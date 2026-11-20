@@ -36,6 +36,9 @@ impl StubRenderer {
     pub fn new() -> Self {
         tracing::info!(
             target: "ternvale::gpu3d",
+            host_gpu_path = "software_stub",
+            moltenvk = false,
+            metal = false,
             "gpu3d stub renderer (install virglrenderer + MoltenVK for host GPU)"
         );
         Self {

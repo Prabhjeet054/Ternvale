@@ -137,6 +137,9 @@ pub fn ensure_loaded() -> bool {
         flags = flags_used,
         venus_ver,
         venus_size,
+        host_gpu_path = "virgl_moltenvk",
+        moltenvk = true,
+        metal = true,
         "virglrenderer Venus backend ready (MoltenVK/Metal)"
     );
     *slot = Some(loaded);

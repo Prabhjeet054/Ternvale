@@ -2,7 +2,7 @@
 CARGO ?= cargo
 ENTITLEMENTS := entitlements/ternvale-hv-only.entitlements
 
-.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run fuzz-install audit-unsafe miri sanitize-stress loom compat compat-x86 compat-test x86-engines x86-engines-test nested-virt-test updates-test crash-ingest-test step89-test notices book rc-check rc-zip rc-tag gpu3d-test
+.PHONY: build test test-hv lint ci-pr sign clean guest-tests viewer bench bench-image bench-compare-test fuzz-smoke fuzz-long fuzz-run fuzz-install audit-unsafe miri sanitize-stress loom compat compat-x86 compat-test x86-engines x86-engines-test nested-virt-test updates-test crash-ingest-test step89-test notices book rc-check rc-zip rc-tag gpu3d-test win3d-proto win3d-test
 
 build:
 	$(CARGO) build --workspace
@@ -133,6 +133,14 @@ driver-package-test:
 # Step 107: gpu3d feature-off, GPU-lost analog, decoder soak (10m), optional Venus guest.
 gpu3d-test:
 	./scripts/gpu3d-live-check.sh
+
+# Step 108: Windows 3D prototype host checks (ICD JSON/encoder; no vkcube).
+win3d-proto:
+	./scripts/win3d-proto-check.sh
+
+# Step 108 test: 2D fallback, software path logs, leak analog, optional 30m soak / Windows guest.
+win3d-test:
+	./scripts/win3d-live-check.sh
 
 # Step 89: Sparkle appcast generator + crash ingest (no network).
 updates-test:
