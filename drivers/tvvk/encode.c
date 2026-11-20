@@ -2,22 +2,41 @@
 
 #include "encode.h"
 
-size_t tvvk_encode_nop(uint8_t *out, size_t cap)
+static void write_u32(uint8_t *out, uint32_t value)
 {
-    uint32_t opcode;
-    uint32_t size;
-    if (out == NULL || cap < TVVK_NOP_BYTES) {
+    out[0] = (uint8_t)(value & 0xffu);
+    out[1] = (uint8_t)((value >> 8) & 0xffu);
+    out[2] = (uint8_t)((value >> 16) & 0xffu);
+    out[3] = (uint8_t)((value >> 24) & 0xffu);
+}
+
+static size_t write_hdr(uint8_t *out, size_t cap, uint32_t opcode, uint32_t size)
+{
+    if (out == NULL || cap < size || size < TVVK_CS_HEADER) {
         return 0;
     }
-    opcode = TVVK_CS_NOP;
-    size = TVVK_CS_HEADER;
-    out[0] = (uint8_t)(opcode & 0xffu);
-    out[1] = (uint8_t)((opcode >> 8) & 0xffu);
-    out[2] = (uint8_t)((opcode >> 16) & 0xffu);
-    out[3] = (uint8_t)((opcode >> 24) & 0xffu);
-    out[4] = (uint8_t)(size & 0xffu);
-    out[5] = (uint8_t)((size >> 8) & 0xffu);
-    out[6] = (uint8_t)((size >> 16) & 0xffu);
-    out[7] = (uint8_t)((size >> 24) & 0xffu);
-    return TVVK_NOP_BYTES;
+    write_u32(out, opcode);
+    write_u32(out + 4, size);
+    return size;
+}
+
+size_t tvvk_encode_nop(uint8_t *out, size_t cap)
+{
+    return write_hdr(out, cap, TVVK_CS_NOP, TVVK_CS_HEADER);
+}
+
+size_t tvvk_encode_draw_cube(uint8_t *out, size_t cap, uint32_t width, uint32_t height, uint32_t frame)
+{
+    if (write_hdr(out, cap, TVVK_CS_DRAW_CUBE, TVVK_DRAW_CUBE_BYTES) == 0) {
+        return 0;
+    }
+    write_u32(out + 8, width);
+    write_u32(out + 12, height);
+    write_u32(out + 16, frame);
+    return TVVK_DRAW_CUBE_BYTES;
+}
+
+size_t tvvk_encode_present(uint8_t *out, size_t cap)
+{
+    return write_hdr(out, cap, TVVK_CS_PRESENT, TVVK_CS_HEADER);
 }

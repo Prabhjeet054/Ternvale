@@ -12,8 +12,9 @@ Step 108.
   `\\.\TVGPU3D` node, `TERNVALE_GPU3D=0`, or `HKLM\SOFTWARE\Ternvale\Gpu3d\Enabled=0`.
   The loader then skips this ICD; **tvgpu-dod** keeps 2D scanout.
 - Encodes a length-prefixed nop CS (`encode.c`) matching `ternvale-gpu3d-host`.
-- `vkCreateWin32SurfaceKHR` returns `VK_ERROR_FEATURE_NOT_PRESENT`. **vkcube.exe
-  cannot present.**
+- Win32 WSI present sends `DRAW_CUBE` through `\\.\TVGPU3D` (tvgpu-dod IOCTL →
+  virtio `SUBMIT_3D`). Host MoltenVK logs `metal=true` when the dylib loads.
+- **vkcube.exe** still needs a Vulkan SDK in the guest and a `gpu3d=true` VM.
 
 ## Build (Windows 11 ARM64, Visual Studio C++ ARM64 — not WDK kernel)
 

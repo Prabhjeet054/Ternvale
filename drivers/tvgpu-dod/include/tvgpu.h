@@ -72,6 +72,10 @@ typedef struct _TVGPU_DEVICE {
     BOOLEAN CursorqReady;
     /* Host ACKs cursorq but does not composite. Default: software cursor. */
     BOOLEAN HardwareCursor;
+    BOOLEAN ThreeD;
+    BOOLEAN CtxReady;
+    UINT32 CtxId;
+    DEVICE_OBJECT *ControlDevice;
     UINT32 NextResourceId;
     UINT32 CursorResourceId;
     TVGPU_SCANOUT Scanouts[VIRTIO_GPU_MAX_SCANOUTS];
@@ -95,6 +99,10 @@ BOOLEAN TvgpuEdidLooksValid(_In_reads_(Length) const UINT8 *Edid, _In_ UINT32 Le
 NTSTATUS TvgpuMapBars(_Inout_ TVGPU_DEVICE *Dev, _In_ PCM_RESOURCE_LIST Translated);
 NTSTATUS TvgpuVirtioStart(_Inout_ TVGPU_DEVICE *Dev);
 VOID TvgpuVirtioStop(_Inout_ TVGPU_DEVICE *Dev);
+VOID TvgpuHookDriver(_In_ PDRIVER_OBJECT DriverObject);
+NTSTATUS TvgpuControlStart(_Inout_ TVGPU_DEVICE *Dev);
+VOID TvgpuControlStop(_Inout_ TVGPU_DEVICE *Dev);
+NTSTATUS TvgpuSubmitUserCs(_Inout_ TVGPU_DEVICE *Dev, _In_reads_bytes_(Len) PVOID Cs, _In_ UINT32 Len);
 NTSTATUS TvgpuSyncCommand(
     _Inout_ TVGPU_DEVICE *Dev,
     _In_ BOOLEAN CursorQueue,

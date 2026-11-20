@@ -9,6 +9,7 @@ mod decoder;
 mod error;
 mod host;
 mod mapping;
+mod molten;
 mod renderer;
 mod state;
 #[cfg(feature = "virgl")]
@@ -24,7 +25,10 @@ pub use renderer::{HostRenderer, StubRenderer};
 pub use state::{
     Blob, Fences, Gpu3dState, BLOB_MEM_GUEST, BLOB_MEM_HOST3D, BLOB_MEM_HOST3D_GUEST, CAPSET_VENUS,
 };
-pub use win_icd::{decode_nop, encode_nop, TVVK_CS_HEADER, TVVK_CS_NOP};
+pub use win_icd::{
+    decode_nop, encode_draw_cube, encode_nop, is_tvvk_draw, TVVK_CS_DRAW_CUBE, TVVK_CS_HEADER,
+    TVVK_CS_NOP, TVVK_CS_PRESENT,
+};
 
 #[cfg(feature = "virgl")]
 pub use virgl::fill_venus_capset;

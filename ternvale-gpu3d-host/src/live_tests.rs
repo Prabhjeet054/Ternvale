@@ -133,7 +133,7 @@ fn fuzz_decoder_ten_minutes() {
     assert!(n > 0);
 }
 
-/// Production [`HostGpu::new`] without virglrenderer is the software stub, not Metal.
+/// Venus inner path without virglrenderer is still the software stub.
 #[test]
 fn host_gpu_without_virgl_logs_software_not_metal() {
     let ((), log) = capture(|| {
@@ -142,11 +142,48 @@ fn host_gpu_without_virgl_logs_software_not_metal() {
     let lower = log.to_ascii_lowercase();
     assert!(
         lower.contains("software_stub") || lower.contains("stub renderer"),
-        "expected software path in logs:\n{log}"
+        "expected Venus software path in logs:\n{log}"
     );
     assert!(
         !lower.contains("host_gpu_path=virgl_moltenvk"),
-        "must not claim MoltenVK/Metal without virgl:\n{log}"
+        "must not claim virgl Venus Metal without virglrenderer:\n{log}"
+    );
+}
+
+/// Production [`HostGpu::new`] loads MoltenVK for tvvk DRAW_CUBE when the dylib exists.
+#[test]
+fn host_gpu_draw_cube_uses_moltenvk_when_present() {
+    let dylib = std::path::Path::new("/opt/homebrew/lib/libMoltenVK.dylib");
+    if !dylib.is_file() {
+        tracing::info!(target: "ternvale::gpu3d", "MoltenVK dylib missing; skip Metal assert");
+        return;
+    }
+    let (result, log) = capture(|| {
+        let mut gpu = HostGpu::new();
+        gpu.ctx_create(1, CAPSET_VENUS, b"tvvk").expect("ctx");
+        gpu.submit(1, &crate::encode_draw_cube(64, 64, 1), 1)
+    });
+    let lower = log.to_ascii_lowercase();
+    if result.is_err() {
+        assert!(
+            lower.contains("moltenvk not loaded")
+                || lower.contains("cannot use metal")
+                || lower.contains("vkcreateinstance"),
+            "DRAW_CUBE failed without a MoltenVK load log:\n{log}\n{result:?}"
+        );
+        tracing::info!(
+            target: "ternvale::gpu3d",
+            "MoltenVK present on disk but not loaded (Hardened Runtime); skip Metal assert"
+        );
+        return;
+    }
+    assert!(
+        lower.contains("host_gpu_path=moltenvk") && lower.contains("metal=true"),
+        "expected MoltenVK Metal path:\n{log}"
+    );
+    assert!(
+        !lower.contains("tvvk draw_cube without moltenvk"),
+        "DRAW_CUBE must not stay on software_stub:\n{log}"
     );
 }
 

@@ -144,6 +144,14 @@ impl HostGpu {
                 }
                 Ok(())
             }
+            Err(Gpu3dError::Unavailable(_)) if crate::win_icd::is_tvvk_draw(payload) => {
+                tracing::warn!(
+                    target: "ternvale::gpu3d",
+                    ctx_id,
+                    "tvvk DRAW_CUBE with no MoltenVK; GPU not marked lost"
+                );
+                Err(Gpu3dError::Unavailable("MoltenVK not loaded for tvvk"))
+            }
             Err(Gpu3dError::GpuLost) | Err(Gpu3dError::Unavailable(_)) => {
                 self.mark_lost();
                 Err(Gpu3dError::GpuLost)
@@ -200,13 +208,7 @@ impl Default for HostGpu {
 }
 
 fn open_renderer() -> Box<dyn HostRenderer> {
-    #[cfg(feature = "virgl")]
-    {
-        if let Some(virgl) = crate::virgl::VirglRenderer::connect() {
-            return Box::new(virgl);
-        }
-    }
-    Box::new(StubRenderer::new())
+    Box::new(crate::molten::DualRenderer::open())
 }
 
 #[cfg(test)]
@@ -235,5 +237,13 @@ mod tests {
         gpu.mark_lost();
         assert!(gpu.is_lost());
         assert!(matches!(gpu.submit(1, &cs, 0), Err(Gpu3dError::GpuLost)));
+    }
+
+    #[test]
+    fn tvvk_draw_cube_submit_on_test_renderer() {
+        let mut gpu = HostGpu::for_tests();
+        gpu.ctx_create(1, CAPSET_VENUS, b"tvvk").expect("ctx");
+        let cs = crate::encode_draw_cube(64, 64, 1);
+        gpu.submit(1, &cs, 1).expect("draw");
     }
 }

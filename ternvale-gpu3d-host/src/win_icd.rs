@@ -11,8 +11,14 @@ use crate::decoder::{decode_submit, CsCommand};
 
 /// Prototype nop opcode used by `drivers/tvvk` (`encode.c`).
 pub const TVVK_CS_NOP: u32 = 1;
+/// Host MoltenVK cube draw (`encode.h` `TVVK_CS_DRAW_CUBE`).
+pub const TVVK_CS_DRAW_CUBE: u32 = 0x5456_4B02;
+/// Present after a cube draw.
+pub const TVVK_CS_PRESENT: u32 = 0x5456_4B03;
 /// Header size (`cmd_type` + `cmd_size`) in bytes.
 pub const TVVK_CS_HEADER: u32 = 8;
+/// DRAW_CUBE payload including header.
+pub const TVVK_DRAW_CUBE_BYTES: u32 = 20;
 
 /// Encode a nop SUBMIT_3D payload (8 bytes, no object ids).
 #[tracing::instrument(level = "debug", target = "ternvale::gpu3d", skip_all)]
@@ -27,6 +33,38 @@ pub fn encode_nop() -> Vec<u8> {
         "encoded tvvk prototype nop CS"
     );
     out
+}
+
+/// Encode DRAW_CUBE (width, height, frame). Body u32s are not object ids.
+#[tracing::instrument(level = "debug", target = "ternvale::gpu3d", skip_all)]
+pub fn encode_draw_cube(width: u32, height: u32, frame: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(TVVK_DRAW_CUBE_BYTES as usize);
+    out.extend_from_slice(&TVVK_CS_DRAW_CUBE.to_le_bytes());
+    out.extend_from_slice(&TVVK_DRAW_CUBE_BYTES.to_le_bytes());
+    out.extend_from_slice(&width.to_le_bytes());
+    out.extend_from_slice(&height.to_le_bytes());
+    out.extend_from_slice(&frame.to_le_bytes());
+    tracing::debug!(
+        target: "ternvale::gpu3d",
+        opcode = TVVK_CS_DRAW_CUBE,
+        width,
+        height,
+        frame,
+        "encoded tvvk DRAW_CUBE CS"
+    );
+    out
+}
+
+/// True when this SUBMIT_3D payload is the Windows ICD cube/present path.
+#[tracing::instrument(level = "trace", target = "ternvale::gpu3d", skip_all)]
+pub fn is_tvvk_draw(payload: &[u8]) -> bool {
+    if payload.len() < 4 {
+        return false;
+    }
+    let mut raw = [0u8; 4];
+    raw.copy_from_slice(&payload[..4]);
+    let opcode = u32::from_le_bytes(raw);
+    opcode == TVVK_CS_DRAW_CUBE || opcode == TVVK_CS_PRESENT
 }
 
 /// Decode `encode_nop()` and require a single opcode-1 command with no ids.
@@ -82,5 +120,15 @@ mod tests {
         assert!(encode.contains("TVVK_CS_NOP 1"), "{encode}");
         let inf = std::fs::read_to_string(root.join("drivers/tvvk/tvvk.inf")).expect("inf");
         assert!(inf.contains("Khronos\\Vulkan\\Drivers"), "{inf}");
+        assert!(encode.contains("TVVK_CS_DRAW_CUBE"), "{encode}");
+    }
+
+    #[test]
+    fn encode_draw_cube_round_trips() {
+        let bytes = encode_draw_cube(800, 600, 3);
+        assert_eq!(bytes.len(), 20);
+        assert!(is_tvvk_draw(&bytes));
+        let cmds = crate::decoder::decode_submit(&bytes).expect("cs");
+        assert_eq!(cmds[0].opcode, TVVK_CS_DRAW_CUBE);
     }
 }

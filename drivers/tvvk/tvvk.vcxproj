@@ -41,22 +41,27 @@
       <TreatWarningAsError>true</TreatWarningAsError>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_WIN32;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WIN32;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <ModuleDefinitionFile>tvvk.def</ModuleDefinitionFile>
-      <AdditionalDependencies>kernel32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>kernel32.lib;advapi32.lib;gdi32.lib;user32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="encode.c" />
     <ClCompile Include="probe.c" />
+    <ClCompile Include="submit.c" />
+    <ClCompile Include="wsi.c" />
     <ClCompile Include="icd.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="encode.h" />
     <ClInclude Include="probe.h" />
+    <ClInclude Include="submit.h" />
+    <ClInclude Include="wsi.h" />
     <ClInclude Include="vk_min.h" />
+    <ClInclude Include="..\include\tvgpu3d_ioctl.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="tvvk.json" />

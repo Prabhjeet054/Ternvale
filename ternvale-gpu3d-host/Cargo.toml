@@ -12,13 +12,13 @@ thiserror = "2"
 tracing = "0.1"
 # Optional: hv_vm_map of host-visible blob pages into a guest IPA BAR window.
 ternvale-hv = { path = "../ternvale-hv" }
-# Optional: load libvirglrenderer at runtime for Venus SUBMIT_3D.
-libloading = { version = "0.8", optional = true }
+# dlopen of user-installed MoltenVK (always) and optional libvirglrenderer.
+libloading = "0.8"
 
 [features]
 default = []
 # Runtime dlopen of virglrenderer (MIT). Not vendored.
-virgl = ["dep:libloading"]
+virgl = []
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }

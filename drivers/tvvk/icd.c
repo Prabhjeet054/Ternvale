@@ -3,13 +3,14 @@
  * Not derived from Mesa Venus, Yttrium, or gfxstream.
  *
  * Loader ABI: vk_icdNegotiateLoaderICDInterfaceVersion + vk_icdGetInstanceProcAddr.
- * Win32 WSI is VK_ERROR_FEATURE_NOT_PRESENT (vkcube cannot present).
+ * Win32 WSI presents via DRAW_CUBE IOCTL to tvgpu-dod (host MoltenVK).
  * Physical devices: zero when probe fails (display-only fallback).
  */
 
 #include "encode.h"
 #include "probe.h"
 #include "vk_min.h"
+#include "wsi.h"
 
 #include <string.h>
 
@@ -209,13 +210,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceExtensionProperties(
     uint32_t *count,
     VkExtensionProperties *out)
 {
-    (void)layer;
-    (void)out;
-    if (count == NULL) {
-        return VK_ERROR_INITIALIZATION_FAILED;
-    }
-    *count = 0;
-    return VK_SUCCESS;
+    return tvvk_EnumerateInstanceWsi(layer, count, out);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(
@@ -224,14 +219,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(
     uint32_t *count,
     VkExtensionProperties *out)
 {
-    (void)pd;
-    (void)layer;
-    (void)out;
-    if (count == NULL) {
-        return VK_ERROR_INITIALIZATION_FAILED;
-    }
-    *count = 0;
-    return VK_SUCCESS;
+    return tvvk_EnumerateDeviceWsi(pd, layer, count, out);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceLayerProperties(
@@ -255,21 +243,17 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceVersion(uint32_t *version)
     return VK_SUCCESS;
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateWin32SurfaceKHR(void *a, void *b, void *c, void *d)
-{
-    (void)a;
-    (void)b;
-    (void)c;
-    (void)d;
-    return VK_ERROR_FEATURE_NOT_PRESENT;
-}
-
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance inst, const char *name);
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice dev, const char *name);
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance inst, const char *name)
 {
+    PFN_vkVoidFunction wsi;
     (void)inst;
+    wsi = tvvk_wsi_proc(name);
+    if (wsi != NULL) {
+        return wsi;
+    }
     if (streq(name, "vkCreateInstance")) {
         return (PFN_vkVoidFunction)vkCreateInstance;
     }
@@ -318,15 +302,17 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance inst, 
     if (streq(name, "vkGetDeviceProcAddr")) {
         return (PFN_vkVoidFunction)vkGetDeviceProcAddr;
     }
-    if (streq(name, "vkCreateWin32SurfaceKHR")) {
-        return (PFN_vkVoidFunction)vkCreateWin32SurfaceKHR;
-    }
     return NULL;
 }
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice dev, const char *name)
 {
+    PFN_vkVoidFunction wsi;
     (void)dev;
+    wsi = tvvk_wsi_proc(name);
+    if (wsi != NULL) {
+        return wsi;
+    }
     if (streq(name, "vkGetDeviceProcAddr")) {
         return (PFN_vkVoidFunction)vkGetDeviceProcAddr;
     }

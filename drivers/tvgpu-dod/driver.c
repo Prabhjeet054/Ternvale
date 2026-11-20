@@ -57,6 +57,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
         WPP_CLEANUP(DriverObject);
         return status;
     }
+    TvgpuHookDriver(DriverObject);
     TvgpuAppendLog("DriverEntry");
     TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_DRIVER, "DriverEntry ok");
     return status;

@@ -14,13 +14,17 @@ note "fallback_2d: gpu3d=false rejects CTX_CREATE, GET_DISPLAY_INFO still OK"
 cargo test -p ternvale-gpu gpu3d_runtime_off -- --test-threads=1
 note "fallback_2d=ok"
 
-note "host_path: stub renderer must not claim Metal"
+note "host_path: Venus without virgl stays software_stub; tvvk DRAW_CUBE uses MoltenVK"
 cargo test -p ternvale-gpu3d-host host_gpu_without_virgl_logs_software_not_metal \
   -- --test-threads=1 --nocapture | tee "$out/host-path.log"
-if grep -E 'host_gpu_path=virgl_moltenvk|metal=true' "$out/host-path.log" >/dev/null 2>&1; then
-  note "host_metal=unexpected_in_default_workspace_build"
+TERNVALE_ENTITLEMENTS="$root/entitlements/ternvale-gpu3d.entitlements" \
+  cargo test -p ternvale-gpu3d-host host_gpu_draw_cube_uses_moltenvk_when_present \
+  -- --test-threads=1 --nocapture | tee "$out/moltenvk-path.log"
+if grep -F 'host_gpu_path=moltenvk' "$out/moltenvk-path.log" >/dev/null 2>&1 \
+  && grep -F 'metal=true' "$out/moltenvk-path.log" >/dev/null 2>&1; then
+  note "host_metal=yes (MoltenVK instance for tvvk DRAW_CUBE)"
 else
-  note "host_metal=no (software_stub; Windows guest never reached MoltenVK)"
+  note "host_metal=no (libMoltenVK.dylib missing or vkCreateInstance failed)"
 fi
 note "host_path=ok"
 

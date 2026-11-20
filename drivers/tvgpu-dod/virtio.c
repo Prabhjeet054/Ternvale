@@ -196,7 +196,18 @@ TvgpuVirtioStart(_Inout_ TVGPU_DEVICE *Dev)
     featuresHi = CommonRead32(Dev, VIRTIO_PCI_COMMON_DFEATURE);
     Dev->DriverFeatures = ((UINT64)featuresHi << 32) | featuresLo;
     Dev->EdidOffered = (Dev->DriverFeatures & VIRTIO_GPU_F_EDID) != 0;
-    Dev->DriverFeatures &= (VIRTIO_F_VERSION_1 | VIRTIO_GPU_F_EDID);
+    Dev->ThreeD = (Dev->DriverFeatures & VIRTIO_GPU_F_VIRGL) != 0
+        && (Dev->DriverFeatures & VIRTIO_GPU_F_CONTEXT_INIT) != 0;
+    {
+        UINT64 want = VIRTIO_F_VERSION_1 | VIRTIO_GPU_F_EDID;
+        if (Dev->ThreeD) {
+            want |= VIRTIO_GPU_F_VIRGL | VIRTIO_GPU_F_CONTEXT_INIT;
+        }
+        Dev->DriverFeatures &= want;
+        if (!Dev->ThreeD) {
+            TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_VIRTIO, "host did not offer VIRGL+CONTEXT_INIT");
+        }
+    }
 
     CommonWrite32(Dev, VIRTIO_PCI_COMMON_GFSELECT, 0);
     CommonWrite32(Dev, VIRTIO_PCI_COMMON_GFEATURE, (UINT32)Dev->DriverFeatures);
@@ -224,11 +235,11 @@ TvgpuVirtioStart(_Inout_ TVGPU_DEVICE *Dev)
         Dev->Scanouts[i].ResourceId = 0;
     }
 
-    nt = AllocContig(&Dev->CmdBuf, &Dev->CmdBufPa, PAGE_SIZE);
+    nt = AllocContig(&Dev->CmdBuf, &Dev->CmdBufPa, 64u * 1024u);
     if (!NT_SUCCESS(nt)) {
         return nt;
     }
-    Dev->CmdBufSize = PAGE_SIZE;
+    Dev->CmdBufSize = 64u * 1024u;
     nt = AllocContig(&Dev->RspBuf, &Dev->RspBufPa, PAGE_SIZE);
     if (!NT_SUCCESS(nt)) {
         return nt;

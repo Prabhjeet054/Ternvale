@@ -21,6 +21,7 @@
 #define VK_ERROR_EXTENSION_NOT_PRESENT (-7)
 #define VK_ERROR_FEATURE_NOT_PRESENT (-8)
 #define VK_ERROR_INCOMPATIBLE_DRIVER (-9)
+#define VK_ERROR_DEVICE_LOST (-4)
 
 #define VK_TRUE 1
 #define VK_FALSE 0
@@ -54,6 +55,10 @@ typedef struct VkPhysicalDevice_T *VkPhysicalDevice;
 typedef struct VkDevice_T *VkDevice;
 typedef struct VkQueue_T *VkQueue;
 typedef struct VkSurfaceKHR_T *VkSurfaceKHR;
+typedef struct VkSwapchainKHR_T *VkSwapchainKHR;
+typedef struct VkImage_T *VkImage;
+typedef struct VkSemaphore_T *VkSemaphore;
+typedef struct VkFence_T *VkFence;
 
 typedef void(VKAPI_PTR *PFN_vkVoidFunction)(void);
 

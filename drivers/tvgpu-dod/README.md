@@ -39,6 +39,13 @@ pnputil /add-driver drivers\tvgpu-dod\tvgpu-dod.inf /install
 Sidecar: `C:\ProgramData\Ternvale\driver-logs\tvgpu-dod.log`.
 WPP/ETW GUID `{A9C3E271-4B18-4D6F-8E01-2C5A7B9D0E11}`.
 
+## 3D control device (`\\.\TVGPU3D`)
+
+When the host advertises VIRGL + CONTEXT_INIT (`[gpu] gpu3d = true`), this
+KMDOD also creates `\\.\TVGPU3D`. `tvvk` uses `IOCTL_TVGPU3D_PING` /
+`IOCTL_TVGPU3D_SUBMIT` (`drivers/include/tvgpu3d_ioctl.h`). Submit encodes
+virtio `CTX_CREATE` then `SUBMIT_3D`. Display 2D continues if 3D init fails.
+
 Guest live script: `drivers/scripts/tvgpu-dod-live.ps1` (Device Manager, Code
 Analysis, SDV when present, Driver Verifier, disable/enable, optional 1h
 stress). Host analog: `./scripts/tvgpu-dod-live-check.sh`.

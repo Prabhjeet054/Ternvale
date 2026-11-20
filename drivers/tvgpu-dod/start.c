@@ -68,6 +68,10 @@ TvgpuStartDevice(
     }
     *NumberOfVideoPresentSources = dev->NumScanouts;
     *NumberOfChildren = dev->NumScanouts;
+    status = TvgpuControlStart(dev);
+    if (!NT_SUCCESS(status)) {
+        TraceEvents(TRACE_LEVEL_WARNING, TRACE_DRIVER, "TVGPU3D control device %#x", status);
+    }
     TvgpuAppendLog("StartDevice");
     TraceEvents(
         TRACE_LEVEL_INFORMATION,
@@ -97,6 +101,7 @@ TvgpuStopDevice(_In_ PVOID MiniportDeviceContext)
         IoFreeWorkItem(dev->ConfigWork);
         dev->ConfigWork = NULL;
     }
+    TvgpuControlStop(dev);
     TvgpuVirtioStop(dev);
     TvgpuAppendLog("StopDevice");
     TraceEvents(TRACE_LEVEL_INFORMATION, TRACE_DRIVER, "StopDevice");

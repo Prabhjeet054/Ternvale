@@ -46,7 +46,7 @@
       <WppEnabled>true</WppEnabled>
       <WppRecorderEnabled>true</WppRecorderEnabled>
       <WppScanConfigurationData Condition="'%(ClCompile.ScanConfigurationData)' == ''">include\trace.h</WppScanConfigurationData>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DDK_LIB_PATH)\dispmprt.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -70,6 +70,8 @@
     <ClCompile Include="interrupt.c" />
     <ClCompile Include="virtio.c" />
     <ClCompile Include="gpu_cmd.c" />
+    <ClCompile Include="gpu3d.c" />
+    <ClCompile Include="control.c" />
     <ClCompile Include="validate.c" />
     <ClCompile Include="log.c" />
   </ItemGroup>
@@ -78,6 +80,7 @@
     <ClInclude Include="include\virtio_gpu_abi.h" />
     <ClInclude Include="include\virtio_pci.h" />
     <ClInclude Include="include\trace.h" />
+    <ClInclude Include="..\include\tvgpu3d_ioctl.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

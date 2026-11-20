@@ -4,6 +4,7 @@
  */
 
 #include "probe.h"
+#include "submit.h"
 
 #ifdef _WIN32
 
@@ -76,8 +77,6 @@ static int registry_disabled(void)
 
 int tvvk_gpu3d_enabled(void)
 {
-    HANDLE dev;
-
     if (env_disabled()) {
         tvvk_log("disabled by TERNVALE_GPU3D");
         return 0;
@@ -87,25 +86,11 @@ int tvvk_gpu3d_enabled(void)
         return 0;
     }
 
-    /*
-     * Kernel 3D path is not in tvgpu-dod (display-only). CreateFile fails
-     * until a render IOCTL exists. Fail closed so the loader skips this ICD
-     * and the KMDOD keeps scanout.
-     */
-    dev = CreateFileW(
-        L"\\\\.\\TVGPU3D",
-        GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        NULL,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL);
-    if (dev == INVALID_HANDLE_VALUE) {
+    if (tvvk_kernel_handle() == NULL) {
         tvvk_log("3D init failed: \\\\.\\TVGPU3D missing; fallback to display-only");
         return 0;
     }
-    CloseHandle(dev);
-    tvvk_log("3D device node present (prototype)");
+    tvvk_log("3D device node present (IOCTL path)");
     return 1;
 }
 

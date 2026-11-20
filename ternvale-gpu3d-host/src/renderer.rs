@@ -97,6 +97,20 @@ impl HostRenderer for StubRenderer {
         if self.lost {
             return Err(Gpu3dError::GpuLost);
         }
+        if crate::win_icd::is_tvvk_draw(payload) {
+            tracing::info!(
+                target: "ternvale::gpu3d",
+                ctx_id,
+                host_gpu_path = "software_stub",
+                moltenvk = false,
+                metal = false,
+                "tvvk DRAW_CUBE without MoltenVK"
+            );
+            if self.allow_submit {
+                return Ok(());
+            }
+            return Err(Gpu3dError::Unavailable("tvvk DRAW_CUBE needs MoltenVK"));
+        }
         if !self.allow_submit {
             return Err(Gpu3dError::Unavailable(
                 "venus rendering needs libvirglrenderer (TERNVALE_VIRGL_RENDERER) and MoltenVK",
