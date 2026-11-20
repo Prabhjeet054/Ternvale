@@ -254,7 +254,12 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
         agent.clone().and_then(
             |agent| match crate::paths::seamless_socket_path(&config.name) {
                 Ok(path) => {
-                    match crate::seamless::SeamlessPublisher::start(&config.name, path, agent) {
+                    match crate::seamless::SeamlessPublisher::start(
+                        &config.name,
+                        path,
+                        agent,
+                        crate::seamless::is_enabled(&config),
+                    ) {
                         Ok(publisher) => Some(publisher),
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
                         Err(error) => {

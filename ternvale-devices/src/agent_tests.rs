@@ -66,6 +66,7 @@ impl Actions for Recorder {
             y: 20,
             width: 640,
             height: 480,
+            ..ternvale_agent_proto::GuestWindow::default()
         }])
     }
     fn shutdown(&mut self) -> Result<(), AgentError> {

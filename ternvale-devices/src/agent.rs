@@ -10,6 +10,7 @@
 mod service;
 mod session;
 mod status;
+mod window_frames;
 mod xfer;
 
 use std::io::ErrorKind;
@@ -26,6 +27,7 @@ use ternvale_agent_proto::{write_message, FrameError, GuestWindow, Message};
 
 use status::Book;
 pub use status::{AgentState, AgentStatus};
+pub use window_frames::WindowPixels;
 
 /// Host pasteboard callback for a guest `ClipboardSet` push.
 type ClipboardSink = Arc<dyn Fn(String) + Send + Sync>;
@@ -282,6 +284,9 @@ impl AgentServer {
                 | Message::ClipboardGet
                 | Message::ShareMount { .. }
                 | Message::WindowListGet
+                | Message::WindowOp { .. }
+                | Message::WindowInput { .. }
+                | Message::WindowFrameOk { .. }
                 | Message::Shutdown
                 | Message::TimeSync { .. }
                 | Message::Exec { .. }
@@ -411,6 +416,50 @@ impl AgentServer {
                 state: "disconnected during window_list_get",
             }),
         }
+    }
+
+    /// Host → guest window chrome (move / resize / minimize / close / focus).
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm, id, op))]
+    pub fn window_op(
+        &self,
+        id: u32,
+        op: &str,
+        x: Option<i32>,
+        y: Option<i32>,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> Result<(), AgentServerError> {
+        self.send(&Message::WindowOp {
+            id,
+            op: op.to_string(),
+            x,
+            y,
+            width,
+            height,
+        })
+    }
+
+    /// Host → guest input aimed at one window.
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm, id, kind))]
+    pub fn window_input(
+        &self,
+        id: u32,
+        kind: &str,
+        code: u32,
+        value: i32,
+    ) -> Result<(), AgentServerError> {
+        self.send(&Message::WindowInput {
+            id,
+            kind: kind.to_string(),
+            code,
+            value,
+        })
+    }
+
+    /// Drain assembled per-window captures (pixels never logged).
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(vm = %self.shared.vm))]
+    pub fn take_window_frames(&self) -> Vec<WindowPixels> {
+        self.shared.book().window_frames.take()
     }
 
     /// Pull concatenated KMDF/WPP sidecar text from the guest (not `allow_exec`).

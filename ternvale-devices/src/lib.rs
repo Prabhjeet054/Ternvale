@@ -5,7 +5,9 @@ mod expect;
 mod uart;
 mod virtio;
 
-pub use agent::{AgentServer, AgentServerConfig, AgentServerError, AgentState, AgentStatus};
+pub use agent::{
+    AgentServer, AgentServerConfig, AgentServerError, AgentState, AgentStatus, WindowPixels,
+};
 pub use expect::{last_lines, Progress, Session, Step};
 pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 #[doc(hidden)]

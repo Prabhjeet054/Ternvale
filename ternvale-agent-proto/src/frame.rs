@@ -71,14 +71,14 @@ pub fn write_message<W: Write>(
     let frame = encode(message)?;
     writer.write_all(&frame)?;
     writer.flush()?;
-    if message.kind() == "camera_frame" {
+    if message.kind() == "camera_frame" || message.kind() == "window_frame" {
         tracing::debug!(
             target: "ternvale::agent",
             direction = "send",
             peer,
             kind = message.kind(),
             bytes = frame.len() - 4,
-            "agent message (camera payload not logged)"
+            "agent message (pixel payload not logged)"
         );
     } else {
         tracing::debug!(
@@ -191,7 +191,7 @@ fn parse(payload: &[u8], peer: &str) -> Result<Message, FrameError> {
     }
 }
 
-const KNOWN: [&str; 15] = [
+const KNOWN: [&str; 35] = [
     "hello",
     "welcome",
     "reject",
@@ -203,8 +203,28 @@ const KNOWN: [&str; 15] = [
     "clipboard_get_ok",
     "share_mount",
     "shutdown",
+    "time_sync",
+    "pointer_mode",
     "window_list_get",
     "window_list_ok",
+    "window_op",
+    "window_op_ok",
+    "window_op_err",
+    "window_input",
+    "window_frame",
+    "window_frame_ok",
+    "exec",
+    "exec_output",
+    "exec_exit",
+    "copy_put",
+    "copy_put_ok",
+    "copy_get",
+    "copy_get_ok",
+    "copy_hash",
+    "copy_hash_ok",
+    "copy_err",
     "driver_logs_get",
     "driver_logs_ok",
+    "camera_frame",
+    "camera_frame_ok",
 ];

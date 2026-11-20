@@ -159,8 +159,39 @@ fn serve_requests(
             Message::ShareMount { tag, mount_point } => actions.mount_share(&tag, &mount_point),
             Message::WindowListGet => {
                 let windows = actions.list_windows()?;
-                send_host(stream, writer.as_ref(), &Message::WindowListOk { windows })
+                send_host(
+                    stream,
+                    writer.as_ref(),
+                    &Message::WindowListOk {
+                        windows: windows.clone(),
+                    },
+                )?;
+                push_window_frames(stream, writer.as_ref(), &windows)
             }
+            Message::WindowOp {
+                id,
+                op,
+                x,
+                y,
+                width,
+                height,
+            } => match actions.apply_window_op(id, &op, x, y, width, height) {
+                Ok(()) => send_host(stream, writer.as_ref(), &Message::WindowOpOk { id, op }),
+                Err(error) => send_host(
+                    stream,
+                    writer.as_ref(),
+                    &Message::WindowOpErr {
+                        id,
+                        reason: error.to_string(),
+                    },
+                ),
+            },
+            Message::WindowInput {
+                id,
+                kind,
+                code,
+                value,
+            } => actions.apply_window_input(id, &kind, code, value),
             Message::Shutdown => {
                 actions.shutdown()?;
                 return Ok(SessionEnd::Shutdown);
@@ -221,6 +252,10 @@ fn serve_requests(
             | Message::PointerMode { .. }
             | Message::ClipboardGetOk { .. }
             | Message::WindowListOk { .. }
+            | Message::WindowOpOk { .. }
+            | Message::WindowOpErr { .. }
+            | Message::WindowFrame { .. }
+            | Message::WindowFrameOk { .. }
             | Message::ExecOutput { .. }
             | Message::ExecExit { .. }
             | Message::CopyPutOk { .. }
@@ -300,6 +335,31 @@ fn next(
 
 fn millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+fn push_window_frames(
+    stream: &mut Stream,
+    writer: Option<&Arc<Mutex<Stream>>>,
+    windows: &[ternvale_agent_proto::GuestWindow],
+) -> Result<(), AgentError> {
+    if !crate::win_capture::capture_enabled() {
+        return Ok(());
+    }
+    for (seq, window) in windows.iter().take(8).enumerate() {
+        let Some(pixels) = crate::win_capture::capture_rgb24(window) else {
+            continue;
+        };
+        for message in crate::win_capture::frame_messages(
+            window.id,
+            seq as u64 + 1,
+            window.width,
+            window.height,
+            &pixels,
+        ) {
+            send_host(stream, writer, &message)?;
+        }
+    }
+    Ok(())
 }
 
 fn send_host(

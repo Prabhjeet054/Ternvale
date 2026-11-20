@@ -64,6 +64,8 @@
 		B10000000000000000000038 /* X86SettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000038 /* X86SettingsSection.swift */; };
 		B10000000000000000000039 /* PrivacySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000039 /* PrivacySettingsView.swift */; };
 		B1000000000000000000003A /* PrivacyConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000003A /* PrivacyConfigTests.swift */; };
+		B1000000000000000000003B /* SeamlessGuestWindowHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000003B /* SeamlessGuestWindowHost.swift */; };
+		B1000000000000000000003C /* SeamlessCropMetalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000003C /* SeamlessCropMetalView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -124,6 +126,8 @@
 		B20000000000000000000038 /* X86SettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = X86SettingsSection.swift; sourceTree = "<group>"; };
 		B20000000000000000000039 /* PrivacySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacySettingsView.swift; sourceTree = "<group>"; };
 		B2000000000000000000003A /* PrivacyConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyConfigTests.swift; sourceTree = "<group>"; };
+		B2000000000000000000003B /* SeamlessGuestWindowHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessGuestWindowHost.swift; sourceTree = "<group>"; };
+		B2000000000000000000003C /* SeamlessCropMetalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeamlessCropMetalView.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* Ternvale.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ternvale.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B30000000000000000000002 /* TernvaleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TernvaleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -272,6 +276,8 @@
 				B20000000000000000000018 /* VMMetalDisplayView.swift */,
 				B20000000000000000000036 /* VzGuestDisplayView.swift */,
 				B2000000000000000000001B /* SeamlessWindowsCoordinator.swift */,
+				B2000000000000000000003B /* SeamlessGuestWindowHost.swift */,
+				B2000000000000000000003C /* SeamlessCropMetalView.swift */,
 				B2000000000000000000001C /* SeamlessWindowSync.swift */,
 			);
 			path = Display;
@@ -463,6 +469,8 @@
 				B10000000000000000000019 /* VMDisplayPanel.swift in Sources */,
 				B1000000000000000000001A /* AppSettings.swift in Sources */,
 				B1000000000000000000001B /* SeamlessWindowsCoordinator.swift in Sources */,
+				B1000000000000000000003B /* SeamlessGuestWindowHost.swift in Sources */,
+				B1000000000000000000003C /* SeamlessCropMetalView.swift in Sources */,
 				B1000000000000000000001C /* SeamlessWindowSync.swift in Sources */,
 				B1000000000000000000001E /* UpdateFeed.swift in Sources */,
 				B1000000000000000000001F /* UpdateChecker.swift in Sources */,

@@ -15,13 +15,18 @@ struct VMDisplayPanel: View {
         GeometryReader { geo in
             ZStack {
                 Color.black
-                if isActive, seamless.isActive {
+                if isActive, seamless.isActive, seamless.windowCount > 0 {
                     VStack(spacing: 8) {
                         Text("Experimental seamless mode")
                             .font(.headline)
                         Text("\(seamless.windowCount) guest window(s) on screen")
                             .foregroundStyle(.secondary)
-                        Text("Embedded display hidden; crops come from the shared framebuffer.")
+                        if !seamless.shellHint.isEmpty {
+                            Text(seamless.shellHint)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("Embedded display hidden; pixels come from framebuffer crops or per-window capture.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)

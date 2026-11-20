@@ -3,8 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    validate_windows, GuestWindow, HexBytes, MAX_BIN_CHUNK, MAX_COPY_PATH, MAX_DIMENSION,
-    MAX_EXEC_ARG, MAX_EXEC_ARGV, MAX_NAME,
+    validate_window_frame, validate_window_input, validate_window_op, validate_windows,
+    GuestWindow, HexBytes, MAX_BIN_CHUNK, MAX_COPY_PATH, MAX_DIMENSION, MAX_EXEC_ARG,
+    MAX_EXEC_ARGV, MAX_NAME,
 };
 
 /// One protocol message. JSON form: `{"type":"<snake_case name>", ...fields}`.
@@ -91,6 +92,81 @@ pub enum Message {
     WindowListOk {
         /// Windows in guest screen coordinates.
         windows: Vec<GuestWindow>,
+    },
+    /// Host → agent: move / resize / minimize / close / focus a guest window.
+    WindowOp {
+        /// Guest window id (HWND / X11).
+        id: u32,
+        /// `move`, `resize`, `minimize`, `maximize`, `restore`, `close`, `focus`.
+        op: String,
+        /// New left edge (`move`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        x: Option<i32>,
+        /// New top edge (`move`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        y: Option<i32>,
+        /// New width (`move` / `resize`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        width: Option<u32>,
+        /// New height (`move` / `resize`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        height: Option<u32>,
+    },
+    /// Agent → host: `WindowOp` applied.
+    WindowOpOk {
+        /// Window id.
+        id: u32,
+        /// The op that ran.
+        op: String,
+    },
+    /// Agent → host: `WindowOp` failed.
+    WindowOpErr {
+        /// Window id.
+        id: u32,
+        /// Why (not a secret).
+        reason: String,
+    },
+    /// Host → agent: inject input into a specific guest window.
+    WindowInput {
+        /// Target window id.
+        id: u32,
+        /// `key`, `button`, `move`, `abs`.
+        kind: String,
+        /// Linux KEY_/BTN_ code or 0.
+        code: u32,
+        /// Press (1) / release (0) or coordinate.
+        value: i32,
+    },
+    /// Agent → host: one chunk of a per-window capture (never log `data`).
+    ///
+    /// TODO(verify): a dedicated vsock or shared-memory ring would be better
+    /// than JSON-hex for full-rate Windows Graphics Capture.
+    WindowFrame {
+        /// Guest window id.
+        id: u32,
+        /// Frame sequence for this window.
+        seq: u64,
+        /// Byte offset in the assembled buffer.
+        offset: u64,
+        /// Last chunk of this `seq`.
+        last: bool,
+        /// Pixels.
+        width: u32,
+        /// Pixels.
+        height: u32,
+        /// `rgb24`.
+        format: String,
+        /// Chunk bytes (hex on the wire).
+        data: HexBytes,
+    },
+    /// Host → agent: capture chunk landed (optional).
+    WindowFrameOk {
+        /// Window id.
+        id: u32,
+        /// The `seq` of [`Self::WindowFrame`].
+        seq: u64,
+        /// Bytes written this chunk.
+        written: u64,
     },
     /// Host → agent: run a command (requires `agent.allow_exec` on the host).
     Exec {
@@ -306,6 +382,12 @@ impl Message {
             Self::PointerMode { .. } => "pointer_mode",
             Self::WindowListGet => "window_list_get",
             Self::WindowListOk { .. } => "window_list_ok",
+            Self::WindowOp { .. } => "window_op",
+            Self::WindowOpOk { .. } => "window_op_ok",
+            Self::WindowOpErr { .. } => "window_op_err",
+            Self::WindowInput { .. } => "window_input",
+            Self::WindowFrame { .. } => "window_frame",
+            Self::WindowFrameOk { .. } => "window_frame_ok",
             Self::Exec { .. } => "exec",
             Self::ExecOutput { .. } => "exec_output",
             Self::ExecExit { .. } => "exec_exit",
@@ -359,6 +441,26 @@ impl Message {
                 }
             }
             Self::WindowListOk { windows } => validate_windows(windows),
+            Self::WindowOp {
+                id,
+                op,
+                width,
+                height,
+                ..
+            } => validate_window_op(*id, op, *width, *height),
+            Self::WindowOpErr { reason, .. } if reason.len() > MAX_NAME => {
+                Err(format!("window_op_err reason longer than {MAX_NAME} bytes"))
+            }
+            Self::WindowInput { id, kind, .. } => validate_window_input(*id, kind),
+            Self::WindowFrame {
+                id,
+                offset,
+                width,
+                height,
+                format,
+                data,
+                ..
+            } => validate_window_frame(*id, *offset, *width, *height, format, data.0.len()),
             Self::Exec { argv, .. } => validate_argv(argv),
             Self::ExecOutput { data, .. } if data.0.len() > MAX_BIN_CHUNK => {
                 Err(format!("exec_output longer than {MAX_BIN_CHUNK} bytes"))

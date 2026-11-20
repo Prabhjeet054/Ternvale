@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use ternvale_agent_proto::{ClipboardText, GuestWindow};
 
+use super::window_frames::FrameAssembler;
 use super::xfer::{CopyEvent, ExecEvent};
 
 /// Where the agent connection is.
@@ -124,6 +125,8 @@ pub(super) struct Book {
     pub exec_wait: Option<(u64, Sender<ExecEvent>)>,
     /// Delivers one copy reply to a waiting copy helper.
     pub copy_wait: Option<(u64, Sender<CopyEvent>)>,
+    /// Guest `window_frame` streams (pixels never logged).
+    pub window_frames: FrameAssembler,
 }
 
 impl Book {

@@ -1,8 +1,12 @@
-//! Guest window enumeration (X11 `wmctrl -lG` when available).
+//! Guest window enumeration (Linux `wmctrl`, Windows `EnumWindows`).
 
-use ternvale_agent_proto::GuestWindow;
+use ternvale_agent_proto::{GuestWindow, WindowKind, WindowState};
 
 use crate::AgentError;
+
+/// `WS_EX_TOOLWINDOW` (winuser.h) — tool windows are filtered out.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const WS_EX_TOOLWINDOW: u32 = 0x0000_0080;
 
 /// List mapped top-level windows for seamless mode.
 #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]
@@ -16,10 +20,131 @@ pub fn list_guest_windows() -> Result<Vec<GuestWindow>, AgentError> {
         tracing::debug!(target: "ternvale::agent", "wmctrl unavailable; returning empty window list");
         return Ok(Vec::new());
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
     {
-        tracing::warn!(target: "ternvale::agent", "window_list ignored on non-Linux guest");
+        let windows = crate::win_windows::enum_top_level();
+        tracing::info!(target: "ternvale::agent", count = windows.len(), "window list from EnumWindows");
+        return Ok(windows);
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        tracing::warn!(target: "ternvale::agent", "window_list ignored on this guest OS");
         Ok(Vec::new())
+    }
+}
+
+/// Apply a host `window_op` (move / resize / chrome / focus / close).
+#[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(id, op))]
+pub fn apply_window_op(
+    id: u32,
+    op: &str,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<(), AgentError> {
+    #[cfg(windows)]
+    {
+        return crate::win_windows::apply_op(id, op, x, y, width, height);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return apply_wmctrl_op(id, op, x, y, width, height);
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    {
+        let _ = (x, y, width, height);
+        tracing::warn!(target: "ternvale::agent", id, op, "window_op ignored on this OS");
+        Ok(())
+    }
+}
+
+/// Inject pointer/key into the named guest window.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::agent",
+    skip_all,
+    fields(id, kind, code, value)
+)]
+pub fn apply_window_input(id: u32, kind: &str, code: u32, value: i32) -> Result<(), AgentError> {
+    #[cfg(windows)]
+    {
+        return crate::win_windows::apply_input(id, kind, code, value);
+    }
+    #[cfg(not(windows))]
+    {
+        tracing::debug!(
+            target: "ternvale::agent",
+            id,
+            kind,
+            code,
+            value,
+            "window_input not implemented on this OS (Linux uses host virtio-input)"
+        );
+        Ok(())
+    }
+}
+
+/// Whether a top-level HWND should be omitted from the seamless list.
+///
+/// Filters invisible windows and `WS_EX_TOOLWINDOW` tool windows
+/// (Microsoft Learn: EnumWindows / GetWindowLongW GWL_EXSTYLE).
+#[cfg_attr(not(windows), allow(dead_code))]
+#[tracing::instrument(level = "trace", target = "ternvale::agent", skip_all)]
+pub fn skip_tool_or_invisible(visible: bool, ex_style: u32, title: &str) -> bool {
+    if !visible {
+        return true;
+    }
+    if ex_style & WS_EX_TOOLWINDOW != 0 {
+        return true;
+    }
+    let _ = title;
+    false
+}
+
+/// Classify a Win32 class / title for host mapping.
+///
+/// UWP/packaged apps often use `ApplicationFrameWindow` (Microsoft Learn:
+/// ApplicationFrame). TODO(verify): CoreWindow HWNDs that EnumWindows misses.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[tracing::instrument(
+    level = "trace",
+    target = "ternvale::agent",
+    skip_all,
+    fields(class, has_owner)
+)]
+pub fn classify_kind(class: &str, title: &str, has_owner: bool) -> WindowKind {
+    let class_l = class.to_ascii_lowercase();
+    let title_l = title.to_ascii_lowercase();
+    if class_l == "shell_traywnd" || class_l == "shell_secondarytraywnd" {
+        return WindowKind::Taskbar;
+    }
+    if class_l.contains("start") && title_l.contains("start") {
+        return WindowKind::Start;
+    }
+    if has_owner {
+        if class_l.contains("#32768") || class_l.contains("popup") {
+            return WindowKind::Popup;
+        }
+        return WindowKind::Dialog;
+    }
+    if class_l == "applicationframewindow" {
+        // Packaged / UWP top-level frame; still an app window.
+        return WindowKind::App;
+    }
+    WindowKind::App
+}
+
+/// Shown state from iconic / zoomed flags.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[tracing::instrument(level = "trace", target = "ternvale::agent", skip_all)]
+pub fn window_state(iconic: bool, zoomed: bool) -> WindowState {
+    if iconic {
+        WindowState::Minimized
+    } else if zoomed {
+        WindowState::Maximized
+    } else {
+        WindowState::Normal
     }
 }
 
@@ -42,6 +167,70 @@ fn list_via_wmctrl() -> Result<Vec<GuestWindow>, AgentError> {
     }
     let text = String::from_utf8_lossy(&out.stdout);
     Ok(parse_wmctrl_lg(&text))
+}
+
+#[cfg(target_os = "linux")]
+fn apply_wmctrl_op(
+    id: u32,
+    op: &str,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<(), AgentError> {
+    let hex = format!("0x{id:x}");
+    let mut cmd = std::process::Command::new("wmctrl");
+    match op {
+        "close" => {
+            cmd.args(["-i", "-c", &hex]);
+        }
+        "focus" => {
+            cmd.args(["-i", "-a", &hex]);
+        }
+        "minimize" => {
+            cmd.args(["-i", "-r", &hex, "-b", "add,hidden"]);
+        }
+        "maximize" => {
+            cmd.args(["-i", "-r", &hex, "-b", "add,maximized_vert,maximized_horz"]);
+        }
+        "restore" => {
+            cmd.args([
+                "-i",
+                "-r",
+                &hex,
+                "-b",
+                "remove,hidden,maximized_vert,maximized_horz",
+            ]);
+        }
+        "move" | "resize" => {
+            let geom = format!(
+                "0,{},{},{},{}",
+                x.unwrap_or(0),
+                y.unwrap_or(0),
+                width.unwrap_or(0),
+                height.unwrap_or(0)
+            );
+            cmd.args(["-i", "-r", &hex, "-e", &geom]);
+        }
+        _ => {
+            tracing::warn!(target: "ternvale::agent", id, op, "wmctrl window_op ignored");
+            return Ok(());
+        }
+    }
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            tracing::debug!(target: "ternvale::agent", id, op, "wmctrl window_op ok");
+            Ok(())
+        }
+        Ok(status) => {
+            tracing::warn!(target: "ternvale::agent", id, op, code = ?status.code(), "wmctrl window_op failed");
+            Ok(())
+        }
+        Err(source) => Err(AgentError::Action {
+            action: "wmctrl window_op",
+            source,
+        }),
+    }
 }
 
 /// Parse `wmctrl -lG` lines: id desktop x y width height host title...
@@ -85,6 +274,7 @@ fn parse_wmctrl_line(line: &str) -> Option<GuestWindow> {
         y,
         width,
         height,
+        ..GuestWindow::default()
     })
 }
 
@@ -115,5 +305,27 @@ mod tests {
         assert_eq!(list[0].title, "xterm");
         assert_eq!(list[1].title, "gedit");
         assert_ne!(list[0].id, list[1].id);
+    }
+
+    #[test]
+    fn filters_tool_and_invisible() {
+        assert!(skip_tool_or_invisible(false, 0, "x"));
+        assert!(skip_tool_or_invisible(true, WS_EX_TOOLWINDOW, "tip"));
+        assert!(!skip_tool_or_invisible(true, 0, "Notepad"));
+    }
+
+    #[test]
+    fn classifies_taskbar_uwp_and_dialogs() {
+        assert_eq!(
+            classify_kind("Shell_TrayWnd", "", false),
+            WindowKind::Taskbar
+        );
+        assert_eq!(
+            classify_kind("ApplicationFrameWindow", "Photos", false),
+            WindowKind::App
+        );
+        assert_eq!(classify_kind("Notepad", "Open", true), WindowKind::Dialog);
+        assert_eq!(window_state(true, false), WindowState::Minimized);
+        assert_eq!(window_state(false, true), WindowState::Maximized);
     }
 }

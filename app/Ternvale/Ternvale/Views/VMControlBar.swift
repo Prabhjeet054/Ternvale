@@ -51,7 +51,7 @@ struct VMControlBar: View {
                 Toggle("Seamless windows (experimental)", isOn: $seamlessWindows)
                     .toggleStyle(.switch)
                     .disabled(isBusy)
-                    .help("One macOS window per guest app (Linux + wmctrl). Turn off while running to restore the embedded display; turn on before Start.")
+                    .help("One macOS window per guest app (Windows EnumWindows / Linux wmctrl). Off by default. Turn off while running to restore the embedded display; turn on before Start. Falls back if the guest agent is missing.")
                     .onChange(of: seamlessWindows) { _, enabled in
                         if !enabled {
                             onSeamlessDisabled()

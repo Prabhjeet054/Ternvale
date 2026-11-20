@@ -78,6 +78,30 @@ pub trait Actions {
     fn mount_share(&mut self, tag: &str, mount_point: &str) -> Result<(), AgentError>;
     /// `WindowListGet` (seamless mode, protocol v3+).
     fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError>;
+    /// `WindowOp` (move / resize / chrome). Default: ignore.
+    fn apply_window_op(
+        &mut self,
+        id: u32,
+        op: &str,
+        x: Option<i32>,
+        y: Option<i32>,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> Result<(), AgentError> {
+        let _ = (id, op, x, y, width, height);
+        Ok(())
+    }
+    /// `WindowInput` routed to a guest HWND. Default: ignore.
+    fn apply_window_input(
+        &mut self,
+        id: u32,
+        kind: &str,
+        code: u32,
+        value: i32,
+    ) -> Result<(), AgentError> {
+        let _ = (id, kind, code, value);
+        Ok(())
+    }
     /// `Shutdown`. On Linux this does not return on success.
     fn shutdown(&mut self) -> Result<(), AgentError>;
     /// `TimeSync`: set `CLOCK_REALTIME` (needs privilege).
@@ -234,6 +258,35 @@ impl Actions for SystemActions {
     #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]
     fn list_windows(&mut self) -> Result<Vec<ternvale_agent_proto::GuestWindow>, AgentError> {
         crate::windows::list_guest_windows()
+    }
+
+    #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all, fields(id, op))]
+    fn apply_window_op(
+        &mut self,
+        id: u32,
+        op: &str,
+        x: Option<i32>,
+        y: Option<i32>,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> Result<(), AgentError> {
+        crate::windows::apply_window_op(id, op, x, y, width, height)
+    }
+
+    #[tracing::instrument(
+        level = "debug",
+        target = "ternvale::agent",
+        skip_all,
+        fields(id, kind)
+    )]
+    fn apply_window_input(
+        &mut self,
+        id: u32,
+        kind: &str,
+        code: u32,
+        value: i32,
+    ) -> Result<(), AgentError> {
+        crate::windows::apply_window_input(id, kind, code, value)
     }
 
     #[tracing::instrument(level = "debug", target = "ternvale::agent", skip_all)]

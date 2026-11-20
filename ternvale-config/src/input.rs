@@ -36,6 +36,10 @@ pub struct InputSection {
     /// Command key mapping. Default `none`.
     #[serde(default, skip_serializing_if = "cmd_map_is_default")]
     pub cmd_map: CmdMap,
+    /// Coherence-style seamless windows. Default `false`. Also gated by
+    /// `TERNVALE_SEAMLESS_WINDOWS=1` from the app toggle.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub seamless_windows: bool,
 }
 
 fn cmd_map_is_default(value: &CmdMap) -> bool {
@@ -57,6 +61,9 @@ mod tests {
     #[test]
     fn cmd_map_defaults_none() {
         assert_eq!(InputSection::default().cmd_map, CmdMap::None);
+        assert!(!InputSection::default().seamless_windows);
         assert_eq!(CmdMap::CmdCtrl.as_str(), "cmd-ctrl");
+        let on: InputSection = toml::from_str("seamless_windows = true").expect("toml");
+        assert!(on.seamless_windows);
     }
 }

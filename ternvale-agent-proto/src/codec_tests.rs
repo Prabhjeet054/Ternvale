@@ -64,9 +64,21 @@ fn golden() -> Vec<(Message, &'static str)> {
                     y: 0,
                     width: 800,
                     height: 600,
+                    ..GuestWindow::default()
                 }],
             },
             r#"{"type":"window_list_ok","windows":[{"id":42,"title":"Terminal","x":0,"y":0,"width":800,"height":600}]}"#,
+        ),
+        (
+            Message::WindowOp {
+                id: 42,
+                op: "focus".into(),
+                x: None,
+                y: None,
+                width: None,
+                height: None,
+            },
+            r#"{"type":"window_op","id":42,"op":"focus"}"#,
         ),
         (
             Message::DriverLogsGet { max_bytes: None },

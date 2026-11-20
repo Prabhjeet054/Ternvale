@@ -164,6 +164,39 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
                     tracing::debug!(target: "ternvale::agent", count = windows.len(), "window_list_ok without a waiter");
                 }
             }
+            Some(Message::WindowFrame {
+                id: window_id,
+                seq,
+                offset,
+                last,
+                width,
+                height,
+                format,
+                data,
+            }) => {
+                let written = data.0.len() as u64;
+                {
+                    let mut book = shared.book();
+                    book.window_frames
+                        .push(window_id, seq, offset, last, width, height, format, data.0);
+                }
+                if let Err(error) = shared.write(
+                    id,
+                    &Message::WindowFrameOk {
+                        id: window_id,
+                        seq,
+                        written,
+                    },
+                ) {
+                    tracing::debug!(target: "ternvale::agent", error = %error, "window_frame_ok send failed");
+                }
+            }
+            Some(Message::WindowOpOk { id, op }) => {
+                tracing::debug!(target: "ternvale::agent", id, op = %op, "window_op_ok");
+            }
+            Some(Message::WindowOpErr { id, reason }) => {
+                tracing::warn!(target: "ternvale::agent", id, reason = %reason, "window_op_err");
+            }
             Some(Message::DriverLogsOk { text, truncated }) => {
                 let mut book = shared.book();
                 if let Some(wait) = book.driver_wait.take() {

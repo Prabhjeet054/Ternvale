@@ -1,7 +1,6 @@
 import AppKit
 import Darwin
 import Foundation
-import MetalKit
 import os
 import SwiftUI
 
@@ -12,18 +11,34 @@ struct GuestWindowRecord: Codable, Hashable, Equatable {
     let y: Int32
     let width: UInt32
     let height: UInt32
+    let zOrder: UInt32?
+    let state: String?
+    let focused: Bool?
+    let parentId: UInt32?
+    let kind: String?
+}
+
+private struct SeamlessFrameMeta: Codable {
+    let id: UInt32
+    let seq: UInt64
+    let width: UInt32
+    let height: UInt32
+    let format: String
+    let path: String
 }
 
 private struct SeamlessUpdate: Codable {
     let windows: [GuestWindowRecord]
     let sequence: UInt64
+    let frames: [SeamlessFrameMeta]?
 }
 
-/// One native window compositing a crop of the shared guest framebuffer.
+/// Host compositor: one native window per guest app window (gated).
 @MainActor
 final class SeamlessWindowsCoordinator: ObservableObject {
     @Published private(set) var isActive = false
     @Published private(set) var windowCount = 0
+    @Published private(set) var shellHint = ""
 
     private let display: VMDisplayController
     private let log = Logger(subsystem: "com.ternvale.app", category: "seamless")
@@ -31,6 +46,7 @@ final class SeamlessWindowsCoordinator: ObservableObject {
     private var frameTask: Task<Void, Never>?
     private var hosts: [UInt32: SeamlessGuestWindowHost] = [:]
     private var lastRecords: [UInt32: GuestWindowRecord] = [:]
+    private var socket: SeamlessLineSocket?
 
     init(display: VMDisplayController) {
         self.display = display
@@ -67,12 +83,14 @@ final class SeamlessWindowsCoordinator: ObservableObject {
         readerTask = nil
         frameTask?.cancel()
         frameTask = nil
+        socket = nil
         for host in hosts.values {
             host.close()
         }
         hosts.removeAll()
         lastRecords.removeAll()
         windowCount = 0
+        shellHint = ""
         if isActive {
             log.info("seamless windows stopped; embedded display mode restored")
         }
@@ -96,11 +114,14 @@ final class SeamlessWindowsCoordinator: ObservableObject {
             if FileManager.default.fileExists(atPath: path) {
                 do {
                     let client = try SeamlessLineSocket(path: path)
+                    await MainActor.run { self.socket = client }
                     log.debug("connected seamless socket \(path, privacy: .public)")
                     while !Task.isCancelled {
                         guard let line = client.readLine() else { break }
                         guard let data = line.data(using: .utf8) else { continue }
-                        let update = try JSONDecoder().decode(SeamlessUpdate.self, from: data)
+                        let decoder = JSONDecoder()
+                        decoder.keyDecodingStrategy = .convertFromSnakeCase
+                        let update = try decoder.decode(SeamlessUpdate.self, from: data)
                         await apply(update: update)
                     }
                     log.debug("seamless socket read ended; reconnecting")
@@ -113,7 +134,10 @@ final class SeamlessWindowsCoordinator: ObservableObject {
     }
 
     private func apply(update: SeamlessUpdate) {
-        let incomingSet = Set(update.windows.map(\.id))
+        let mapped = update.windows.filter { SeamlessWindowSync.isHostMapped($0.kind) }
+        let shell = update.windows.filter { !SeamlessWindowSync.isHostMapped($0.kind) }
+        shellHint = shell.map(\.title).filter { !$0.isEmpty }.joined(separator: " · ")
+        let incomingSet = Set(mapped.map(\.id))
         let currentSet = Set(hosts.keys)
         for id in SeamlessWindowSync.removedIds(current: currentSet, incoming: incomingSet) {
             hosts[id]?.close()
@@ -121,211 +145,52 @@ final class SeamlessWindowsCoordinator: ObservableObject {
             lastRecords.removeValue(forKey: id)
             log.info("closed seamless host window for guest id=\(id, privacy: .public) (guest window gone)")
         }
-        for record in update.windows {
+        let send: (String) -> Void = { [weak self] line in
+            self?.socket?.writeLine(line)
+        }
+        for record in mapped {
             if let host = hosts[record.id] {
                 if lastRecords[record.id] != record {
-                    log.debug(
-                        "moved seamless window id=\(record.id, privacy: .public) to \(record.x),\(record.y) \(record.width)x\(record.height)"
-                    )
                     host.update(record: record, guestSize: display.guestPixelSize)
                     lastRecords[record.id] = record
                 }
             } else {
-                let host = SeamlessGuestWindowHost(record: record, guestSize: display.guestPixelSize)
+                let host = SeamlessGuestWindowHost(
+                    record: record,
+                    guestSize: display.guestPixelSize,
+                    send: send
+                )
                 hosts[record.id] = host
                 lastRecords[record.id] = record
                 log.info(
-                    "opened seamless window id=\(record.id, privacy: .public) title=\(record.title, privacy: .public) frame=\(record.width)x\(record.height)"
+                    "opened seamless window id=\(record.id, privacy: .public) title=\(record.title, privacy: .public) kind=\(record.kind ?? "app", privacy: .public)"
                 )
                 if let frame = display.latestFrame {
                     host.submit(frame: frame)
                 }
             }
         }
+        for record in mapped {
+            if let parent = record.parentId, let parentHost = hosts[parent], let child = hosts[record.id] {
+                child.attachParent(parentHost.window)
+            }
+        }
+        if let frames = update.frames {
+            for meta in frames {
+                guard let host = hosts[meta.id] else { continue }
+                guard meta.format == "rgb24" else { continue }
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: meta.path)) else { continue }
+                let expected = Int(meta.width) * Int(meta.height) * 3
+                guard data.count == expected, expected > 0, expected <= 8 * 1024 * 1024 else {
+                    log.debug("rejected seamless frame id=\(meta.id, privacy: .public) bytes=\(data.count, privacy: .public)")
+                    continue
+                }
+                host.submitCapture(width: meta.width, height: meta.height, rgb24: data)
+            }
+        }
         windowCount = hosts.count
-        if update.windows.count >= 2 {
-            log.debug("seamless tracking \(update.windows.count, privacy: .public) guest windows")
-        }
-    }
-}
-
-@MainActor
-private final class SeamlessGuestWindowHost {
-    let window: NSWindow
-    private let metalView: SeamlessCropMetalView
-
-    init(record: GuestWindowRecord, guestSize: CGSize) {
-        metalView = SeamlessCropMetalView(crop: Self.cropRect(for: record))
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: Int(record.width), height: Int(record.height)),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = record.title.isEmpty ? "Guest \(record.id)" : record.title
-        window.contentView = metalView
-        window.isReleasedWhenClosed = false
-        window.collectionBehavior = [.moveToActiveSpace]
-        position(record: record, guestSize: guestSize)
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    func update(record: GuestWindowRecord, guestSize: CGSize) {
-        window.title = record.title.isEmpty ? "Guest \(record.id)" : record.title
-        let size = NSSize(width: Int(record.width), height: Int(record.height))
-        metalView.frame = NSRect(origin: .zero, size: size)
-        metalView.cropRect = Self.cropRect(for: record)
-        position(record: record, guestSize: guestSize)
-    }
-
-    func submit(frame: GuestDisplayFrame) {
-        metalView.submit(frame: frame)
-    }
-
-    func close() {
-        window.orderOut(nil)
-        window.close()
-    }
-
-    private func position(record: GuestWindowRecord, guestSize: CGSize) {
-        guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.frame
-        var x = CGFloat(record.x)
-        var y = CGFloat(record.y)
-        let w = CGFloat(record.width)
-        let h = CGFloat(record.height)
-        if guestSize.width > 0, guestSize.height > 0 {
-            let sx = screenFrame.width / guestSize.width
-            let sy = screenFrame.height / guestSize.height
-            x *= sx
-            y *= sy
-        }
-        let frame = NSRect(
-            x: screenFrame.origin.x + x,
-            y: screenFrame.origin.y + screenFrame.height - y - h,
-            width: w,
-            height: h
-        )
-        window.setFrame(frame, display: true)
-    }
-
-    private static func cropRect(for record: GuestWindowRecord) -> CGRect {
-        CGRect(
-            x: CGFloat(record.x),
-            y: CGFloat(record.y),
-            width: CGFloat(record.width),
-            height: CGFloat(record.height)
-        )
-    }
-}
-
-private final class SeamlessCropMetalView: MTKView, MTKViewDelegate {
-    var cropRect: CGRect = .zero {
-        didSet { needsDisplay = true }
-    }
-
-    private var queue: MTLCommandQueue?
-    private var texture: MTLTexture?
-
-    init(crop: CGRect) {
-        let device = MTLCreateSystemDefaultDevice()
-        super.init(frame: NSRect(origin: .zero, size: crop.size), device: device)
-        cropRect = crop
-        queue = device?.makeCommandQueue()
-        framebufferOnly = false
-        colorPixelFormat = .bgra8Unorm
-        isPaused = true
-        enableSetNeedsDisplay = false
-        delegate = self
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
-        autoresizingMask = [.width, .height]
-        layer?.contentsScale = 1
-    }
-
-    @available(*, unavailable)
-    required init(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func submit(frame: GuestDisplayFrame) {
-        guard frame.width > 0, frame.height > 0, !frame.pixels.isEmpty else { return }
-        guard let device else { return }
-        let desc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: metalFormat(frame.format),
-            width: Int(frame.width),
-            height: Int(frame.height),
-            mipmapped: false
-        )
-        desc.usage = [.shaderRead]
-        guard let tex = device.makeTexture(descriptor: desc) else { return }
-        let stride = Int(frame.width) * 4
-        frame.pixels.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            tex.replace(
-                region: MTLRegionMake2D(0, 0, Int(frame.width), Int(frame.height)),
-                mipmapLevel: 0,
-                withBytes: base,
-                bytesPerRow: stride
-            )
-        }
-        texture = tex
-        isPaused = false
-        draw()
-    }
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-
-    func draw(in view: MTKView) {
-        guard let drawable = currentDrawable,
-              let queue,
-              let texture,
-              let commandBuffer = queue.makeCommandBuffer(),
-              let blit = commandBuffer.makeBlitCommandEncoder()
-        else { return }
-
-        let ox = max(0, min(Int(cropRect.origin.x), texture.width - 1))
-        let oy = max(0, min(Int(cropRect.origin.y), texture.height - 1))
-        let cw = max(1, min(Int(cropRect.width), texture.width - ox))
-        let ch = max(1, min(Int(cropRect.height), texture.height - oy))
-
-        if let clear = commandBuffer.makeRenderCommandEncoder(
-            descriptor: clearPassDescriptor(texture: drawable.texture)
-        ) {
-            clear.endEncoding()
-        }
-
-        blit.copy(
-            from: texture,
-            sourceSlice: 0,
-            sourceLevel: 0,
-            sourceOrigin: MTLOrigin(x: ox, y: oy, z: 0),
-            sourceSize: MTLSize(width: cw, height: ch, depth: 1),
-            to: drawable.texture,
-            destinationSlice: 0,
-            destinationLevel: 0,
-            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
-        )
-        blit.endEncoding()
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
-        isPaused = true
-    }
-
-    private func clearPassDescriptor(texture: MTLTexture) -> MTLRenderPassDescriptor {
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = texture
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].storeAction = .store
-        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        return pass
-    }
-
-    private func metalFormat(_ virtio: UInt32) -> MTLPixelFormat {
-        switch virtio {
-        case 1, 2, 68, 121: return .bgra8Unorm
-        case 3, 4, 67, 134: return .rgba8Unorm
-        default: return .bgra8Unorm
+        if mapped.isEmpty {
+            log.info("seamless guest list empty; embedded single-window display stays visible")
         }
     }
 }
@@ -361,6 +226,12 @@ private final class SeamlessLineSocket {
 
     deinit {
         close(fd)
+    }
+
+    func writeLine(_ line: String) {
+        var payload = Array(line.utf8)
+        payload.append(0x0A)
+        _ = payload.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
     }
 
     func readLine() -> String? {

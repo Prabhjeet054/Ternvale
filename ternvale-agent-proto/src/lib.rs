@@ -22,7 +22,9 @@ pub use hex::{decode as decode_hex, encode as encode_hex, HexBytes};
 pub use message::{is_guest_file_path, ClipboardText, ExecStream, Message};
 pub use reader::FrameReader;
 pub use window::{
-    validate_windows, GuestWindow, MAX_WINDOWS, MAX_WINDOW_DIMENSION, MAX_WINDOW_TITLE,
+    validate_window_frame, validate_window_input, validate_window_op, validate_windows,
+    GuestWindow, WindowKind, WindowState, MAX_WINDOWS, MAX_WINDOW_DIMENSION,
+    MAX_WINDOW_FRAME_BYTES, MAX_WINDOW_ICON, MAX_WINDOW_TITLE,
 };
 
 /// Version this build speaks (and the newest it accepts).

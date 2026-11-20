@@ -20,9 +20,11 @@ mod os;
 pub mod service;
 mod session;
 mod transport;
+mod win_capture;
 mod win_clip;
 mod win_display;
 mod win_share;
+mod win_windows;
 mod windows;
 #[cfg(windows)]
 mod windows_vsock;
