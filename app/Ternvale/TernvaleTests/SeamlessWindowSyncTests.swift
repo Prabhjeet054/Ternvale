@@ -50,4 +50,38 @@ final class SeamlessWindowSyncTests: XCTestCase {
         XCTAssertEqual(wrapped.windows[0].kind, "dialog")
         XCTAssertEqual(wrapped.windows[0].id, 2)
     }
+
+    func testNotepadAndCalculatorAreTwoMappedHostWindows() throws {
+        let json = """
+        {"windows":[{"id":256,"title":"Untitled - Notepad","x":10,"y":10,"width":400,"height":300},{"id":512,"title":"Calculator","x":80,"y":60,"width":320,"height":280}],"sequence":1}
+        """
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        struct Update: Decodable {
+            let windows: [GuestWindowRecord]
+        }
+        let update = try decoder.decode(Update.self, from: Data(json.utf8))
+        let mapped = update.windows.filter { SeamlessWindowSync.isHostMapped($0.kind) }
+        XCTAssertEqual(mapped.map(\.id), [256, 512])
+        XCTAssertTrue(mapped[0].x < mapped[1].x + Int32(mapped[1].width))
+        XCTAssertEqual(SeamlessWindowSync.addedIds(current: [], incoming: Set(mapped.map(\.id))), [256, 512])
+    }
+
+    func testModalDialogAttachesToNotepadParent() throws {
+        let json = """
+        {"windows":[{"id":256,"title":"Untitled - Notepad","x":10,"y":10,"width":400,"height":300},{"id":257,"title":"Open","x":40,"y":40,"width":280,"height":180,"parent_id":256,"kind":"dialog"}],"sequence":2}
+        """
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        struct Update: Decodable {
+            let windows: [GuestWindowRecord]
+        }
+        let update = try decoder.decode(Update.self, from: Data(json.utf8))
+        XCTAssertEqual(SeamlessWindowSync.childIds(parent: 256, windows: update.windows), [257])
+    }
+
+    func testToggleOffRemovesEveryHostWindow() {
+        let removed = SeamlessWindowSync.removedIds(current: [256, 512], incoming: [])
+        XCTAssertEqual(removed, [256, 512])
+    }
 }

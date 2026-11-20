@@ -19,4 +19,12 @@ enum SeamlessWindowSync {
             return true
         }
     }
+
+    /// Dialog / popup ids that name `parent` as `parentId`.
+    static func childIds(parent: UInt32, windows: [GuestWindowRecord]) -> [UInt32] {
+        windows.compactMap { record in
+            record.parentId == parent ? record.id : nil
+        }
+        .sorted()
+    }
 }

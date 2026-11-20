@@ -122,7 +122,7 @@ struct FrameMeta {
     path: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct HostLine {
     op: String,
     id: u32,
@@ -355,6 +355,10 @@ fn clear_stale(path: &Path) -> Result<(), std::io::Error> {
         Ok(_) => std::fs::remove_file(path),
     }
 }
+
+#[cfg(test)]
+#[path = "seamless_quality.rs"]
+mod quality;
 
 #[cfg(test)]
 mod tests {

@@ -147,4 +147,22 @@ mod tests {
         asm.push(2, 1, 3, true, 1, 1, "rgb24".into(), vec![8]);
         assert!(asm.take().is_empty());
     }
+
+    #[test]
+    fn overlapping_notepad_and_calculator_keep_separate_captures() {
+        let mut asm = FrameAssembler::default();
+        let notepad = vec![200u8, 40, 40, 200, 40, 40];
+        let calc = vec![40u8, 40, 200, 40, 40, 200];
+        asm.push(0x100, 1, 0, true, 2, 1, "rgb24".into(), notepad.clone());
+        asm.push(0x200, 1, 0, true, 2, 1, "rgb24".into(), calc.clone());
+        let mut frames = asm.take();
+        frames.sort_by_key(|f| f.id);
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0].id, 0x100);
+        assert_eq!(frames[1].id, 0x200);
+        assert_ne!(frames[0].data, frames[1].data);
+        assert_eq!(frames[0].data, notepad);
+        assert_eq!(frames[1].data, calc);
+        assert!(asm.take().is_empty());
+    }
 }
