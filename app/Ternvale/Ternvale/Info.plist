@@ -36,5 +36,9 @@
 	<false/>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Ternvale uses the microphone only when you turn on audio input for a virtual machine. Capture is off by default. Audio is not recorded or logged on the Mac.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Ternvale uses the camera only when you turn on the virtual webcam for a virtual machine. Capture is off by default. Video is not recorded or logged on the Mac.</string>
 </dict>
 </plist>

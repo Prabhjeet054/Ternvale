@@ -155,6 +155,21 @@ struct BackendCapabilitiesPayload: Decodable {
     }
 }
 
+struct PrivacyPayload: Decodable {
+    let microphone: String
+    let microphoneReason: String?
+    let camera: String
+    let cameraReason: String?
+    let cameraTransport: String
+
+    enum CodingKeys: String, CodingKey {
+        case microphone, camera
+        case microphoneReason = "microphone_reason"
+        case cameraReason = "camera_reason"
+        case cameraTransport = "camera_transport"
+    }
+}
+
 struct VMStatusPayload: Decodable {
     let name: String
     let state: String
@@ -166,9 +181,10 @@ struct VMStatusPayload: Decodable {
     let toolsIsoAgent: String?
     let agent: AgentPayload?
     let capabilities: BackendCapabilitiesPayload?
+    let privacy: PrivacyPayload?
 
     enum CodingKeys: String, CodingKey {
-        case name, state, cpus, failure, agent, capabilities
+        case name, state, cpus, failure, agent, capabilities, privacy
         case uptimeMs = "uptime_ms"
         case stopCause = "stop_cause"
         case toolsOutdated = "tools_outdated"

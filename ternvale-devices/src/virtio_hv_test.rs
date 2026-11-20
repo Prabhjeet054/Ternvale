@@ -51,6 +51,7 @@ fn linux_probes_a_virtio_mmio_dummy() {
         tpm: None,
         usb: None,
         audio: None,
+        camera: None,
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,

@@ -142,6 +142,7 @@ fn one_vm(
         tpm: None,
         usb: None,
         audio: None,
+        camera: None,
         shares: Vec::new(),
         power: Default::default(),
         encryption: encrypted,

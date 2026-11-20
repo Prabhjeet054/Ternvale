@@ -166,6 +166,7 @@ fn serve_requests(
                 return Ok(SessionEnd::Shutdown);
             }
             Message::TimeSync { unix_secs } => actions.time_sync(unix_secs),
+            frame @ Message::CameraFrame { .. } => crate::camera::handle(&frame),
             Message::DriverLogsGet { max_bytes } => {
                 let cap = max_bytes
                     .map(|n| n as usize)
@@ -226,7 +227,8 @@ fn serve_requests(
             | Message::CopyGetOk { .. }
             | Message::CopyHashOk { .. }
             | Message::CopyErr { .. }
-            | Message::DriverLogsOk { .. }) => {
+            | Message::DriverLogsOk { .. }
+            | Message::CameraFrameOk { .. }) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from host ignored");
                 Ok(())
             }

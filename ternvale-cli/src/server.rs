@@ -410,6 +410,7 @@ pub fn handle_line_with(
         }
     };
     tracing::info!(target: "ternvale::cli", cmd = request.name(), "control request");
+    let privacy = diag.and_then(|diag| diag.privacy_json());
     if let Some(response) = crate::control_agent::gated(allow_exec, agent, &request) {
         return response;
     }
@@ -423,6 +424,7 @@ pub fn handle_line_with(
                     backend,
                     capabilities,
                     x86_engine,
+                    privacy.clone(),
                 );
                 response
             }
@@ -533,6 +535,7 @@ pub fn handle_line_with(
                         backend,
                         capabilities,
                         x86_engine,
+                        privacy.clone(),
                     );
                     response
                 }
@@ -557,6 +560,7 @@ pub fn handle_line_with(
                 backend,
                 capabilities,
                 x86_engine,
+                privacy.clone(),
             );
             return response;
         }
@@ -594,6 +598,7 @@ pub fn handle_line_with(
                         backend,
                         capabilities,
                         x86_engine,
+                        privacy.clone(),
                     );
                     response
                 }
@@ -666,6 +671,7 @@ pub fn handle_line_with(
                         backend,
                         capabilities,
                         x86_engine,
+                        privacy.clone(),
                     );
                     response
                 }
@@ -685,6 +691,7 @@ pub fn handle_line_with(
                 backend,
                 capabilities,
                 x86_engine,
+                privacy.clone(),
             );
             tracing::debug!(target: "ternvale::cli", state = ?response.status.as_ref().map(|s| s.state.as_str()), agent = ?response.status.as_ref().and_then(|s| s.agent.as_ref()).map(|a| a.state.as_str()), tools_outdated = ?response.status.as_ref().and_then(|s| s.tools_outdated), "control request done");
             response
@@ -703,6 +710,7 @@ fn decorate_status(
     backend: &str,
     capabilities: ternvale_backend::BackendCapabilities,
     x86_engine: &str,
+    privacy: Option<crate::privacy::PrivacyJson>,
 ) {
     if let Some(status) = response.status.as_mut() {
         if let Some(agent) = agent {
@@ -712,5 +720,8 @@ fn decorate_status(
         status.backend = Some(backend.to_string());
         status.capabilities = Some(capabilities);
         status.x86_engine = Some(x86_engine.to_string());
+        if let Some(privacy) = privacy {
+            status.privacy = Some(privacy);
+        }
     }
 }

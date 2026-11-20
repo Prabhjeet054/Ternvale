@@ -112,6 +112,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         tpm: None,
         usb: None,
         audio: None,
+        camera: None,
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,

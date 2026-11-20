@@ -1583,6 +1583,7 @@ dependencies = [
  "ternvale-agent",
  "ternvale-agent-proto",
  "ternvale-api",
+ "ternvale-audio-host",
  "ternvale-backend",
  "ternvale-compat",
  "ternvale-config",

@@ -11,7 +11,7 @@ use crate::mem::{read_bytes, read_trb, write_bytes};
 use crate::passthrough::{ControlJob, PassthroughWorker, PipeJob};
 use crate::slots::Slot;
 use crate::trb::{
-    Trb, TRB_TYPE_DATA_STAGE, TRB_TYPE_LINK, TRB_TYPE_NORMAL, TRB_TYPE_SETUP_STAGE,
+    Trb, TRB_TYPE_DATA_STAGE, TRB_TYPE_ISOCH, TRB_TYPE_LINK, TRB_TYPE_NORMAL, TRB_TYPE_SETUP_STAGE,
     TRB_TYPE_STATUS_STAGE,
 };
 
@@ -108,6 +108,19 @@ pub fn process_transfer(
                     cycle = !cycle;
                 }
                 continue;
+            }
+            TRB_TYPE_ISOCH => {
+                // USB Video Class webcams need isochronous endpoints, service
+                // intervals, and underrun events. That is larger than this
+                // controller (control + bulk only). Guest sees a stall; host
+                // webcam uses the agent `camera_frame` path instead.
+                tracing::warn!(
+                    target: "ternvale::usb",
+                    slot_id,
+                    dci,
+                    "isochronous TRB not implemented; no virtual UVC on xHCI"
+                );
+                events.post(mem, slot_id, dci, CC_STALL_ERROR, trb_ptr, 0)?;
             }
             other => {
                 tracing::warn!(target: "ternvale::usb", ty = other, "unhandled transfer trb");

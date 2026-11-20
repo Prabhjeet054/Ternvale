@@ -75,6 +75,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         tpm: None,
         usb: None,
         audio: None,
+        camera: None,
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,

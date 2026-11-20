@@ -41,6 +41,15 @@ pub fn render_for_child(grants: &Grants, child: Option<&Path>) -> String {
         out.push_str("; no user-mode NAT: deny IP networking (unix sockets still allowed below)\n");
         out.push_str("(deny network-outbound)\n(deny network-bind)\n");
     }
+    // TODO(verify): Apple SBPL `device-microphone` / `device-camera` vs App
+    // Sandbox `com.apple.security.device.audio-input` / `device.camera` on
+    // macOS 15–26. Grant only when the VM opted in; TCC still prompts.
+    if grants.microphone {
+        out.push_str("(allow device-microphone)\n");
+    }
+    if grants.camera {
+        out.push_str("(allow device-camera)\n");
+    }
     out.push_str("(allow network-outbound (remote unix))\n");
     out.push_str("(allow network-inbound (local unix))\n");
     for grant in &grants.paths {
@@ -144,5 +153,17 @@ mod tests {
             "sandbox-exec rejected profile: {err}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn microphone_opt_in_emits_device_rule() {
+        let config = VmConfig::parse(
+            "name = \"p\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\n[audio]\ninput = true\n",
+        )
+        .unwrap();
+        let grants = Grants::from_config(&config, std::path::Path::new("/tmp/vm.toml"));
+        let text = render(&grants);
+        assert!(text.contains("(allow device-microphone)"), "{text}");
+        assert!(!text.contains("(allow device-camera)"), "{text}");
     }
 }

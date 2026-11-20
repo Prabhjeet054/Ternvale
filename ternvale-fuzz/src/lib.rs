@@ -22,6 +22,7 @@ mod virtio_input;
 mod virtio_net;
 mod virtio_pci;
 mod virtio_rng;
+mod virtio_sound;
 mod virtio_vsock;
 mod virtqueue;
 mod vsock_packet;
@@ -43,6 +44,7 @@ pub use virtio_input::run as virtio_input;
 pub use virtio_net::run as virtio_net;
 pub use virtio_pci::run as virtio_pci;
 pub use virtio_rng::run as virtio_rng;
+pub use virtio_sound::run as virtio_sound;
 pub use virtio_vsock::run as virtio_vsock;
 pub use virtqueue::run as virtqueue;
 pub use vsock_packet::run as vsock_packet;
@@ -66,6 +68,7 @@ pub const TARGETS: &[&str] = &[
     "virtio_vsock",
     "virtio_gpu",
     "virtio_input",
+    "virtio_sound",
     "virtio_balloon",
     "virtio_fs",
     "virtio_pci",
@@ -92,6 +95,7 @@ pub fn run_named(target: &str, data: &[u8]) {
         "virtio_vsock" => virtio_vsock(data),
         "virtio_gpu" => virtio_gpu(data),
         "virtio_input" => virtio_input(data),
+        "virtio_sound" => virtio_sound(data),
         "virtio_balloon" => virtio_balloon(data),
         "virtio_fs" => virtio_fs(data),
         "virtio_pci" => virtio_pci(data),

@@ -46,6 +46,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         tpm: None,
         usb: None,
         audio: None,
+        camera: None,
         shares: Vec::new(),
         power: Default::default(),
         encryption: false,

@@ -6,6 +6,7 @@
 mod agent;
 mod audio;
 mod backend;
+mod camera;
 mod cpu;
 mod disk;
 mod error;
@@ -16,6 +17,7 @@ mod iso;
 mod nic;
 mod policy;
 mod power;
+mod privacy;
 mod profile;
 mod share;
 mod tpm;
@@ -27,6 +29,7 @@ mod x86;
 pub use agent::AgentSection;
 pub use audio::AudioSection;
 pub use backend::BackendKind;
+pub use camera::{CameraSection, CameraTransport};
 pub use cpu::CpuProfile;
 pub use disk::{Disk, DiskCache, DiskFlush, DEFAULT_IO_WORKERS, DEFAULT_QUEUE_DEPTH};
 pub use error::{ConfigError, TernvaleError};
@@ -37,6 +40,7 @@ pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BY
 pub use nic::{ForwardProto, Nic, NicMode, PortForward};
 pub use policy::{parse_cidr, CidrPort, NicPolicy};
 pub use power::{OnQuit, PowerSection, DEFAULT_GRACEFUL_TIMEOUT_SECS, MAX_GRACEFUL_TIMEOUT_SECS};
+pub use privacy::{PrivacySnapshot, SharePrivacy, UsbPrivacy};
 pub use profile::{
     is_iso9660, Profile, VirtioTransport, WINDOWS_MIN_CPUS, WINDOWS_MIN_DISK_BYTES,
     WINDOWS_MIN_RAM_MIB,

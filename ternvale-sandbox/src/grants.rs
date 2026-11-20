@@ -27,6 +27,10 @@ pub struct Grants {
     pub network_client: bool,
     /// Unix socket to `ternvale-vmnetd`.
     pub helper_sock: PathBuf,
+    /// `[audio] input`: Seatbelt `device-microphone` when true.
+    pub microphone: bool,
+    /// `[camera] enabled`: Seatbelt `device-camera` when true.
+    pub camera: bool,
 }
 
 impl Grants {
@@ -125,10 +129,14 @@ impl Grants {
             || config.backend == ternvale_config::BackendKind::Vz
             || config.profile == ternvale_config::Profile::Macos;
         let paths: Vec<Grant> = set.into_iter().collect();
+        let microphone = config.audio_input_enabled();
+        let camera = config.camera_enabled();
         tracing::info!(
             target: "ternvale::sandbox",
             grants = paths.len(),
             network_client,
+            microphone,
+            camera,
             helper = %helper_sock.display(),
             "sandbox grants from vm config"
         );
@@ -136,6 +144,8 @@ impl Grants {
             paths,
             network_client,
             helper_sock,
+            microphone,
+            camera,
         }
     }
 }
@@ -232,5 +242,18 @@ mod tests {
         let config = VmConfig::parse(text).unwrap();
         let grants = Grants::from_config(&config, Path::new("/tmp/vm.toml"));
         assert!(grants.network_client);
+    }
+
+    #[test]
+    fn microphone_and_camera_grants_follow_opt_in() {
+        let off =
+            "name = \"g\"\ncpus = 1\nram_mib = 256\nkernel = \"/k\"\nserial_log = \"/tmp/s.log\"\n";
+        let grants = Grants::from_config(&VmConfig::parse(off).unwrap(), Path::new("/tmp/vm.toml"));
+        assert!(!grants.microphone);
+        assert!(!grants.camera);
+        let on = format!("{off}[audio]\ninput = true\n[camera]\nenabled = true\n");
+        let grants = Grants::from_config(&VmConfig::parse(&on).unwrap(), Path::new("/tmp/vm.toml"));
+        assert!(grants.microphone);
+        assert!(grants.camera);
     }
 }

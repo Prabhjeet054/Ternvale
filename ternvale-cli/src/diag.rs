@@ -32,6 +32,8 @@ pub struct DeviceStats {
     pub nics: Vec<(String, Arc<NetStats>)>,
     pub vsock: Option<Arc<VsockStats>>,
     pub balloon: Option<Arc<BalloonHandle>>,
+    /// Mic/camera capturing flags for `status.privacy`.
+    pub privacy: Option<Arc<crate::privacy::PrivacyLive>>,
 }
 
 /// Shared between the attach closure and the [`DiagSink`].
@@ -100,6 +102,12 @@ impl DiagSink {
             agent,
             devices,
         }
+    }
+
+    /// Optional privacy object for control `status`.
+    pub fn privacy_json(&self) -> Option<crate::privacy::PrivacyJson> {
+        let devices = lockwatch::lock(&self.devices, "device-stats");
+        devices.privacy.as_ref().map(|live| live.json())
     }
 
     /// The VM's counters now; `exit` is how the run ended, if it has.

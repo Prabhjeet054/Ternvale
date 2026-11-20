@@ -9,6 +9,11 @@ pub const VQ_TX: u16 = 2;
 pub const VQ_RX: u16 = 3;
 
 pub const D_OUTPUT: u8 = 0;
+pub const D_INPUT: u8 = 1;
+/// Playback stream id.
+pub const STREAM_PLAYBACK: u32 = 0;
+/// Capture stream id (present only when the host advertised two streams).
+pub const STREAM_CAPTURE: u32 = 1;
 
 pub const R_PCM_INFO: u32 = 0x0100;
 pub const R_PCM_SET_PARAMS: u32 = 0x0101;
@@ -37,6 +42,7 @@ pub const RATE_48000: u8 = 7;
 /// Negotiated guest PCM parameters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PcmParams {
+    pub stream_id: u32,
     pub buffer_bytes: u32,
     pub period_bytes: u32,
     pub channels: u8,
@@ -72,35 +78,69 @@ impl PcmParams {
     }
 }
 
+fn le_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+    let slice = bytes.get(offset..offset.checked_add(4)?)?;
+    let mut raw = [0u8; 4];
+    raw.copy_from_slice(slice);
+    Some(u32::from_le_bytes(raw))
+}
+
 /// Parse `virtio_snd_pcm_set_params`.
 pub fn parse_set_params(bytes: &[u8]) -> Option<PcmParams> {
-    if bytes.len() < 20 {
+    // hdr(4) + stream(4) + buffer(4) + period(4) + features(4) + ch/fmt/rate
+    if bytes.len() < 23 {
         return None;
     }
-    let code = u32::from_le_bytes(bytes[0..4].try_into().expect("code"));
+    let code = le_u32(bytes, 0)?;
     if code != R_PCM_SET_PARAMS {
         return None;
     }
     Some(PcmParams {
-        buffer_bytes: u32::from_le_bytes(bytes[8..12].try_into().expect("buf")),
-        period_bytes: u32::from_le_bytes(bytes[12..16].try_into().expect("period")),
+        stream_id: le_u32(bytes, 4)?,
+        buffer_bytes: le_u32(bytes, 8)?,
+        period_bytes: le_u32(bytes, 12)?,
         channels: bytes[20],
         format: bytes[21],
         rate: bytes[22],
     })
 }
 
-/// Build `virtio_snd_pcm_info` for stream 0 (playback).
-pub fn encode_pcm_info() -> [u8; 32] {
+/// Stream id in a PCM hdr (`SET_PARAMS` / `START` / …).
+pub fn parse_stream_id(bytes: &[u8]) -> Option<u32> {
+    if bytes.len() < 8 {
+        return Some(STREAM_PLAYBACK);
+    }
+    Some(u32::from_le_bytes(bytes[4..8].try_into().ok()?))
+}
+
+/// Build `virtio_snd_pcm_info` for one stream.
+pub fn encode_pcm_info(direction: u8) -> [u8; 32] {
     let mut out = [0u8; 32];
     out[4..8].copy_from_slice(&(1u32 << PCM_F_MSG_POLLING).to_le_bytes());
     let formats: u64 = (1u64 << FMT_S16) | (1u64 << FMT_S32) | (1u64 << FMT_FLOAT);
     let rates: u64 = (1u64 << RATE_44100) | (1u64 << RATE_48000);
     out[8..16].copy_from_slice(&formats.to_le_bytes());
     out[16..24].copy_from_slice(&rates.to_le_bytes());
-    out[24] = D_OUTPUT;
+    out[24] = direction;
     out[25] = 1; // channels_min
     out[26] = 2; // channels_max
+    out
+}
+
+/// Info blobs for `start_id .. start_id+count` given `streams` (1 or 2).
+pub fn encode_pcm_info_range(start_id: u32, count: u32, streams: u32) -> Vec<u8> {
+    let mut out = Vec::new();
+    for id in start_id..start_id.saturating_add(count) {
+        if id >= streams {
+            break;
+        }
+        let direction = if id == STREAM_CAPTURE {
+            D_INPUT
+        } else {
+            D_OUTPUT
+        };
+        out.extend_from_slice(&encode_pcm_info(direction));
+    }
     out
 }
 

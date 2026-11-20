@@ -65,7 +65,7 @@ pub use p9::{AttachedP9, P9Error, P9Stats, VirtioP9, VIRTIO_9P_ID, VIRTIO_9P_TAG
 pub use pci::{attach_pci, VirtioPci, VIRTIO_PCI_DEVICE_BASE, VIRTIO_PCI_VENDOR_ID};
 pub use queue::{Buffer, Chain, SplitQueue};
 pub use rng::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
-pub use sound::{AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};
+pub use sound::{parse_sound_set_params, AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};
 pub use vsock::{
     guest_socket_path, host_socket_path, op_name as vsock_op_name, AttachedVsock, CidLease,
     VirtioVsock, VsockConfig, VsockCounters, VsockError, VsockHeader, VsockStats, FIRST_GUEST_CID,

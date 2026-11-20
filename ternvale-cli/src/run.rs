@@ -13,7 +13,7 @@
 
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -280,6 +280,61 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
             },
         );
     let stats = SharedDevices::default();
+    let privacy = crate::privacy::PrivacyLive::from_snapshot(config.privacy_snapshot());
+    let mut audio_input = config.audio_input_enabled();
+    if audio_input {
+        match ternvale_audio_host::probe_microphone() {
+            Ok(()) => {
+                tracing::info!(
+                    target: "ternvale::virtio::sound",
+                    "microphone opt-in: capture stream will be advertised"
+                );
+            }
+            Err(denied) => {
+                privacy.deny_mic(denied.reason.clone());
+                tracing::warn!(
+                    target: "ternvale::virtio::sound",
+                    reason = %denied.reason,
+                    "host microphone denied; guest will see no capture stream"
+                );
+                audio_input = false;
+            }
+        }
+    }
+    let mut camera_ok = config.camera_enabled();
+    if camera_ok {
+        match ternvale_audio_host::probe_camera() {
+            Ok(()) => {
+                tracing::info!(
+                    target: "ternvale::gpu",
+                    "camera opt-in: agent virtual webcam (not xHCI UVC)"
+                );
+            }
+            Err(denied) => {
+                privacy.deny_camera(denied.reason.clone());
+                tracing::warn!(
+                    target: "ternvale::gpu",
+                    reason = %denied.reason,
+                    "host camera denied; guest will see no webcam"
+                );
+                camera_ok = false;
+            }
+        }
+        if camera_ok && agent.is_none() {
+            let reason = "camera enabled but vsock guest agent is not attached".to_string();
+            privacy.deny_camera(reason.clone());
+            tracing::warn!(
+                target: "ternvale::gpu",
+                reason = %reason,
+                "host camera denied; guest will see no webcam"
+            );
+            camera_ok = false;
+        }
+    }
+    {
+        let mut devices = lockwatch::lock(&stats, "device-stats");
+        devices.privacy = Some(Arc::clone(&privacy));
+    }
     let diag = Arc::new(DiagSink::new(
         guard.log_path(),
         Arc::clone(&control),
@@ -337,6 +392,20 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
     });
     let transport = config.virtio_transport();
     let audio = config.audio_enabled();
+    let mic_capturing = privacy.mic_flag();
+    let camera_streaming = privacy.camera_flag();
+    let camera_stop = Arc::new(AtomicBool::new(false));
+    let camera_join = if camera_ok {
+        agent.clone().and_then(|agent| {
+            crate::camera_host::spawn_camera_pump(
+                agent,
+                Arc::clone(&camera_streaming),
+                Arc::clone(&camera_stop),
+            )
+        })
+    } else {
+        None
+    };
     let gpu3d = config.gpu3d();
     let gpu = config.gpu_section();
     let cmd_map = config.input_section().cmd_map;
@@ -365,12 +434,20 @@ fn run_vm(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
             agent: agent.clone(),
             metrics,
             audio,
+            audio_input,
+            mic_capturing,
             ram_mib,
             ram_min_mib,
             cpus,
         };
         attach_devices(attach, &wanted, &stats, &session_slot)
     });
+    camera_stop.store(true, Ordering::Relaxed);
+    if let Some(join) = camera_join {
+        if join.join().is_err() {
+            tracing::error!(target: "ternvale::gpu", "camera pump thread panicked");
+        }
+    }
     drop(lockwatch::lock(&session, "display-session").take());
     if config.encryption {
         if let Ok(Some(state)) = config.tpm_state_path() {
@@ -481,6 +558,10 @@ struct Wanted<'a> {
     metrics: Arc<ternvale_metrics::Metrics>,
     /// Attach virtio-sound on the next free virtio-mmio slot.
     audio: bool,
+    /// Advertise a virtio-sound capture stream (host microphone).
+    audio_input: bool,
+    /// Set while CoreAudio capture is live (no PCM).
+    mic_capturing: Arc<AtomicBool>,
     ram_mib: u64,
     ram_min_mib: u64,
     cpus: u32,
@@ -663,13 +744,21 @@ fn attach_devices(
     if wanted.audio {
         let slot = u32::try_from(mmio_after_net + extra)
             .map_err(|_| MachineError::Attach("virtio-sound slot does not fit in u32".into()))?;
-        let (base, size, device) = ternvale_devices::VirtioSound::attach(
+        let (base, size, device) = ternvale_devices::VirtioSound::attach_capture(
             slot,
             Arc::clone(&attach.memory),
             attach.virtio_irq_hook(slot),
+            wanted.audio_input,
+            Arc::clone(&wanted.mic_capturing),
         )
         .map_err(|error| MachineError::Attach(format!("virtio-sound: {error}")))?;
-        tracing::info!(target: "ternvale::virtio::sound", slot, base = %format!("{base:#x}"), "attached virtio-sound (output)");
+        tracing::info!(
+            target: "ternvale::virtio::sound",
+            slot,
+            base = %format!("{base:#x}"),
+            capture = wanted.audio_input,
+            "attached virtio-sound"
+        );
         devices.push((base, size, device));
         extra += 1;
     }

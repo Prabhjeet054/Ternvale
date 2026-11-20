@@ -64,6 +64,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "virtio_sound"
+path = "fuzz_targets/virtio_sound.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "virtio_balloon"
 path = "fuzz_targets/virtio_balloon.rs"
 test = false

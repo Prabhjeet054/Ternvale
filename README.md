@@ -49,7 +49,9 @@ Guest-facing parsers have libFuzzer targets in `ternvale-fuzz` (nightly +
 - [docs/IMPORT.md](docs/IMPORT.md) — `.tvm` export/import, templates, qcow2/vmdk/vhdx
 - [docs/CI.md](docs/CI.md) — GitHub Actions, hosted vs self-hosted HV, runner security
 - [docs/COMPAT.md](docs/COMPAT.md) — guest OS matrix (`make compat`)
-- [docs/PRIVACY.md](docs/PRIVACY.md) — updates, opt-in crash reports, retention
+- [docs/PRIVACY.md](docs/PRIVACY.md) — updates, opt-in crash reports, mic/camera
+- [docs/AUDIO.md](docs/AUDIO.md) — virtio-sound playback and capture
+- [docs/USB.md](docs/USB.md) — xHCI, no UVC, agent webcam fallback
 - [docs/TERMS.md](docs/TERMS.md) — terms of use
 - [docs/WINDOWS_LICENSE.md](docs/WINDOWS_LICENSE.md) — Windows licences are yours
 - [docs/PERF_REPORT.md](docs/PERF_REPORT.md) — Step 62 vs QEMU+HVF

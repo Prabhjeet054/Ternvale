@@ -62,6 +62,8 @@ ternvale-crypto = { path = "../ternvale-crypto" }
 ternvale-acpi = { path = "../ternvale-acpi" }
 # PL011 serial, virtio-blk/net/vsock attachment and the agent server for `run`.
 ternvale-devices = { path = "../ternvale-devices", default-features = false }
+# Microphone probe / CoreAudio capture and agent webcam frames (no PCM/pixels in logs).
+ternvale-audio-host = { path = "../ternvale-audio-host" }
 # AGENT_PORT: where `run` puts the agent server's host socket.
 ternvale-agent-proto = { path = "../ternvale-agent-proto" }
 # `doctor`: macOS version, kern.hv_support, and a probe VM + GIC through the safe wrappers.

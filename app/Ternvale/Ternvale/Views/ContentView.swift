@@ -44,7 +44,8 @@ struct ContentView: View {
                     controller: library.display,
                     seamless: library.seamless,
                     isActive: library.selectedIsRunning,
-                    usesCustomDisplayPipeline: library.usesCustomDisplayPipeline
+                    usesCustomDisplayPipeline: library.usesCustomDisplayPipeline,
+                    captureBanner: library.privacyCaptureBanner
                 )
                 Divider()
                 LogPanelView(text: logTailer.text, path: logTailer.path)

@@ -36,6 +36,7 @@ pub use virtio::{
     GATEWAY_MAC, MAX_FRAME, NET_HDR_LEN, PCAP_ENV, VIRTIO_NET_F_MAC, VIRTIO_NET_F_MRG_RXBUF,
     VIRTIO_NET_F_STATUS, VIRTIO_NET_ID, VIRTIO_NET_S_LINK_UP,
 };
+pub use virtio::{parse_sound_set_params, AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};
 pub use virtio::{
     slot_base, AttachedBlk, BlkStats, Buffer, Chain, DiskHandle, FixedDevice, IrqHook, QueueNotify,
     SplitQueue, VirtioBlk, VirtioBlkError, VirtioDevice, VirtioIrq, VirtioMmio, VirtioMmioError,
@@ -54,7 +55,6 @@ pub use virtio::{
 };
 pub use virtio::{AttachedP9, P9Error, P9Stats, VirtioP9, VIRTIO_9P_ID, VIRTIO_9P_TAG_LEN};
 pub use virtio::{AttachedRng, RngError, RngStats, VirtioRng, RNG_MAX_PER_CHAIN, VIRTIO_RNG_ID};
-pub use virtio::{AttachedSound, SoundError, VirtioSound, VIRTIO_SOUND_ID};
 #[cfg(feature = "vmnet")]
 pub use virtio::{VmnetBackend, VMNET_SHARED_MODE};
 

@@ -18,6 +18,8 @@ final class LibraryViewModel: ObservableObject {
     @Published var showCrashOffer = false
     /// From `status.capabilities.custom_display_pipeline`. Missing: assume Metal.
     @Published var usesCustomDisplayPipeline = true
+    /// From `status.privacy` while the VM is running (no media).
+    @Published var privacyCaptureBanner: String?
 
     private let scanner = VMLibraryScanner()
     private let control = ControlSocketClient()
@@ -189,6 +191,7 @@ final class LibraryViewModel: ObservableObject {
             phase = .stopping
         case "stopped":
             if phase != .crashed { phase = .stopped }
+            privacyCaptureBanner = nil
         default:
             if phase == .starting { phase = .running }
         }
@@ -197,6 +200,24 @@ final class LibraryViewModel: ObservableObject {
         }
         if !usesCustomDisplayPipeline {
             display.disconnect()
+        }
+        if let privacy = status.privacy {
+            var parts: [String] = []
+            if privacy.microphone == "capturing" {
+                parts.append("Microphone")
+            }
+            if privacy.camera == "streaming" {
+                parts.append("Camera")
+            }
+            if privacy.microphone == "denied" {
+                parts.append("Microphone denied")
+            }
+            if privacy.camera == "denied" {
+                parts.append("Camera denied")
+            }
+            privacyCaptureBanner = parts.isEmpty ? nil : parts.joined(separator: " · ")
+        } else {
+            privacyCaptureBanner = nil
         }
         if status.toolsOutdated == true {
             let iso = status.toolsIsoAgent ?? "newer"

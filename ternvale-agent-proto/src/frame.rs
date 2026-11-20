@@ -71,7 +71,26 @@ pub fn write_message<W: Write>(
     let frame = encode(message)?;
     writer.write_all(&frame)?;
     writer.flush()?;
-    tracing::debug!(target: "ternvale::agent", direction = "send", peer, kind = message.kind(), bytes = frame.len() - 4, msg = ?message, "agent message");
+    if message.kind() == "camera_frame" {
+        tracing::debug!(
+            target: "ternvale::agent",
+            direction = "send",
+            peer,
+            kind = message.kind(),
+            bytes = frame.len() - 4,
+            "agent message (camera payload not logged)"
+        );
+    } else {
+        tracing::debug!(
+            target: "ternvale::agent",
+            direction = "send",
+            peer,
+            kind = message.kind(),
+            bytes = frame.len() - 4,
+            msg = ?message,
+            "agent message"
+        );
+    }
     Ok(())
 }
 

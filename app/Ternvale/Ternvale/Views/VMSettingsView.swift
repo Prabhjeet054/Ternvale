@@ -19,7 +19,8 @@ struct VMSettingsView: View {
     }
 
     var body: some View {
-        Form {
+        TabView {
+            Form {
             ForEach($nics) { $nic in
                 Section("NIC \(nic.id)") {
                     Picker("Backend", selection: $nic.backend) {
@@ -67,7 +68,14 @@ struct VMSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 480, minHeight: 360)
+        .tabItem { Text("Network") }
+
+            PrivacySettingsView(configURL: configURL) {
+                onSave(nics)
+            }
+            .tabItem { Text("Privacy") }
+        }
+        .frame(minWidth: 520, minHeight: 420)
         .navigationTitle("VM settings")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

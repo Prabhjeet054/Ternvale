@@ -4,14 +4,18 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ternvale_audio_host::{open_default_playback, PlaybackSink, SampleFormat};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use ternvale_audio_host::{
+    open_default_capture, open_default_playback, CaptureSource, PlaybackSink, SampleFormat,
+};
 use ternvale_vmm::GuestMemory;
 
 use super::protocol::{
-    encode_pcm_event, encode_pcm_info, parse_set_params, write_status, PcmParams,
-    EVT_PCM_PERIOD_ELAPSED, EVT_PCM_XRUN, R_PCM_INFO, R_PCM_PREPARE, R_PCM_RELEASE,
-    R_PCM_SET_PARAMS, R_PCM_START, R_PCM_STOP, S_BAD_MSG, S_IO_ERR, S_NOT_SUPP, S_OK, VQ_CONTROL,
-    VQ_EVENT, VQ_RX, VQ_TX,
+    encode_pcm_event, encode_pcm_info_range, parse_set_params, parse_stream_id, write_status,
+    PcmParams, EVT_PCM_PERIOD_ELAPSED, EVT_PCM_XRUN, R_PCM_INFO, R_PCM_PREPARE, R_PCM_RELEASE,
+    R_PCM_SET_PARAMS, R_PCM_START, R_PCM_STOP, STREAM_CAPTURE, STREAM_PLAYBACK, S_BAD_MSG,
+    S_IO_ERR, S_NOT_SUPP, S_OK, VQ_CONTROL, VQ_EVENT, VQ_RX, VQ_TX,
 };
 use crate::virtio::irq::VirtioIrq;
 use crate::virtio::queue::{Chain, SplitQueue};
@@ -19,7 +23,6 @@ use crate::virtio::{QueueNotify, VIRTIO_F_EVENT_IDX, VIRTIO_F_INDIRECT_DESC};
 
 const POLL: Duration = Duration::from_millis(5);
 const INT_VRING: u32 = 1;
-const STREAM_ID: u32 = 0;
 
 pub(super) enum Kick {
     Notify(QueueNotify),
@@ -34,28 +37,43 @@ pub(super) struct Worker {
     memory: Arc<Mutex<GuestMemory>>,
     irq: Arc<VirtioIrq>,
     playback: Box<dyn PlaybackSink>,
+    capture: Option<Box<dyn CaptureSource>>,
+    capturing: Arc<AtomicBool>,
+    streams: u32,
     control: Option<Bound>,
     event: Option<Bound>,
     tx: Option<Bound>,
     rx: Option<Bound>,
-    params: Option<PcmParams>,
-    running: bool,
+    playback_params: Option<PcmParams>,
+    capture_params: Option<PcmParams>,
+    running_tx: bool,
+    running_rx: bool,
     bytes_since_period: u32,
     pending_events: Vec<Chain>,
 }
 
 impl Worker {
-    pub(super) fn new(memory: Arc<Mutex<GuestMemory>>, irq: Arc<VirtioIrq>) -> Self {
+    pub(super) fn new(
+        memory: Arc<Mutex<GuestMemory>>,
+        irq: Arc<VirtioIrq>,
+        capture: bool,
+        capturing: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             memory,
             irq,
             playback: open_default_playback(),
+            capture: capture.then(open_default_capture),
+            capturing,
+            streams: if capture { 2 } else { 1 },
             control: None,
             event: None,
             tx: None,
             rx: None,
-            params: None,
-            running: false,
+            playback_params: None,
+            capture_params: None,
+            running_tx: false,
+            running_rx: false,
             bytes_since_period: 0,
             pending_events: Vec::new(),
         }
@@ -81,11 +99,17 @@ impl Worker {
         self.event = None;
         self.tx = None;
         self.rx = None;
-        self.params = None;
-        self.running = false;
+        self.playback_params = None;
+        self.capture_params = None;
+        self.running_tx = false;
+        self.running_rx = false;
         self.bytes_since_period = 0;
         self.pending_events.clear();
         self.playback.close();
+        if let Some(capture) = self.capture.as_mut() {
+            capture.close();
+        }
+        self.capturing.store(false, Ordering::Relaxed);
     }
 
     fn bind(&mut self, notify: &QueueNotify) {
@@ -158,7 +182,7 @@ impl Worker {
         for chain in chains {
             let status = self.handle_control(&chain);
             let ok = self.with_mem_mut(|mem| {
-                write_control_response(mem, &chain, status)
+                write_control_response(mem, &chain, status, self.streams)
                     && bound.queue.add_used(mem, chain.head, 0)
             });
             if ok == Some(true) {
@@ -185,28 +209,51 @@ impl Worker {
         );
         match code {
             R_PCM_INFO => {
-                if req.len() >= 8 {
-                    let start = u32::from_le_bytes(req[4..8].try_into().expect("start"));
-                    if start != STREAM_ID {
-                        return S_BAD_MSG;
-                    }
+                let start = if req.len() >= 8 {
+                    u32::from_le_bytes(req[4..8].try_into().expect("start"))
+                } else {
+                    0
+                };
+                if start >= self.streams {
+                    return S_BAD_MSG;
                 }
                 S_OK
             }
             R_PCM_SET_PARAMS => self.handle_set_params(&req),
             R_PCM_PREPARE => S_OK,
             _ if code == R_PCM_START => {
-                self.running = true;
+                match parse_stream_id(&req) {
+                    Some(STREAM_CAPTURE) if self.capture.is_some() => self.running_rx = true,
+                    _ => self.running_tx = true,
+                }
                 S_OK
             }
             _ if code == R_PCM_STOP => {
-                self.running = false;
+                match parse_stream_id(&req) {
+                    Some(STREAM_CAPTURE) => {
+                        self.running_rx = false;
+                        self.capturing.store(false, Ordering::Relaxed);
+                    }
+                    _ => self.running_tx = false,
+                }
                 S_OK
             }
             _ if code == R_PCM_RELEASE => {
-                self.running = false;
-                self.playback.close();
-                self.params = None;
+                match parse_stream_id(&req) {
+                    Some(STREAM_CAPTURE) => {
+                        self.running_rx = false;
+                        self.capture_params = None;
+                        if let Some(capture) = self.capture.as_mut() {
+                            capture.close();
+                        }
+                        self.capturing.store(false, Ordering::Relaxed);
+                    }
+                    _ => {
+                        self.running_tx = false;
+                        self.playback.close();
+                        self.playback_params = None;
+                    }
+                }
                 S_OK
             }
             _ => S_NOT_SUPP,
@@ -220,9 +267,9 @@ impl Worker {
         if params.channels == 0 || params.channels > 2 {
             return S_BAD_MSG;
         }
-        self.params = Some(params);
         tracing::info!(
             target: "ternvale::virtio::sound",
+            stream = params.stream_id,
             format = %params.describe(),
             "virtio-sound PCM format negotiated"
         );
@@ -231,10 +278,24 @@ impl Worker {
             channels: params.channels,
             bytes_per_frame: params.bytes_per_frame(),
         };
-        if self.playback.configure(host_fmt).is_err() {
-            return S_IO_ERR;
+        if params.stream_id == STREAM_CAPTURE {
+            if params.stream_id >= self.streams {
+                return S_BAD_MSG;
+            }
+            let Some(capture) = self.capture.as_mut() else {
+                return S_NOT_SUPP;
+            };
+            if capture.configure(host_fmt).is_err() {
+                return S_IO_ERR;
+            }
+            self.capture_params = Some(params);
+        } else {
+            if self.playback.configure(host_fmt).is_err() {
+                return S_IO_ERR;
+            }
+            self.playback_params = Some(params);
+            self.bytes_since_period = 0;
         }
-        self.bytes_since_period = 0;
         S_OK
     }
 
@@ -255,7 +316,7 @@ impl Worker {
     }
 
     fn process_tx(&mut self, bound: &mut Bound) {
-        if !self.running {
+        if !self.running_tx {
             return;
         }
         let Some(chains) = self.with_mem(|mem| bound.queue.chains(mem).collect::<Vec<_>>()) else {
@@ -287,7 +348,7 @@ impl Worker {
             .ok_or(S_IO_ERR)?
             .map_err(|_| S_IO_ERR)?;
         let stream = u32::from_le_bytes(hdr);
-        if stream != STREAM_ID {
+        if stream != STREAM_PLAYBACK {
             return Err(S_BAD_MSG);
         }
         let pcm_len = readable.len.saturating_sub(4);
@@ -306,21 +367,21 @@ impl Worker {
             return Err(S_IO_ERR);
         }
         write_tx_status_chain(self, chain, S_OK)?;
-        if let Some(params) = self.params {
+        if let Some(params) = self.playback_params {
             self.bytes_since_period += pcm_len;
             if params.period_bytes > 0 && self.bytes_since_period >= params.period_bytes {
                 self.bytes_since_period -= params.period_bytes;
-                self.post_period_event();
+                self.post_period_event(STREAM_PLAYBACK);
             }
         }
         Ok(pcm_len)
     }
 
-    fn post_period_event(&mut self) {
+    fn post_period_event(&mut self, stream: u32) {
         let Some(chain) = self.pending_events.pop() else {
             return;
         };
-        let event = encode_pcm_event(EVT_PCM_PERIOD_ELAPSED, STREAM_ID);
+        let event = encode_pcm_event(EVT_PCM_PERIOD_ELAPSED, stream);
         let delivered = self.with_mem_mut(|mem| {
             chain
                 .writable
@@ -333,6 +394,33 @@ impl Worker {
     }
 
     fn process_rx(&mut self, bound: &mut Bound) {
+        if self.capture.is_none() {
+            self.reject_rx(bound);
+            return;
+        }
+        if !self.running_rx {
+            return;
+        }
+        let Some(chains) = self.with_mem(|mem| bound.queue.chains(mem).collect::<Vec<_>>()) else {
+            return;
+        };
+        let mut irq = false;
+        for chain in chains {
+            let filled = self.fill_rx(&chain);
+            let ok = self.with_mem_mut(|mem| bound.queue.add_used(mem, chain.head, filled));
+            if ok == Some(true) {
+                irq = true;
+            }
+        }
+        if irq {
+            self.maybe_notify(bound);
+        }
+        if let Some(capture) = self.capture.as_ref() {
+            self.capturing.store(capture.capturing(), Ordering::Relaxed);
+        }
+    }
+
+    fn reject_rx(&mut self, bound: &mut Bound) {
         let Some(chains) = self.with_mem(|mem| bound.queue.chains(mem).collect::<Vec<_>>()) else {
             return;
         };
@@ -356,6 +444,32 @@ impl Worker {
         }
     }
 
+    fn fill_rx(&mut self, chain: &Chain) -> u32 {
+        let Some(w) = chain.writable.first() else {
+            return 0;
+        };
+        let room = w.len.saturating_sub(8) as usize;
+        if room == 0 {
+            return 0;
+        }
+        let mut pcm = vec![0u8; room];
+        let n = self
+            .capture
+            .as_mut()
+            .and_then(|c| c.pull_pcm(&mut pcm).ok())
+            .unwrap_or(0);
+        // Do not log `pcm`.
+        let _ = self.with_mem_mut(|mem| {
+            if n > 0 {
+                let _ = mem.write_bytes(w.addr, &pcm[..n]);
+            }
+            let mut st = [0u8; 8];
+            write_status(&mut st, S_OK);
+            mem.write_bytes(w.addr + u64::from(w.len.saturating_sub(8)), &st)
+        });
+        n as u32
+    }
+
     fn maybe_notify(&self, bound: &mut Bound) {
         let notify = self.with_mem_mut(|mem| bound.queue.notification_needed(mem));
         if notify == Some(true) {
@@ -375,12 +489,14 @@ fn read_readable(mem: &GuestMemory, chain: &Chain) -> Vec<u8> {
     out
 }
 
-fn write_control_response(mem: &mut GuestMemory, chain: &Chain, status: u32) -> bool {
+fn write_control_response(mem: &mut GuestMemory, chain: &Chain, status: u32, streams: u32) -> bool {
     if status == S_OK {
         let req = read_readable(mem, chain);
         let code = u32::from_le_bytes(req.get(0..4).unwrap_or(&[0; 4]).try_into().expect("c"));
         if code == R_PCM_INFO {
-            let info = encode_pcm_info();
+            let start = le_u32(req.get(4..8)).unwrap_or(0);
+            let count = le_u32(req.get(8..12)).unwrap_or(1);
+            let info = encode_pcm_info_range(start, count.max(1), streams);
             let w = chain.writable.first();
             return w.is_some_and(|w| mem.write_bytes(w.addr, &info).is_ok());
         }
@@ -397,6 +513,16 @@ fn write_tx_status_chain(worker: &Worker, chain: &Chain, status: u32) -> Result<
     worker
         .with_mem_mut(|mem| write_tx_status(mem, chain, status))
         .ok_or(S_IO_ERR)?
+}
+
+fn le_u32(slice: Option<&[u8]>) -> Option<u32> {
+    let bytes = slice?;
+    if bytes.len() < 4 {
+        return None;
+    }
+    let mut raw = [0u8; 4];
+    raw.copy_from_slice(&bytes[..4]);
+    Some(u32::from_le_bytes(raw))
 }
 
 fn write_tx_status(mem: &mut GuestMemory, chain: &Chain, status: u32) -> Result<(), u32> {

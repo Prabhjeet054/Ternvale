@@ -289,6 +289,7 @@ impl AgentServer {
                 | Message::CopyGet { .. }
                 | Message::CopyHash { .. }
                 | Message::DriverLogsGet { .. }
+                | Message::CameraFrame { .. }
         ) {
             return Err(AgentServerError::NotARequest {
                 kind: message.kind(),
@@ -312,7 +313,15 @@ impl AgentServer {
                 source,
             }
         })?;
-        tracing::info!(target: "ternvale::agent", kind = message.kind(), "agent request sent");
+        if message.kind() == "camera_frame" {
+            tracing::debug!(
+                target: "ternvale::agent",
+                kind = message.kind(),
+                "agent camera_frame sent (pixels not logged)"
+            );
+        } else {
+            tracing::info!(target: "ternvale::agent", kind = message.kind(), "agent request sent");
+        }
         Ok(())
     }
 

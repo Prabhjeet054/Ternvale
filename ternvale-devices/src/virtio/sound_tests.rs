@@ -1,14 +1,27 @@
 //! virtio-sound protocol helpers.
 
 use super::protocol::{
-    encode_pcm_event, encode_pcm_info, parse_set_params, D_OUTPUT, EVT_PCM_PERIOD_ELAPSED, FMT_S16,
-    RATE_48000, R_PCM_SET_PARAMS,
+    encode_pcm_event, encode_pcm_info, encode_pcm_info_range, parse_set_params, D_INPUT, D_OUTPUT,
+    EVT_PCM_PERIOD_ELAPSED, FMT_S16, RATE_48000, R_PCM_SET_PARAMS,
 };
 
 #[test]
 fn pcm_info_is_output_stream() {
-    let info = encode_pcm_info();
+    let info = encode_pcm_info(D_OUTPUT);
     assert_eq!(info[24], D_OUTPUT);
+}
+
+#[test]
+fn pcm_info_range_includes_capture() {
+    let bytes = encode_pcm_info_range(0, 2, 2);
+    assert_eq!(bytes.len(), 64);
+    assert_eq!(bytes[24], D_OUTPUT);
+    assert_eq!(bytes[32 + 24], D_INPUT);
+}
+
+#[test]
+fn set_params_rejects_short_buffer() {
+    assert!(parse_set_params(&[0u8; 16]).is_none());
 }
 
 #[test]
@@ -21,6 +34,7 @@ fn set_params_round_trip() {
     bytes[21] = FMT_S16;
     bytes[22] = RATE_48000;
     let params = parse_set_params(&bytes).expect("parse");
+    assert_eq!(params.stream_id, 0);
     assert_eq!(params.channels, 2);
     assert_eq!(params.rate_hz(), 48_000);
     assert!(params.describe().contains("48000"));

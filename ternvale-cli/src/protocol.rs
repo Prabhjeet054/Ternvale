@@ -262,6 +262,9 @@ pub struct StatusJson {
     /// Resolved x86 usermode engine (`none` / `rosetta` / `fex` / `qemu-user`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub x86_engine: Option<String>,
+    /// Mic/camera/USB/shares/clipboard. Optional for older clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub privacy: Option<crate::privacy::PrivacyJson>,
 }
 
 /// Guest agent connection in `status`.
@@ -634,6 +637,7 @@ impl From<&VmStatus> for StatusJson {
             backend: None,
             capabilities: None,
             x86_engine: None,
+            privacy: None,
         }
     }
 }

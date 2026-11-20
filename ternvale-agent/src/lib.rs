@@ -9,6 +9,7 @@
 
 mod actions;
 mod backoff;
+mod camera;
 mod clip;
 mod copy;
 mod drvlog;

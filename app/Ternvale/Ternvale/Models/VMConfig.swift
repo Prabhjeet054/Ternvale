@@ -247,6 +247,100 @@ enum VMConfigParser {
         return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
     }
 
+    /// `[audio] input` (default false).
+    static func parseAudioInput(in text: String) -> Bool {
+        sectionBool(in: text, table: "audio", key: "input") ?? false
+    }
+
+    /// `[camera] enabled` (default false).
+    static func parseCameraEnabled(in text: String) -> Bool {
+        sectionBool(in: text, table: "camera", key: "enabled") ?? false
+    }
+
+    /// `[usb] enabled` (default true).
+    static func parseUsbEnabled(in text: String) -> Bool {
+        sectionBool(in: text, table: "usb", key: "enabled") ?? true
+    }
+
+    /// `[vsock] agent` (default true when the table exists).
+    static func parseClipboardAgent(in text: String) -> Bool {
+        guard text.contains("[vsock]") else { return false }
+        return sectionBool(in: text, table: "vsock", key: "agent") ?? true
+    }
+
+    static func parseShares(in text: String) -> [(tag: String, hostPath: String, readOnly: Bool)] {
+        var shares: [(String, String, Bool)] = []
+        let parts = text.components(separatedBy: "[[shares]]")
+        for (index, part) in parts.enumerated() {
+            if index == 0 { continue }
+            let block = part.components(separatedBy: "[[").first ?? part
+            let tag = tableString(in: block, key: "tag") ?? ""
+            let host = tableString(in: block, key: "host_path") ?? ""
+            let ro = tableBoolLine(in: block, key: "read_only") ?? false
+            shares.append((tag, host, ro))
+        }
+        return shares
+    }
+
+    static func replacingAudioInput(in text: String, enabled: Bool) -> String {
+        upsertTableBool(in: text, table: "audio", key: "input", value: enabled)
+    }
+
+    static func replacingCameraEnabled(in text: String, enabled: Bool) -> String {
+        upsertTableBool(in: text, table: "camera", key: "enabled", value: enabled)
+    }
+
+    private static func sectionBody(in text: String, table: String) -> String? {
+        let marker = "[\(table)]"
+        guard let range = text.range(of: marker) else { return nil }
+        let rest = text[range.upperBound...]
+        if let next = rest.range(of: "\n[") {
+            return String(rest[..<next.lowerBound])
+        }
+        return String(rest)
+    }
+
+    private static func sectionBool(in text: String, table: String, key: String) -> Bool? {
+        guard let body = sectionBody(in: text, table: table) else { return nil }
+        return tableBoolLine(in: body, key: key)
+    }
+
+    private static func tableBoolLine(in text: String, key: String) -> Bool? {
+        bool(in: text, key: key)
+    }
+
+    private static func upsertTableBool(in text: String, table: String, key: String, value: Bool)
+        -> String
+    {
+        let line = "\(key) = \(value ? "true" : "false")"
+        let marker = "[\(table)]"
+        if let body = sectionBody(in: text, table: table) {
+            let pattern = #"^\s*"# + NSRegularExpression.escapedPattern(for: key) + #"\s*=.*$"#
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
+            {
+                let range = NSRange(body.startIndex..<body.endIndex, in: body)
+                if regex.firstMatch(in: body, range: range) != nil {
+                    let newBody = regex.stringByReplacingMatches(
+                        in: body, options: [], range: range, withTemplate: line)
+                    if let markerRange = text.range(of: marker) {
+                        let start = markerRange.upperBound
+                        let end = text.index(start, offsetBy: body.count)
+                        var out = text
+                        out.replaceSubrange(start..<end, with: newBody)
+                        return out
+                    }
+                }
+            }
+            if let markerRange = text.range(of: marker) {
+                var out = text
+                out.insert(contentsOf: "\n" + line, at: markerRange.upperBound)
+                return out
+            }
+        }
+        let trimmed = text.trimmingCharacters(in: .newlines)
+        return trimmed + "\n\n[\(table)]\n\(line)\n"
+    }
+
     enum ParseError: LocalizedError {
         case missing(String)
 

@@ -6,6 +6,8 @@ struct VMDisplayPanel: View {
     let isActive: Bool
     /// When false, skip Metal (`custom_display_pipeline`); VZ owns the pixels.
     var usesCustomDisplayPipeline: Bool = true
+    /// Visible while the VM is using the host microphone or camera.
+    var captureBanner: String? = nil
 
     @State private var lastRequestedSize: CGSize = .zero
 
@@ -46,6 +48,16 @@ struct VMDisplayPanel: View {
                         .foregroundStyle(.secondary)
                 }
                 VStack {
+                    if let captureBanner, !captureBanner.isEmpty {
+                        Text("Capturing: \(captureBanner)")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(.red.opacity(0.85))
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                            .padding(.top, 28)
+                    }
                     HStack {
                         Text(controller.statusText)
                             .font(.caption)

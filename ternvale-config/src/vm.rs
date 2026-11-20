@@ -8,8 +8,8 @@ use crate::disk::Disk;
 use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
 use crate::{
-    AudioSection, GpuSection, InputSection, IsoSection, Nic, PowerSection, Profile, Share,
-    TpmSection, UsbSection, VsockSection,
+    AudioSection, CameraSection, GpuSection, InputSection, IsoSection, Nic, PowerSection, Profile,
+    Share, TpmSection, UsbSection, VsockSection,
 };
 
 const RAM_QUANTUM_MIB: u64 = 16;
@@ -88,6 +88,9 @@ pub struct VmConfig {
     /// virtio-sound playback to CoreAudio; unset means enabled. See [`AudioSection`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioSection>,
+    /// Host webcam; unset means off. See [`CameraSection`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<CameraSection>,
     /// Host folders shared with the guest over virtio-fs (at most one today).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shares: Vec<Share>,
@@ -268,6 +271,7 @@ impl VmConfig {
             .validate(self.effective_firmware_tables())?;
         self.usb_section().validate()?;
         self.audio_section().validate()?;
+        self.camera_section().validate()?;
         self.gpu_section().validate()?;
         if self.shares.len() > 1 {
             return Err(ConfigError::InvalidShare {

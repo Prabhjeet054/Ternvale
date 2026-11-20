@@ -1,10 +1,20 @@
-//! Host playback sink for virtio-sound (CoreAudio on macOS through `cpal`).
+//! Host playback and capture for virtio-sound (CoreAudio on macOS through `cpal`).
+//! PCM and camera pixels are never logged.
 
+mod camera;
+mod capture;
 mod cpal_sink;
 mod null_sink;
+mod permission;
 
+pub use camera::{open_camera, CameraFrame, CameraSource, TestPatternCamera};
+pub use capture::{open_default_capture, CaptureSource, CpalCapture, NullCapture, ToneCapture};
 pub use cpal_sink::CpalPlayback;
 pub use null_sink::NullPlayback;
+pub use permission::{
+    deny_mic, probe_camera, probe_microphone, PermissionDenied, CAMERA_TEST_ENV, DENY_CAMERA_ENV,
+    DENY_MIC_ENV,
+};
 
 /// PCM layout agreed with the guest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

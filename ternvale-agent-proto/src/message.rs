@@ -187,6 +187,30 @@ pub enum Message {
         /// True when the guest truncated to `max_bytes`.
         truncated: bool,
     },
+    /// Host → agent: one chunk of a webcam frame (never log `data`).
+    CameraFrame {
+        /// Frame sequence.
+        seq: u64,
+        /// Byte offset in the assembled frame.
+        offset: u64,
+        /// Last chunk of this `seq`.
+        last: bool,
+        /// Pixels.
+        width: u32,
+        /// Pixels.
+        height: u32,
+        /// `rgb24`.
+        format: String,
+        /// Chunk bytes (hex on the wire).
+        data: HexBytes,
+    },
+    /// Agent → host: camera chunk landed (optional).
+    CameraFrameOk {
+        /// The `seq` of [`Self::CameraFrame`].
+        seq: u64,
+        /// Bytes written this chunk.
+        written: u64,
+    },
     /// Agent → host: copy/exec request failed.
     CopyErr {
         /// The request id.
@@ -294,6 +318,8 @@ impl Message {
             Self::CopyErr { .. } => "copy_err",
             Self::DriverLogsGet { .. } => "driver_logs_get",
             Self::DriverLogsOk { .. } => "driver_logs_ok",
+            Self::CameraFrame { .. } => "camera_frame",
+            Self::CameraFrameOk { .. } => "camera_frame_ok",
         }
     }
 
@@ -374,6 +400,24 @@ impl Message {
                     "driver_logs_ok longer than {} bytes",
                     crate::MAX_DRIVER_LOG_BYTES
                 ))
+            }
+            Self::CameraFrame {
+                width,
+                height,
+                data,
+                format,
+                ..
+            } => {
+                if *width == 0 || *height == 0 || *width > MAX_DIMENSION || *height > MAX_DIMENSION
+                {
+                    Err("camera_frame geometry out of range".into())
+                } else if format != "rgb24" {
+                    Err("camera_frame format must be rgb24".into())
+                } else if data.0.len() > MAX_BIN_CHUNK {
+                    Err(format!("camera_frame longer than {MAX_BIN_CHUNK} bytes"))
+                } else {
+                    Ok(())
+                }
             }
             _ => Ok(()),
         }

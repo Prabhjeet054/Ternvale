@@ -214,6 +214,14 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
             Some(Message::CopyErr { id, reason }) => {
                 deliver_copy(shared, id, super::xfer::CopyEvent::Failed { reason });
             }
+            Some(Message::CameraFrameOk { seq, written }) => {
+                tracing::debug!(
+                    target: "ternvale::agent",
+                    seq,
+                    written,
+                    "camera_frame_ok"
+                );
+            }
             Some(other) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from agent ignored");
             }
