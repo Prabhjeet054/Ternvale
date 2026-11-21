@@ -10,3 +10,4 @@
 - [Snapshots](snapshots.md)
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
+- [Headless gateway](gateway.md)

@@ -1,0 +1,35 @@
+[package]
+name = "ternvale-gateway"
+description = "HTTPS REST/WebSocket gateway for the Step 83 control API (ternvaled)."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Typed errors (library crate; no anyhow).
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+# Token hashing; never log the preimage.
+sha2 = "0.10"
+# Token and nonce bytes.
+getrandom = "0.2"
+# Token material prints [redacted] and is wiped on drop.
+zeroize = { version = "1", features = ["derive"] }
+# TLS (ring backend: ISC/MIT/Apache-2.0; avoid aws-lc-rs).
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+rustls-pki-types = "1"
+rustls-pemfile = "2"
+# Self-signed CA and leaf certs for localhost / documented rotation.
+rcgen = { version = "0.13", default-features = false, features = ["pem", "ring"] }
+# PNG IDAT zlib (same backend as zip in the CLI).
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+# Audit timestamps (RFC 3339).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# JSON-RPC method names and the frozen control schema.
+ternvale-api = { path = "../ternvale-api" }
+
+[lints]
+workspace = true

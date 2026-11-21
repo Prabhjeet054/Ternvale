@@ -14,6 +14,26 @@ pub struct Cli {
     /// Print machine-readable JSON on stdout (every command).
     #[arg(long, global = true)]
     pub json: bool,
+    /// Talk to `ternvaled` over HTTPS instead of local sockets.
+    #[arg(long, global = true)]
+    pub remote: Option<String>,
+    /// Bearer token (`TERNVALE_GATEWAY_TOKEN`). Never logged.
+    #[arg(
+        long,
+        global = true,
+        env = "TERNVALE_GATEWAY_TOKEN",
+        hide_env_values = true
+    )]
+    pub token: Option<String>,
+    /// Gateway CA PEM (default: Application Support gateway `ca.pem`).
+    #[arg(long, global = true)]
+    pub tls_ca: Option<PathBuf>,
+    /// Client certificate PEM for mTLS.
+    #[arg(long, global = true)]
+    pub tls_cert: Option<PathBuf>,
+    /// Client private key PEM for mTLS.
+    #[arg(long, global = true)]
+    pub tls_key: Option<PathBuf>,
     /// What to do.
     #[command(subcommand)]
     pub command: Command,
@@ -25,6 +45,13 @@ pub struct Cli {
 pub enum Command {
     /// Listen on the JSON-RPC hub socket (`run/api.sock`) until killed.
     Serve,
+    /// List library VMs (hub `list`, or `GET /v1/vms` with `--remote`).
+    List,
+    /// Start a library VM (hub `start`).
+    Start {
+        /// VM name.
+        name: String,
+    },
     /// Boot the VM described by a TOML config and serve its control socket
     /// until it stops.
     Run {

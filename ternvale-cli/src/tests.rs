@@ -82,6 +82,15 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(parse(&["ternvale", "serve"]), Command::Serve);
+    assert_eq!(parse(&["ternvale", "list"]), Command::List);
+    assert_eq!(
+        parse(&["ternvale", "start", "win"]),
+        Command::Start { name: "win".into() }
+    );
+    let remote = Cli::try_parse_from(["ternvale", "--remote", "https://127.0.0.1:8443", "list"])
+        .expect("remote");
+    assert_eq!(remote.remote.as_deref(), Some("https://127.0.0.1:8443"));
+    assert_eq!(remote.command, Command::List);
     assert_eq!(parse(&["ternvale", "probe-el2"]), Command::ProbeEl2);
     assert_eq!(parse(&["ternvale", "probe-cpu"]), Command::ProbeCpu);
     assert_eq!(

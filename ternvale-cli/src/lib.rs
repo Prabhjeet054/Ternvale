@@ -4,7 +4,8 @@
 //! control socket at `~/Library/Application Support/Ternvale/run/<name>.sock`
 //! (JSON lines, see [`protocol`]). `status`, `pause`, `resume`, and `stop`
 //! are clients of that socket. `serve` binds the JSON-RPC hub at
-//! `run/api.sock` (`docs/API.md`). `validate` and `create-disk` work offline.
+//! `run/api.sock` (`docs/API.md`). `ternvaled` adds a localhost HTTPS
+//! gateway (`docs/GATEWAY.md`). `validate` and `create-disk` work offline.
 //! `doctor` checks the host, `logs` reads host logs, and `report` zips a
 //! crash report (asking a running VM to `dump-diagnostics` first).
 //! `acpi-dump` reads the ACPI tables back from a probe VM and can diff them
@@ -35,6 +36,7 @@ pub mod create_cmd;
 pub mod create_macos;
 pub mod create_progress;
 pub mod crypto_cmd;
+pub mod daemon;
 pub mod diag;
 pub mod disk;
 pub mod disk_cmd;
@@ -68,6 +70,7 @@ pub mod qemu_img;
 pub mod release_verify;
 #[cfg(test)]
 mod reliability_quality;
+pub mod remote_cmd;
 pub mod report;
 pub mod rpc_vm;
 pub mod run;
@@ -143,6 +146,17 @@ pub fn error_chain(error: &anyhow::Error) -> String {
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all)]
 pub fn dispatch(cli: Cli) -> Result<ExitCode> {
     let json = cli.json;
+    if let Some(remote) = cli.remote.clone() {
+        return remote_cmd::dispatch(
+            &remote,
+            cli.token.clone(),
+            cli.tls_ca.clone(),
+            cli.tls_cert.clone(),
+            cli.tls_key.clone(),
+            cli.command,
+            json,
+        );
+    }
     match cli.command {
         Command::Run {
             config,
@@ -191,6 +205,19 @@ fn cli_log() -> Result<ternvale_log::LogGuard> {
 
 fn non_run(command: Command, json: bool) -> Result<ExitCode> {
     match command {
+        Command::List => {
+            let response = crate::api_hub::hub_call(ternvale_api::Method::List, None)
+                .map_err(|error| anyhow::anyhow!("{error}"))?;
+            json_out::emit(json, &response, || println!("{response:?}"))?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Start { name } => {
+            let params = serde_json::json!({ "name": name });
+            let response = crate::api_hub::hub_call(ternvale_api::Method::Start, Some(&params))
+                .map_err(|error| anyhow::anyhow!("{error}"))?;
+            json_out::emit(json, &response, || println!("{response:?}"))?;
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Serve => {
             let server = crate::api_server::ApiServer::start()?;
             json_out::emit(

@@ -16,9 +16,9 @@ import sys
 
 root = sys.argv[1]
 # Control-plane crates: talk to VMs through VmBackend / the socket, not VZ/HV FFI.
-api_surface = ("ternvale-api", "ternvale-cli", "ternvale-client")
+api_surface = ("ternvale-api", "ternvale-cli", "ternvale-client", "ternvale-gateway")
 # doctor/peer/power on the CLI use public ternvale-hv wrappers only.
-hv_direct_forbidden = ("ternvale-api", "ternvale-client")
+hv_direct_forbidden = ("ternvale-api", "ternvale-client", "ternvale-gateway")
 
 
 def log(msg: str) -> None:

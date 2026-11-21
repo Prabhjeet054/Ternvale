@@ -23,6 +23,11 @@ See `docs/PRIVACY.md`.
 VMs: `~/Library/Application Support/Ternvale/`. Logs:
 `~/Library/Logs/Ternvale/`.
 
+**Can I manage VMs on a Mac mini without a GUI?**  
+Yes. Run `ternvaled` (launchd plist in `contrib/launchd/`) and
+`ternvale --remote https://127.0.0.1:8443 …`. It listens on loopback unless
+you set `allow_remote_bind = true`. See `docs/GATEWAY.md`.
+
 **How do I update?**  
 **Ternvale → Check for Updates…** or Settings (stable/beta). Automatic
 install stays off until you enable **Download and install updates

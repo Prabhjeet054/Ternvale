@@ -9,6 +9,10 @@ publish.workspace = true
 name = "ternvale"
 path = "src/main.rs"
 
+[[bin]]
+name = "ternvaled"
+path = "src/bin/ternvaled.rs"
+
 [features]
 default = ["metrics", "quiet-trace"]
 # Lock-free VM counters on the vCPU/MMIO/virtio hot path.
@@ -33,12 +37,14 @@ vmnet = ["ternvale-devices/vmnet"]
 # Error context for every CLI failure. The only crate allowed to use anyhow.
 anyhow = "1"
 # `ternvale run|validate|create-disk|status|pause|resume|stop` argument parsing.
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 # Control socket JSON-lines requests and responses.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # JSON-RPC 2.0 method names, handshake, and events (Step 83).
 ternvale-api = { path = "../ternvale-api" }
+# HTTPS gateway client (`--remote`) and `ternvaled`.
+ternvale-gateway = { path = "../ternvale-gateway" }
 # VmBackend selection and NativeBackend capabilities (Step 91).
 ternvale-backend = { path = "../ternvale-backend" }
 # Resolve `x86_emulation` / status engine (Step 98).
