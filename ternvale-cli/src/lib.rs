@@ -54,6 +54,7 @@ pub mod hub_supervisor;
 pub mod import_cmd;
 pub mod json_out;
 pub mod keychain;
+pub mod license_gate;
 pub mod logfmt;
 pub mod logs;
 pub mod macos_clone;
@@ -466,6 +467,16 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
             app,
             expect_gatekeeper,
         } => release_verify::release_verify(&app, expect_gatekeeper),
+        Command::License { action } => match action {
+            cli::LicenseCommand::Install { path } => {
+                license_gate::install(&path)?;
+                Ok(ExitCode::SUCCESS)
+            }
+            cli::LicenseCommand::Show => {
+                license_gate::show()?;
+                Ok(ExitCode::SUCCESS)
+            }
+        },
     }
 }
 
@@ -487,3 +498,7 @@ mod create_tests;
 #[cfg(test)]
 #[path = "api_rpc_tests.rs"]
 mod api_rpc_tests;
+
+#[cfg(test)]
+#[path = "license_quality.rs"]
+mod license_quality;

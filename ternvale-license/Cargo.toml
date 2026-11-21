@@ -1,0 +1,26 @@
+[package]
+name = "ternvale-license"
+description = "Offline Ed25519 license verification, trial, and degraded-mode policy."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ternvale-license-sign"
+path = "src/bin/license-sign.rs"
+
+[dependencies]
+# Typed errors (library crate; no anyhow).
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+# Offline signatures. Private keys are never stored in this crate.
+ed25519-dalek = { version = "2.1", default-features = false, features = ["std"] }
+# Seed bytes for the *sign* binary only (operator machine).
+getrandom = "0.2"
+# SigningKey / seeds wipe on drop.
+zeroize = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

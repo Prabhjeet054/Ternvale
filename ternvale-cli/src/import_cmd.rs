@@ -29,6 +29,7 @@ pub fn import(
     firmware: Option<&Path>,
     json: bool,
 ) -> Result<ExitCode> {
+    crate::license_gate::require_new_session()?;
     if qemu_img::is_foreign_disk(src) {
         return import_disk(src, name, layered, kernel, firmware, json);
     }

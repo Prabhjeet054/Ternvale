@@ -12,5 +12,5 @@ be codesigned with `com.apple.security.hypervisor`).
 
 This book is the user guide. Privacy, terms, Windows licensing, and the
 QEMU+HVF performance notes live in `docs/` of the source tree
-(`PRIVACY.md`, `TERMS.md`, `WINDOWS_LICENSE.md`, `PERF_REPORT.md`).
+(`PRIVACY.md`, `TERMS.md`, `WINDOWS_LICENSE.md`, `DISTRIBUTION.md`, `PERF_REPORT.md`).
 Third-party crates and optional guest tools: `THIRD_PARTY_NOTICES.md`.

@@ -40,6 +40,7 @@ pub struct CreateMacos {
 /// `ternvale create --macos`.
 #[tracing::instrument(level = "info", target = "ternvale::cli", skip_all, fields(vm = %args.name, wait = args.wait))]
 pub fn create_macos(args: CreateMacos) -> Result<ExitCode> {
+    crate::license_gate::require_new_session()?;
     paths::socket_path(&args.name)?;
     let dest = paths::vm_dir(&args.name)?;
     if dest.exists() {

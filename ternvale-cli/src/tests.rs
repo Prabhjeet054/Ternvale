@@ -317,6 +317,20 @@ fn parses_every_subcommand() {
         }
     );
     assert_eq!(
+        parse(&["ternvale", "license", "show"]),
+        Command::License {
+            action: crate::cli::LicenseCommand::Show
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "license", "install", "key.tvlk"]),
+        Command::License {
+            action: crate::cli::LicenseCommand::Install {
+                path: "key.tvlk".into()
+            }
+        }
+    );
+    assert_eq!(
         parse(&["ternvale", "tools", "build-iso"]),
         Command::Tools {
             action: crate::tools::ToolsCommand::BuildIso {

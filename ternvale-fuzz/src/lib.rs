@@ -11,6 +11,7 @@ mod fuse;
 mod gpu3d;
 mod guest;
 mod ipp;
+mod license;
 mod psci;
 mod tpm;
 mod transport;
@@ -35,6 +36,7 @@ pub use esr::run as esr;
 pub use fuse::run as fuse;
 pub use gpu3d::run as gpu3d_decoder;
 pub use ipp::run as ipp_proxy;
+pub use license::run as license_blob;
 pub use psci::run as psci;
 pub use tpm::run as tpm_crb;
 pub use user_net::run as user_net;
@@ -85,6 +87,7 @@ pub const TARGETS: &[&str] = &[
     "crypto",
     "gpu3d_decoder",
     "ipp",
+    "license",
 ];
 
 /// Run the named target on `data`. Unknown names are ignored.
@@ -113,6 +116,7 @@ pub fn run_named(target: &str, data: &[u8]) {
         "crypto" => crypto_at_rest(data),
         "gpu3d_decoder" => gpu3d_decoder(data),
         "ipp" => ipp_proxy(data),
+        "license" => license_blob(data),
         _ => {}
     }
 }

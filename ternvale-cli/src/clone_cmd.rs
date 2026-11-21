@@ -18,6 +18,7 @@ use crate::paths;
     fields(source, new_name)
 )]
 pub fn clone_vm(source: &str, new_name: &str) -> Result<ExitCode> {
+    crate::license_gate::require_new_session()?;
     if source == new_name {
         bail!("source and new VM name must differ");
     }

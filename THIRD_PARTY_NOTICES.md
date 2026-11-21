@@ -11,11 +11,11 @@ No crate in this graph is GPL or LGPL. Allowed OSI licenses: MIT, Apache-2.0,
 BSD-2-Clause, BSD-3-Clause, ISC, Unicode-3.0, Unlicense, Zlib.
 
 ```
-Apache-2.0 (115): aead@0.5.2, aes@0.8.4, aes-gcm@0.10.3, anstream@1.0.0, anstyle@1.0.14, anstyle-parse@1.0.0, anstyle-query@1.1.5, anyhow@1.0.104, arbitrary@1.5.0, arboard@3.7.0, autocfg@1.5.1, bitflags@1.3.2, bitflags@2.13.2, block-buffer@0.10.4, cc@1.4.7, cexpr@0.6.0, cfg-if@1.0.5, chrono@0.4.45, cipher@0.4.4, clang-sys@1.9.1, clap@4.6.7, clap_builder@4.6.7, clap_derive@4.6.7, clap_lex@1.1.1, colorchoice@1.0.5, core-foundation@0.10.1, core-foundation-sys@0.8.7, coreaudio-rs@0.11.3, cpal@0.15.3, cpufeatures@0.2.17, crc32fast@1.5.2, crossbeam-channel@0.5.17, crossbeam-utils@0.8.23, crypto-common@0.1.7, ctr@0.9.2, dasp_sample@0.11.0, deranged@0.4.0, derive_arbitrary@1.5.0, digest@0.10.7, either@1.19.0, equivalent@1.0.2, find-msvc-tools@0.1.13, flate2@1.1.10, getrandom@0.2.17, ghash@0.5.1, glob@0.3.4, hashbrown@0.17.1, heck@0.5.0, hkdf@0.12.4, hmac@0.12.1, iana-time-zone@0.1.65, indexmap@2.14.2, inout@0.1.4, io-kit-sys@0.5.0, is_terminal_polyfill@1.70.2, itertools@0.13.0, itoa@1.0.18, jobserver@0.1.35, lazy_static@1.5.0, libc@0.2.189, log@0.4.34, mach2@0.4.3, mach2@0.5.0, minimal-lexical@0.2.1, num-conv@0.1.0, num-traits@0.2.19, objc2-app-kit@0.3.2, objc2-core-foundation@0.3.2, objc2-core-graphics@0.3.2, once_cell@1.21.4, opaque-debug@0.3.1, pin-project-lite@0.2.17, pkg-config@0.3.33, polyval@0.6.2, powerfmt@0.2.0, proc-macro2@1.0.107, quote@1.0.47, rand_core@0.6.4, regex@1.13.1, regex-automata@0.4.18, regex-syntax@0.8.11, rustc-hash@2.1.3, serde@1.0.229, serde_core@1.0.229, serde_derive@1.0.229, serde_json@1.0.151, serde_spanned@0.6.9, sha2@0.10.9, shlex@1.3.0, shlex@2.0.1, smallvec@1.16.1, socket2@0.6.5, symlink@0.1.0, syn@2.0.119, syn@3.0.6, thiserror@2.0.21, thiserror-impl@2.0.21, thread_local@1.1.10, time@0.3.41, time-core@0.1.4, toml@0.8.23, toml_datetime@0.6.11, toml_edit@0.22.27, toml_write@0.1.2, typed-path@0.12.3, typenum@1.20.1, unicode-ident@1.0.26, universal-hash@0.5.1, utf8parse@0.2.2, version_check@0.9.5, vm-fdt@0.3.0, zeroize@1.9.1, zeroize_derive@1.5.0, zstd-safe@7.2.4, zstd-sys@2.0.15+zstd.1.5.7
+Apache-2.0 (127): aead@0.5.2, aes@0.8.4, aes-gcm@0.10.3, anstream@1.0.0, anstyle@1.0.14, anstyle-parse@1.0.0, anstyle-query@1.1.5, anyhow@1.0.104, arbitrary@1.5.0, arboard@3.7.0, autocfg@1.5.1, base64@0.22.1, bitflags@1.3.2, bitflags@2.13.2, block-buffer@0.10.4, cc@1.4.7, cexpr@0.6.0, cfg-if@1.0.5, chrono@0.4.45, cipher@0.4.4, clang-sys@1.9.1, clap@4.6.7, clap_builder@4.6.7, clap_derive@4.6.7, clap_lex@1.1.1, colorchoice@1.0.5, core-foundation@0.10.1, core-foundation-sys@0.8.7, coreaudio-rs@0.11.3, cpal@0.15.3, cpufeatures@0.2.17, crc32fast@1.5.2, crossbeam-channel@0.5.17, crossbeam-utils@0.8.23, crypto-common@0.1.7, ctr@0.9.2, dasp_sample@0.11.0, deranged@0.4.0, derive_arbitrary@1.5.0, digest@0.10.7, ed25519@2.2.3, either@1.19.0, equivalent@1.0.2, find-msvc-tools@0.1.13, flate2@1.1.10, getrandom@0.2.17, ghash@0.5.1, glob@0.3.4, hashbrown@0.17.1, heck@0.5.0, hkdf@0.12.4, hmac@0.12.1, iana-time-zone@0.1.65, indexmap@2.14.2, inout@0.1.4, io-kit-sys@0.5.0, is_terminal_polyfill@1.70.2, itertools@0.13.0, itoa@1.0.18, jobserver@0.1.35, lazy_static@1.5.0, libc@0.2.189, log@0.4.34, mach2@0.4.3, mach2@0.5.0, minimal-lexical@0.2.1, num-conv@0.1.0, num-traits@0.2.19, objc2-app-kit@0.3.2, objc2-core-foundation@0.3.2, objc2-core-graphics@0.3.2, once_cell@1.21.4, opaque-debug@0.3.1, pin-project-lite@0.2.17, pkg-config@0.3.33, pollster@0.4.0, polyval@0.6.2, powerfmt@0.2.0, proc-macro2@1.0.107, quote@1.0.47, rand_core@0.6.4, rcgen@0.13.2, regex@1.13.1, regex-automata@0.4.18, regex-syntax@0.8.11, ring@0.17.14, rustc-hash@2.1.3, rustc_version@0.4.1, rustls@0.23.46, rustls-pemfile@2.2.0, rustls-pki-types@1.16.0, semver@1.0.28, serde@1.0.229, serde_core@1.0.229, serde_derive@1.0.229, serde_json@1.0.151, serde_spanned@0.6.9, sha2@0.10.9, shlex@1.3.0, shlex@2.0.1, signature@2.2.0, smallvec@1.16.1, socket2@0.6.5, symlink@0.1.0, syn@2.0.119, syn@3.0.6, thiserror@2.0.21, thiserror-impl@2.0.21, thread_local@1.1.10, time@0.3.41, time-core@0.1.4, toml@0.8.23, toml_datetime@0.6.11, toml_edit@0.22.27, toml_write@0.1.2, typed-path@0.12.3, typenum@1.20.1, unicode-ident@1.0.26, universal-hash@0.5.1, utf8parse@0.2.2, version_check@0.9.5, vm-fdt@0.3.0, yasna@0.5.2, zeroize@1.9.1, zeroize_derive@1.5.0, zstd-safe@7.2.4, zstd-sys@2.0.15+zstd.1.5.7
 BSD-2-Clause (2): mach2@0.4.3, mach2@0.5.0
-BSD-3-Clause (3): bindgen@0.72.1, subtle@2.6.1, vm-fdt@0.3.0
-ISC (1): libloading@0.8.9
-MIT (142): aead@0.5.2, aes@0.8.4, aes-gcm@0.10.3, anstream@1.0.0, anstyle@1.0.14, anstyle-parse@1.0.0, anstyle-query@1.1.5, anyhow@1.0.104, arbitrary@1.5.0, arboard@3.7.0, autocfg@1.5.1, bitflags@1.3.2, bitflags@2.13.2, block-buffer@0.10.4, byteorder@1.5.0, bytes@1.12.1, cc@1.4.7, cexpr@0.6.0, cfg-if@1.0.5, cfg_aliases@0.2.2, chrono@0.4.45, cipher@0.4.4, clap@4.6.7, clap_builder@4.6.7, clap_derive@4.6.7, clap_lex@1.1.1, colorchoice@1.0.5, core-foundation@0.10.1, core-foundation-sys@0.8.7, coreaudio-rs@0.11.3, coreaudio-sys@0.2.18, cpufeatures@0.2.17, crc32fast@1.5.2, crossbeam-channel@0.5.17, crossbeam-utils@0.8.23, crypto-common@0.1.7, ctr@0.9.2, dasp_sample@0.11.0, deranged@0.4.0, derive_arbitrary@1.5.0, digest@0.10.7, either@1.19.0, equivalent@1.0.2, find-msvc-tools@0.1.13, flate2@1.1.10, generic-array@0.14.7, getrandom@0.2.17, ghash@0.5.1, glob@0.3.4, hashbrown@0.17.1, heck@0.5.0, hkdf@0.12.4, hmac@0.12.1, iana-time-zone@0.1.65, indexmap@2.14.2, inout@0.1.4, io-kit-sys@0.5.0, is_terminal_polyfill@1.70.2, itertools@0.13.0, itoa@1.0.18, jobserver@0.1.35, lazy_static@1.5.0, libc@0.2.189, log@0.4.34, mach2@0.4.3, mach2@0.5.0, matchers@0.2.0, memchr@2.8.3, minimal-lexical@0.2.1, mio@1.2.4, nix@0.31.3, nom@7.1.3, nu-ansi-term@0.50.3, num-conv@0.1.0, num-traits@0.2.19, objc2@0.6.5, objc2-app-kit@0.3.2, objc2-core-foundation@0.3.2, objc2-core-graphics@0.3.2, objc2-encode@4.1.0, objc2-foundation@0.3.2, once_cell@1.21.4, opaque-debug@0.3.1, pin-project-lite@0.2.17, pkg-config@0.3.33, polyval@0.6.2, powerfmt@0.2.0, proc-macro2@1.0.107, quote@1.0.47, rand_core@0.6.4, regex@1.13.1, regex-automata@0.4.18, regex-syntax@0.8.11, rustc-hash@2.1.3, serde@1.0.229, serde_core@1.0.229, serde_derive@1.0.229, serde_json@1.0.151, serde_spanned@0.6.9, sha2@0.10.9, sharded-slab@0.1.7, shlex@1.3.0, shlex@2.0.1, smallvec@1.16.1, socket2@0.6.5, strsim@0.11.1, symlink@0.1.0, syn@2.0.119, syn@3.0.6, thiserror@2.0.21, thiserror-impl@2.0.21, thread_local@1.1.10, time@0.3.41, time-core@0.1.4, tokio@1.54.1, tokio-macros@2.7.2, toml@0.8.23, toml_datetime@0.6.11, toml_edit@0.22.27, toml_write@0.1.2, tracing@0.1.44, tracing-appender@0.2.5, tracing-attributes@0.1.31, tracing-core@0.1.36, tracing-log@0.2.0, tracing-serde@0.2.0, tracing-subscriber@0.3.23, typed-path@0.12.3, typenum@1.20.1, unicode-ident@1.0.26, universal-hash@0.5.1, utf8parse@0.2.2, version_check@0.9.5, winnow@0.7.15, xts-mode@0.5.1, zeroize@1.9.1, zeroize_derive@1.5.0, zip@7.2.0, zmij@1.0.23, zstd@0.13.3, zstd-safe@7.2.4, zstd-sys@2.0.15+zstd.1.5.7
+BSD-3-Clause (5): bindgen@0.72.1, curve25519-dalek@4.1.3, ed25519-dalek@2.2.0, subtle@2.6.1, vm-fdt@0.3.0
+ISC (6): libloading@0.8.9, ring@0.17.14, rustls@0.23.46, rustls-pemfile@2.2.0, rustls-webpki@0.103.17, untrusted@0.9.0
+MIT (155): aead@0.5.2, aes@0.8.4, aes-gcm@0.10.3, anstream@1.0.0, anstyle@1.0.14, anstyle-parse@1.0.0, anstyle-query@1.1.5, anyhow@1.0.104, arbitrary@1.5.0, arboard@3.7.0, autocfg@1.5.1, base64@0.22.1, bitflags@1.3.2, bitflags@2.13.2, block-buffer@0.10.4, byteorder@1.5.0, bytes@1.12.1, cc@1.4.7, cexpr@0.6.0, cfg-if@1.0.5, cfg_aliases@0.2.2, chrono@0.4.45, cipher@0.4.4, clap@4.6.7, clap_builder@4.6.7, clap_derive@4.6.7, clap_lex@1.1.1, colorchoice@1.0.5, core-foundation@0.10.1, core-foundation-sys@0.8.7, coreaudio-rs@0.11.3, coreaudio-sys@0.2.18, cpufeatures@0.2.17, crc32fast@1.5.2, crossbeam-channel@0.5.17, crossbeam-utils@0.8.23, crypto-common@0.1.7, ctr@0.9.2, dasp_sample@0.11.0, deranged@0.4.0, derive_arbitrary@1.5.0, digest@0.10.7, ed25519@2.2.3, either@1.19.0, equivalent@1.0.2, find-msvc-tools@0.1.13, flate2@1.1.10, generic-array@0.14.7, getrandom@0.2.17, ghash@0.5.1, glob@0.3.4, hashbrown@0.17.1, heck@0.5.0, hkdf@0.12.4, hmac@0.12.1, iana-time-zone@0.1.65, indexmap@2.14.2, inout@0.1.4, io-kit-sys@0.5.0, is_terminal_polyfill@1.70.2, itertools@0.13.0, itoa@1.0.18, jobserver@0.1.35, lazy_static@1.5.0, libc@0.2.189, log@0.4.34, mach2@0.4.3, mach2@0.5.0, matchers@0.2.0, memchr@2.8.3, minimal-lexical@0.2.1, mio@1.2.4, nix@0.31.3, nom@7.1.3, nu-ansi-term@0.50.3, num-conv@0.1.0, num-traits@0.2.19, objc2@0.6.5, objc2-app-kit@0.3.2, objc2-core-foundation@0.3.2, objc2-core-graphics@0.3.2, objc2-encode@4.1.0, objc2-foundation@0.3.2, once_cell@1.21.4, opaque-debug@0.3.1, pem@3.0.6, pin-project-lite@0.2.17, pkg-config@0.3.33, pollster@0.4.0, polyval@0.6.2, powerfmt@0.2.0, proc-macro2@1.0.107, quote@1.0.47, rand_core@0.6.4, rcgen@0.13.2, regex@1.13.1, regex-automata@0.4.18, regex-syntax@0.8.11, rustc-hash@2.1.3, rustc_version@0.4.1, rustls@0.23.46, rustls-pemfile@2.2.0, rustls-pki-types@1.16.0, semver@1.0.28, serde@1.0.229, serde_core@1.0.229, serde_derive@1.0.229, serde_json@1.0.151, serde_spanned@0.6.9, sha2@0.10.9, sharded-slab@0.1.7, shlex@1.3.0, shlex@2.0.1, signature@2.2.0, smallvec@1.16.1, socket2@0.6.5, strsim@0.11.1, symlink@0.1.0, syn@2.0.119, syn@3.0.6, thiserror@2.0.21, thiserror-impl@2.0.21, thread_local@1.1.10, time@0.3.41, time-core@0.1.4, tokio@1.54.1, tokio-macros@2.7.2, toml@0.8.23, toml_datetime@0.6.11, toml_edit@0.22.27, toml_write@0.1.2, tracing@0.1.44, tracing-appender@0.2.5, tracing-attributes@0.1.31, tracing-core@0.1.36, tracing-log@0.2.0, tracing-serde@0.2.0, tracing-subscriber@0.3.23, twox-hash@2.1.5, typed-path@0.12.3, typenum@1.20.1, unicode-ident@1.0.26, universal-hash@0.5.1, utf8parse@0.2.2, version_check@0.9.5, winnow@0.7.15, xts-mode@0.5.1, yasna@0.5.2, zeroize@1.9.1, zeroize_derive@1.5.0, zip@7.2.0, zmij@1.0.23, zstd@0.13.3, zstd-safe@7.2.4, zstd-sys@2.0.15+zstd.1.5.7
 Unicode-3.0 (1): unicode-ident@1.0.26
 Unlicense (2): byteorder@1.5.0, memchr@2.8.3
 Zlib (4): objc2-app-kit@0.3.2, objc2-core-foundation@0.3.2, objc2-core-graphics@0.3.2, zlib-rs@0.6.8
@@ -34,14 +34,7 @@ guest installers. Review upstream terms before you redistribute them yourself.
 | swtpm | `brew install swtpm` | BSD-3-Clause | no | No (host tool) |
 | virtio-win ISO | `scripts/fetch-virtio-win.sh` | BSD-3-Clause (kvm-guest-drivers-windows) | no | No |
 | WinFsp MSI | `scripts/fetch-winfsp.sh` | **GPLv3 + FLOSS exception** | **GPL** (exception for unmodified MSI + FLOSS host) | **No** |
-| virglrenderer | optional `dlopen` (`gpu3d` + `[gpu] gpu3d = true`) | MIT upstream; not vendored | no | No |
-| rutabaga_gfx | not linked | BSD-3-Clause; not vendored | no | No |
-| gfxstream | not linked (fallback candidate) | Apache-2.0; not vendored | no | No |
-| MoltenVK | host Vulkan ICD for virglrenderer Venus; not linked into Ternvale | **Apache-2.0** (verified 2026-11-20, [KhronosGroup/MoltenVK LICENSE](https://github.com/KhronosGroup/MoltenVK/blob/main/LICENSE); community-maintained after Khronos deprecation) | no | No |
-| DXVK | guest D3D8/9/10/11 → Vulkan; `guest-tools/win3d/fetch-dxvk.ps1` after `yes` | **zlib/libpng** (verified 2026-11-20, [doitsujin/dxvk LICENSE](https://github.com/doitsujin/dxvk/blob/master/LICENSE); Rebohle, Ashton, Kertels, Ellison) | no | No |
-| FEX-Emu | Guest usermode x86 (`scripts/build-fex.sh`); not linked into the VMM | **MIT** (Ryan Houdek, 2019+) | no | No |
-| FEX RootFS (typically Ubuntu squashfs) | `ternvale x86 fetch-rootfs` after typing `yes` | Canonical / distro terms (not FEX MIT) | n/a | **No** (never bundled) |
-| qemu-user-static | Guest distro package via `ternvale x86 install-qemu-user` | **GPL** | **GPL** | **No** |
+| virglrenderer / rutabaga_gfx | not linked (`gpu3d` is a local command surface) | BSD-3-Clause upstream; not vendored | no | No |
 
 ### WinFsp (GPL) — shipping rule
 
@@ -61,58 +54,9 @@ is in addition to Developer ID notarization.
 Firmware used for UEFI guests is the Alpine `aavmf` ArmVirtQemu build (EDK2).
 Ternvale does not compile EDK2 in this tree.
 
-### FEX-Emu
-
-https://github.com/FEX-Emu/FEX — MIT. Ternvale may build an aarch64 Linux
-`FEXInterpreter` for guest tools. It does **not** vendor FEX RootFS images
-(Ubuntu/Canonical). Fetch only with `ternvale x86 fetch-rootfs` and checksum
-(XXH3-64 seed 0). See `docs/X86.md`.
-
-### qemu-user-static
-
-GPL (QEMU). Last-resort x86 usermode engine. Ternvale **must not** statically
-or dynamically link QEMU, and **must not** ship `qemu-*-static` inside
-Ternvale.app. Guests install the distro package (`qemu-user-static` /
-`qemu-x86_64`) only after the user types `yes`. QEMU runs as a **separate**
-`binfmt` interpreter process. See `docs/X86.md` and `guest-tools/qemu-user/`.
-
 ### GPU
 
-No Mesa, virglrenderer, gfxstream, MoltenVK, or DXVK binary is redistributed.
-The `gpu3d` / `ternvale-gpu3d-host` / `drivers/tvvk` code is Ternvale source
-(MIT OR Apache-2.0). virglrenderer and MoltenVK load on the **host** when
-present. DXVK is fetch-only in the **guest** (`fetch-dxvk.ps1`). Yttrium /
-Mesa `vulkan_virtio` were **consulted, not copied** (MPL-2.0 on marked Yttrium
-files). See `docs/GPU_ACCELERATION.md` Steps 107–108.
-
-### DXVK (zlib) — shipping rule
-
-https://github.com/doitsujin/dxvk — zlib/libpng. Copyright Philip Rebohle,
-Joshua Ashton, Robin Kertels, Jeffrey Ellison. Ternvale **must not** link
-DXVK into the VMM or Ternvale.app. Official release DLLs are **Wine x86/x64**,
-not Windows ARM64 native. Guests fetch LICENSE (and optionally build from
-source) after typing `yes`.
-
-### MoltenVK (Apache-2.0) — shipping rule
-
-https://github.com/KhronosGroup/MoltenVK — Apache-2.0. Host ICD for
-virglrenderer Venus → Metal. User-installed (`brew install molten-vk` or
-`scripts/install-host-virgl.sh`). Not vendored. Khronos deprecated MoltenVK
-in 2026 in favor of **KosmicKrisp** on Apple silicon; TODO(verify) a later
-host ICD switch.
-
-### tvgpu-dod (Windows KMDOD) — consulted, not copied
-
-`drivers/tvgpu-dod` is an independent Ternvale implementation of:
-
-- OASIS **virtio 1.2** §5.7 (GPU device) and §4.1.4 (virtio-pci). Spec text is
-  not redistributed.
-- Microsoft **WDDM display-only miniport (KMDOD)** DDIs (`DxgkInitialize`,
-  VidPN, `SetVidPnSourceAddress`). The Windows-driver-samples KMDOD sample is
-  typically **MIT**; it was read only as a behavioral reference. **No sample
-  source was copied.**
-- virtio-win **`viogpudo`** (Red Hat `kvm-guest-drivers-windows`,
-  **BSD-3-Clause**): PCI ID `1AF4:1050`, controlq command order, and EDID /
-  display-event flow were used as behavioral references. **No virtio-win
-  source was copied.** Ternvale does not ship the virtio-win ISO.
+No Mesa, virglrenderer, or MoltenVK binary is redistributed. The optional
+`gpu3d` module is Ternvale source (MIT OR Apache-2.0) with comments pointing
+at crosvm `rutabaga_gfx` (BSD-3-Clause) for a future optional link.
 

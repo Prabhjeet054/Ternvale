@@ -57,6 +57,7 @@ pub struct CreateWindows {
 /// `ternvale create --windows …`.
 #[tracing::instrument(level = "info", target = "ternvale::cli", skip_all, fields(vm = %args.name, unattended = args.unattended))]
 pub fn create_windows(args: CreateWindows) -> Result<ExitCode> {
+    crate::license_gate::require_new_session()?;
     paths::socket_path(&args.name)?;
     if !args.unattended {
         bail!("`ternvale create --windows` requires --unattended (interactive Setup is not wired)");

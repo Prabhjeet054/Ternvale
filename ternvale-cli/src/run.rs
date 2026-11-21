@@ -49,6 +49,7 @@ const REAPER_POLL: Duration = Duration::from_millis(100);
 /// the `--display` / `--fps` flags.
 #[tracing::instrument(level = "debug", target = "ternvale::cli", skip_all, fields(config = %config_path.display(), display = %mode, fps))]
 pub fn run(config_path: &Path, mode: DisplayMode, fps: u32) -> Result<ExitCode> {
+    crate::license_gate::require_new_session()?;
     let hold = crate::sandbox_run::prepare(config_path, mode, fps)?;
     if let Some(code) = hold.child_exit {
         return Ok(code);

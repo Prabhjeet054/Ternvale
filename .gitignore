@@ -5,6 +5,8 @@ target/
 # scripts/release.sh / make rc-zip output: signed .app, zip, dSYMs, Xcode
 # DerivedData (object files, module cache, Sparkle SPM checkout). Never push.
 /dist/
+# Operator signing seeds and issued TVLK files (never commit).
+/secrets/
 
 # Xcode user state and local build products (also created under dist/).
 xcuserdata/

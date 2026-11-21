@@ -17,7 +17,12 @@ Yes, if you run Windows. Ternvale does not include one. See
 
 **Is there telemetry?**  
 No, unless you opt in to crash reports and confirm the preview.
-See `docs/PRIVACY.md`.
+License checks send nothing by default. See `docs/PRIVACY.md`.
+
+**Do I need a Ternvale license?**  
+A 14-day trial starts on first use (Keychain). Direct-distribution license
+files (`TVLK`) are verified offline. Expired installs can still export and
+back up VMs. See `docs/DISTRIBUTION.md`.
 
 **Where is my data?**  
 VMs: `~/Library/Application Support/Ternvale/`. Logs:

@@ -15,6 +15,7 @@ use crate::tvm::{FileKind, TvmFile, TvmManifest, MANIFEST};
 use crate::tvm_io;
 
 /// Export library VM `name` to directory bundle `out` (`.tvm`).
+/// Allowed in degraded/unlicensed mode (does not call [`crate::license_gate`]).
 #[tracing::instrument(
     level = "debug",
     target = "ternvale::cli",

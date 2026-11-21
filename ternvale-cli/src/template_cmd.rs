@@ -112,6 +112,7 @@ pub fn create(vm: &str, name: &str, json: bool) -> Result<ExitCode> {
     fields(template, name)
 )]
 pub fn new_from_template(name: &str, template: &str, json: bool) -> Result<ExitCode> {
+    crate::license_gate::require_new_session()?;
     let tpl_dir = paths::template_dir(template)?;
     let tpl_config = tpl_dir.join("config.toml");
     if !tpl_config.is_file() {

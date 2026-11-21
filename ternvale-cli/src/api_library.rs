@@ -82,6 +82,7 @@ pub fn vm_is_running(name: &str) -> Result<bool> {
 
 #[tracing::instrument(level = "debug", target = "ternvale::api", skip_all, fields(vm = name))]
 pub fn create_vm(name: &str, config_toml: Option<&str>, config_path: Option<&Path>) -> Result<()> {
+    crate::license_gate::require_new_session()?;
     paths::socket_path(name)?;
     let dest = paths::vm_config_path(name)?;
     if dest.exists() {
@@ -119,6 +120,7 @@ pub fn delete_stopped_vm(name: &str) -> Result<()> {
 
 #[tracing::instrument(level = "debug", target = "ternvale::api", skip_all, fields(vm = name))]
 pub fn start_vm(name: &str) -> Result<()> {
+    crate::license_gate::require_new_session()?;
     if vm_is_running(name)? {
         bail!("VM {name} is already running");
     }

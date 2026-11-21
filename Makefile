@@ -185,7 +185,7 @@ NIGHTLY ?= nightly
 FUZZ_TIME ?= 30
 FUZZ_TARGETS := virtqueue virtio_blk virtio_net virtio_rng virtio_vsock virtio_gpu \
 	virtio_input virtio_balloon virtio_fs virtio_pci xhci_trb tpm_crb vsock_packet \
-	agent_proto esr psci user_net fuse
+	agent_proto esr psci user_net fuse license
 
 fuzz-smoke:
 	$(MAKE) fuzz-run FUZZ_TIME=30

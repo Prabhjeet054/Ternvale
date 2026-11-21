@@ -11,3 +11,4 @@
 - [Troubleshooting](troubleshooting.md)
 - [FAQ](faq.md)
 - [Headless gateway](gateway.md)
+- [Distribution and licenses](distribution.md)

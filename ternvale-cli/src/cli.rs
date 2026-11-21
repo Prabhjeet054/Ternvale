@@ -431,6 +431,25 @@ pub enum Command {
         #[arg(long)]
         expect_gatekeeper: bool,
     },
+    /// Offline license (TVLK) and trial status. Expired installs stay able to
+    /// open, export, and back up VMs.
+    License {
+        #[command(subcommand)]
+        action: LicenseCommand,
+    },
+}
+
+/// `ternvale license …`.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum LicenseCommand {
+    /// Copy a signed `TVLK` file into Application Support (verified with the
+    /// embedded public key only).
+    Install {
+        /// Path to the license blob.
+        path: PathBuf,
+    },
+    /// Print trial / licensed / grace / degraded status.
+    Show,
 }
 
 /// `ternvale template …` subcommands.

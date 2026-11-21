@@ -167,3 +167,10 @@ path = "fuzz_targets/ipp.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "license"
+path = "fuzz_targets/license.rs"
+test = false
+doc = false
+bench = false

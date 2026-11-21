@@ -27,6 +27,7 @@ members = [
     "ternvale-api",
     "ternvale-client",
     "ternvale-gateway",
+    "ternvale-license",
     "ternvale-backend",
     "ternvale-vz",
     "ternvale-compat",
