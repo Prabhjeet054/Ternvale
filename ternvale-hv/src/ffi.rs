@@ -13,6 +13,9 @@ unsafe extern "C" {
     /// `hv_vm.h`: page-aligned `addr` and `ipa`, `size` a multiple of the page size.
     pub(crate) fn hv_vm_map(addr: *mut c_void, ipa: u64, size: usize, flags: u64) -> i32;
     pub(crate) fn hv_vm_unmap(ipa: u64, size: usize) -> i32;
+    /// `hv_vm.h`: change stage-2 permissions on an existing mapping.
+    /// TODO(verify): cost of a full-RAM `hv_vm_protect` vs per-page on this host.
+    pub(crate) fn hv_vm_protect(ipa: u64, size: usize, flags: u64) -> i32;
     /// `hv_vcpu.h`: one vCPU per thread. `config` NULL is the default.
     /// TODO(verify): the header marks `config` nullable but does not say NULL is the default.
     pub(crate) fn hv_vcpu_create(

@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use ternvale_crypto::CryptoContext;
 use ternvale_hv::SysReg;
 use ternvale_snapshot::{
-    new_meta, read_bundle_crypto, write_bundle_crypto, SnapshotError, VmSnapshotMeta,
-    VmSnapshotPayload,
+    collapse_chain, materialize_ram, new_meta, read_bundle_crypto, sha256_hex, write_bundle_crypto,
+    ChainNode, SnapshotChain, SnapshotError, VmSnapshotMeta, VmSnapshotPayload,
 };
 
 use super::{ControlError, VmControl, VmState, KICK_EVERY};
@@ -107,6 +107,8 @@ pub struct SnapshotHost {
     pub device_note: String,
     /// Guest-visible ID registers captured after vCPU 0 setup.
     pub cpu: Arc<Mutex<Option<crate::cpu_profile::CpuFingerprint>>>,
+    /// Last successful snapshot label (incremental parent).
+    pub last_label: Mutex<Option<String>>,
 }
 
 impl SnapshotHost {
@@ -124,12 +126,24 @@ impl SnapshotHost {
             .map_err(|error| SnapshotError::InvalidRequest {
                 detail: format!("gic capture: {error}"),
             })?;
-        let ram = {
+        let parent = crate::lockwatch::lock(&self.last_label, "snapshot-parent").clone();
+        let (ram, dirty, policy) = {
             let mem = crate::lockwatch::lock(&self.memory, "guest-memory");
-            mem.copy_region(self.ram_base, self.ram_size)
-                .map_err(|error| SnapshotError::InvalidRequest {
-                    detail: format!("ram capture: {error}"),
-                })?
+            if parent.is_some() && mem.has_dirty_pages() {
+                let dirty =
+                    mem.take_dirty_pages()
+                        .map_err(|error| SnapshotError::InvalidRequest {
+                            detail: format!("dirty capture: {error}"),
+                        })?;
+                (Vec::new(), dirty, "incremental")
+            } else {
+                let ram = mem
+                    .copy_region(self.ram_base, self.ram_size)
+                    .map_err(|error| SnapshotError::InvalidRequest {
+                        detail: format!("ram capture: {error}"),
+                    })?;
+                (ram, Vec::new(), "full")
+            }
         };
         let mut meta = new_meta(
             &self.vm_name,
@@ -139,6 +153,16 @@ impl SnapshotHost {
             gic.len(),
             vcpus.len() as u32,
         );
+        meta.ram_policy = policy.to_string();
+        meta.parent = parent.clone();
+        meta.dirty_pages = (!dirty.is_empty()).then_some(dirty.len() as u64);
+        meta.ram_sha256 = Some(if ram.is_empty() {
+            let mut seed = parent.clone().unwrap_or_default().into_bytes();
+            seed.extend_from_slice(&(dirty.len() as u64).to_le_bytes());
+            sha256_hex(&seed)
+        } else {
+            sha256_hex(&ram)
+        });
         if let Some(fp) = crate::lockwatch::lock(&self.cpu, "snapshot-cpu").as_ref() {
             meta.cpu_profile = Some(fp.profile.clone());
             meta.id_registers = crate::cpu_profile::to_hex_map(fp);
@@ -161,14 +185,38 @@ impl SnapshotHost {
         write_bundle_crypto(
             dir,
             &VmSnapshotPayload {
-                meta,
+                meta: meta.clone(),
                 gic,
                 ram,
                 vcpus_json,
                 devices_json,
+                dirty,
             },
             crypto.map(CryptoContext::gcm),
-        )
+        )?;
+        if let Some(root) = dir.parent() {
+            let mut chain = SnapshotChain::load(root)?;
+            chain.upsert(ChainNode {
+                label: label.to_string(),
+                parent,
+                ram_sha256: meta.ram_sha256.clone().unwrap_or_default(),
+                ram_policy: meta.ram_policy.clone(),
+            });
+            chain.save(root)?;
+        }
+        *crate::lockwatch::lock(&self.last_label, "snapshot-parent") = Some(label.to_string());
+        {
+            let mem = crate::lockwatch::lock(&self.memory, "guest-memory");
+            if let Err(error) = mem.write_protect_ram() {
+                tracing::warn!(
+                    target: "ternvale::snapshot",
+                    error = %error,
+                    "hv_vm_protect failed; host-side dirty tracking remains enabled"
+                );
+                mem.set_dirty_tracking(true);
+            }
+        }
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display()))]
@@ -188,13 +236,18 @@ impl SnapshotHost {
         Ok((payload, vcpus))
     }
 
-    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all)]
+    #[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display()))]
     pub fn apply_bundle(
         &self,
+        dir: &Path,
         payload: &VmSnapshotPayload,
         vcpus: &[VcpuGuestState],
+        crypto: Option<&CryptoContext>,
     ) -> Result<(), SnapshotError> {
-        if payload.ram.len() as u64 != self.ram_size {
+        if payload.meta.ram_policy != "incremental"
+            && payload.ram.len() as u64 != self.ram_size
+            && !payload.ram.is_empty()
+        {
             return Err(SnapshotError::InvalidRequest {
                 detail: format!(
                     "ram size mismatch: bundle {} bytes, vm {} bytes",
@@ -205,10 +258,7 @@ impl SnapshotHost {
         }
         {
             let mut mem = crate::lockwatch::lock(&self.memory, "guest-memory");
-            mem.write_bytes(self.ram_base, &payload.ram)
-                .map_err(|error| SnapshotError::InvalidRequest {
-                    detail: format!("restore ram: {error}"),
-                })?;
+            restore_ram(&mut mem, self, dir, payload, crypto)?;
         }
         self.gic
             .restore_state(&payload.gic)
@@ -438,18 +488,21 @@ impl VmControl {
         let _ = self.resume();
         let total_ms = millis(started.elapsed());
         match &result {
-            Ok(path) => tracing::info!(
-                target: "ternvale::snapshot",
-                vm = %self.name,
-                label,
-                path = %path.display(),
-                ram_mib,
-                ram_bytes,
-                pause_ms,
-                capture_ms,
-                create_ms = total_ms,
-                "vm snapshot create completed"
-            ),
+            Ok(path) => {
+                self.metrics.record_snapshot_times(Some(total_ms), None);
+                tracing::info!(
+                    target: "ternvale::snapshot",
+                    vm = %self.name,
+                    label,
+                    path = %path.display(),
+                    ram_mib,
+                    ram_bytes,
+                    pause_ms,
+                    capture_ms,
+                    create_ms = total_ms,
+                    "vm snapshot create completed"
+                );
+            }
             Err(error) => tracing::warn!(
                 target: "ternvale::snapshot",
                 vm = %self.name,
@@ -498,17 +551,20 @@ impl VmControl {
         let _ = self.resume();
         let total_ms = millis(started.elapsed());
         match &result {
-            Ok(()) => tracing::info!(
-                target: "ternvale::snapshot",
-                vm = %self.name,
-                path = %dir.display(),
-                ram_mib,
-                ram_bytes,
-                pause_ms,
-                apply_ms,
-                restore_ms = total_ms,
-                "vm snapshot restore completed"
-            ),
+            Ok(()) => {
+                self.metrics.record_snapshot_times(None, Some(total_ms));
+                tracing::info!(
+                    target: "ternvale::snapshot",
+                    vm = %self.name,
+                    path = %dir.display(),
+                    ram_mib,
+                    ram_bytes,
+                    pause_ms,
+                    apply_ms,
+                    restore_ms = total_ms,
+                    "vm snapshot restore completed"
+                );
+            }
             Err(error) => tracing::warn!(
                 target: "ternvale::snapshot",
                 vm = %self.name,
@@ -564,7 +620,8 @@ impl VmControl {
         let gcm = self.crypto();
         let (payload, vcpus) = host.read_bundle(dir, gcm.as_deref()).map_err(map_snap)?;
         check_cpu_fingerprint(&payload.meta, force)?;
-        host.apply_bundle(&payload, &vcpus).map_err(map_snap)?;
+        host.apply_bundle(dir, &payload, &vcpus, gcm.as_deref())
+            .map_err(map_snap)?;
         self.snapshot.begin_restore(vcpus).map_err(map_snap_str)?;
         self.changed.notify_all();
         self.snapshot
@@ -587,6 +644,47 @@ impl VmControl {
     ) {
         self.snapshot.restore_tick(cpu, apply);
     }
+}
+
+fn restore_ram(
+    mem: &mut crate::memory::GuestMemory,
+    host: &SnapshotHost,
+    dir: &Path,
+    payload: &VmSnapshotPayload,
+    crypto: Option<&CryptoContext>,
+) -> Result<(), SnapshotError> {
+    let gcm = crypto.map(CryptoContext::gcm);
+    let cache = if payload.meta.ram_policy == "incremental" {
+        collapse_chain(dir, gcm, host.ram_base, host.ram_size)?
+    } else {
+        materialize_ram(dir, &payload.ram)?
+    };
+    match mem.remap_file_private(host.ram_base, &cache) {
+        Ok(()) => {
+            tracing::info!(
+                target: "ternvale::snapshot",
+                path = %cache.display(),
+                "lazy restore mapped snapshot file MAP_PRIVATE"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                target: "ternvale::snapshot",
+                error = %error,
+                "file mmap restore failed; copying RAM"
+            );
+            let ram = std::fs::read(&cache).map_err(|source| SnapshotError::Io {
+                path: cache.clone(),
+                source,
+            })?;
+            mem.write_bytes(host.ram_base, &ram).map_err(|error| {
+                SnapshotError::InvalidRequest {
+                    detail: format!("restore ram: {error}"),
+                }
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn check_cpu_fingerprint(meta: &VmSnapshotMeta, force: bool) -> Result<(), ControlError> {

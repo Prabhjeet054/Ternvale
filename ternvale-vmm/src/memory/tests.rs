@@ -190,3 +190,29 @@ fn madvise_free_reusable_drops_anonymous_phys_footprint() {
         "anonymous madvise did not drop phys_footprint: touch={after_touch} free={after_free} span={SPAN}"
     );
 }
+
+#[test]
+fn lazy_file_mmap_is_private_and_demand_faults() {
+    let dir = std::env::temp_dir().join(format!("tv-lazy-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("ram.bin");
+    let mut bytes = vec![0u8; HOST_PAGE_SIZE as usize];
+    bytes[0] = 0x5a;
+    std::fs::write(&path, &bytes).expect("file");
+    let mut memory = memory();
+    memory.add_region(0, HOST_PAGE_SIZE).expect("region");
+    let started = std::time::Instant::now();
+    memory.remap_file_private(0, &path).expect("mmap");
+    let first = memory.read_u8(0).expect("fault-in");
+    let fault_ns = started.elapsed().as_nanos() as u64;
+    tracing::debug!(
+        target: "ternvale::mem",
+        fault_ns,
+        "MAP_PRIVATE first-touch cost"
+    );
+    assert_eq!(first, 0x5a);
+    memory.write_u8(0, 0xa5).expect("cow");
+    assert_eq!(std::fs::read(&path).expect("file")[0], 0x5a);
+    assert_eq!(memory.read_u8(0).expect("cow read"), 0xa5);
+    let _ = std::fs::remove_dir_all(&dir);
+}

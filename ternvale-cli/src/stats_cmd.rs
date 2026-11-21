@@ -122,6 +122,18 @@ pub fn render_metrics(metrics: &Snapshot) -> String {
             engine.engine, engine.processes, engine.failures
         ));
     }
+    if metrics.snapshot_create_ms > 0 {
+        lines.push(format!(
+            "  snapshot create {} ms",
+            metrics.snapshot_create_ms
+        ));
+    }
+    if metrics.snapshot_restore_ms > 0 {
+        lines.push(format!(
+            "  snapshot restore {} ms",
+            metrics.snapshot_restore_ms
+        ));
+    }
     lines.push(String::new());
     lines.join("\n")
 }
@@ -163,5 +175,16 @@ mod tests {
         assert!(text.contains("interrupts 3"), "{text}");
         assert!(text.contains("mmio 4"), "{text}");
         assert!(text.contains("blk: 7 count"), "{text}");
+    }
+
+    #[test]
+    fn render_includes_snapshot_times() {
+        let text = render_metrics(&Snapshot {
+            snapshot_create_ms: 12,
+            snapshot_restore_ms: 3,
+            ..Default::default()
+        });
+        assert!(text.contains("snapshot create 12 ms"), "{text}");
+        assert!(text.contains("snapshot restore 3 ms"), "{text}");
     }
 }

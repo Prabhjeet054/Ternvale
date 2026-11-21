@@ -346,6 +346,7 @@ impl Machine {
                 "MMIO device registers (virtio queues, UART FIFOs) are not serialized in v1."
                     .to_string(),
             cpu: Arc::new(Mutex::new(None)),
+            last_label: Mutex::new(None),
         }));
         let shutdown = Arc::new(AtomicBool::new(false));
         let watchdog = Arc::new(Watchdog::new(HANG));

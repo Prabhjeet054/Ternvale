@@ -32,6 +32,16 @@ pub struct Snapshot {
     /// Native Metal presenter (Step 109). Omitted when unused.
     #[serde(default, skip_serializing_if = "present_is_quiet")]
     pub present: PresentSnapshot,
+    /// Last VM snapshot create time (ms). Omitted when unused.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub snapshot_create_ms: u64,
+    /// Last VM snapshot restore time (ms). Omitted when unused.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub snapshot_restore_ms: u64,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 fn present_is_quiet(present: &PresentSnapshot) -> bool {

@@ -1,6 +1,7 @@
 //! Full-VM snapshot bundles (guest RAM + device metadata).
 //!
-//! v1 uses a **full RAM dump** per region (no memory COW). See `docs/VM_SNAPSHOT.md`.
+//! v1 is a full uncompressed RAM dump. v2 adds zstd, dirty-page incrementals,
+//! and a SHA-256 chain. See `book/snapshots.md`.
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -15,8 +16,14 @@ use crate::SnapshotError;
 
 /// Magic in `meta.json` (`TVSB`).
 pub const BUNDLE_MAGIC: &str = "TVSB";
-/// Supported bundle format version.
-pub const BUNDLE_VERSION: u32 = 1;
+/// Current bundle format (zstd + incremental dirty pages).
+pub const BUNDLE_VERSION: u32 = 2;
+/// Oldest readable bundle version.
+pub const BUNDLE_VERSION_MIN: u32 = 1;
+/// Uncompressed RAM cache for lazy `mmap` restore.
+pub const RAM_CACHE: &str = "guest.ram.lazy";
+/// Packed dirty pages (zstd).
+pub const DIRTY_FILE: &str = "dirty.bin";
 
 const META: &str = "meta.json";
 const GIC: &str = "gic.bin";
@@ -46,6 +53,18 @@ pub struct VmSnapshotMeta {
     /// Guest-visible ID / feature registers as hex (`0x…`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub id_registers: BTreeMap<String, String>,
+    /// Parent snapshot label for an incremental.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// `"zstd"` when RAM/dirty payloads are compressed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compression: Option<String>,
+    /// SHA-256 of the logical RAM image (integrity).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ram_sha256: Option<String>,
+    /// Dirty page count for incremental bundles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dirty_pages: Option<u64>,
 }
 
 /// Guest RAM plus GIC blob and JSON sidecars.
@@ -56,6 +75,8 @@ pub struct VmSnapshotPayload {
     pub ram: Vec<u8>,
     pub vcpus_json: String,
     pub devices_json: String,
+    /// Incremental dirty pages `(gpa, page_bytes)`. Empty for a full dump.
+    pub dirty: Vec<(u64, Vec<u8>)>,
 }
 
 /// Build metadata for a new bundle.
@@ -84,11 +105,14 @@ pub fn new_meta(
         gic_bytes: u64::try_from(gic_len).unwrap_or(u64::MAX),
         vcpu_count,
         limitations: vec![
-            "Guest RAM is a full dump (no memory COW yet).".to_string(),
-            "Virtio queue and in-flight request state are not restored; disks use layered .tstack snapshots separately.".to_string(),
+            "Virtio in-flight requests are not restored; disks use layered .tstack snapshots separately.".to_string(),
         ],
         cpu_profile: None,
         id_registers: BTreeMap::new(),
+        parent: None,
+        compression: Some("zstd".into()),
+        ram_sha256: None,
+        dirty_pages: None,
     }
 }
 
@@ -105,7 +129,9 @@ pub fn write_bundle_crypto(
     payload: &VmSnapshotPayload,
     gcm: Option<&GcmKey>,
 ) -> Result<(), SnapshotError> {
-    if payload.meta.magic != BUNDLE_MAGIC || payload.meta.version != BUNDLE_VERSION {
+    if payload.meta.magic != BUNDLE_MAGIC
+        || !(BUNDLE_VERSION_MIN..=BUNDLE_VERSION).contains(&payload.meta.version)
+    {
         return Err(SnapshotError::InvalidRequest {
             detail: "bundle meta magic/version mismatch".to_string(),
         });
@@ -119,7 +145,25 @@ pub fn write_bundle_crypto(
     })?;
     write_bytes(meta_path, &json)?;
     write_protected(dir.join(GIC), &payload.gic, gcm, AAD_SNAP_GIC)?;
-    write_protected(dir.join(RAM), &payload.ram, gcm, AAD_SNAP_RAM)?;
+    let ram_store =
+        if payload.meta.compression.as_deref() == Some("zstd") && !payload.ram.is_empty() {
+            crate::ram::compress(&payload.ram)?
+        } else {
+            payload.ram.clone()
+        };
+    write_protected(dir.join(RAM), &ram_store, gcm, AAD_SNAP_RAM)?;
+    if !payload.dirty.is_empty() {
+        let packed = crate::ram::pack_dirty(
+            crate::ram::pack_dirty_page_hint(&payload.dirty),
+            &payload.dirty,
+        )?;
+        let stored = if payload.meta.compression.as_deref() == Some("zstd") {
+            crate::ram::compress(&packed)?
+        } else {
+            packed
+        };
+        write_protected(dir.join(DIRTY_FILE), &stored, gcm, AAD_SNAP_RAM)?;
+    }
     write_protected(
         dir.join(VCPUS),
         payload.vcpus_json.as_bytes(),
@@ -168,7 +212,7 @@ pub fn read_bundle_crypto(
             expected: BUNDLE_MAGIC,
         });
     }
-    if meta.version != BUNDLE_VERSION {
+    if !(BUNDLE_VERSION_MIN..=BUNDLE_VERSION).contains(&meta.version) {
         return Err(SnapshotError::UnsupportedVersion {
             kind: "vm-bundle",
             found: meta.version,
@@ -176,8 +220,9 @@ pub fn read_bundle_crypto(
         });
     }
     let gic = read_protected(&dir.join(GIC), gcm, AAD_SNAP_GIC)?;
-    let ram = read_protected(&dir.join(RAM), gcm, AAD_SNAP_RAM)?;
-    if ram.len() as u64 != meta.ram_size {
+    let ram_stored = read_protected(&dir.join(RAM), gcm, AAD_SNAP_RAM)?;
+    let ram = decode_ram(&meta, &ram_stored)?;
+    if meta.ram_policy != "incremental" && ram.len() as u64 != meta.ram_size && meta.ram_size != 0 {
         tracing::warn!(
             target: "ternvale::snapshot",
             expected = meta.ram_size,
@@ -185,6 +230,18 @@ pub fn read_bundle_crypto(
             "guest.ram size differs from meta.ram_size"
         );
     }
+    if let Some(expect) = &meta.ram_sha256 {
+        if meta.ram_policy != "incremental" {
+            let got = crate::ram::sha256_hex(&ram);
+            if got != *expect {
+                return Err(SnapshotError::InvalidManifest {
+                    path: dir.join(RAM),
+                    detail: format!("integrity check failed for snapshot `{}`", meta.label),
+                });
+            }
+        }
+    }
+    let dirty = read_dirty(dir, &meta, gcm)?;
     let vcpus_json = String::from_utf8(read_protected(&dir.join(VCPUS), gcm, AAD_SNAP_VCPU)?)
         .map_err(|error| SnapshotError::InvalidManifest {
             path: dir.join(VCPUS),
@@ -199,6 +256,7 @@ pub fn read_bundle_crypto(
         target: "ternvale::snapshot",
         label = %meta.label,
         vm = %meta.vm_name,
+        policy = %meta.ram_policy,
         "vm snapshot bundle loaded"
     );
     Ok(VmSnapshotPayload {
@@ -207,7 +265,115 @@ pub fn read_bundle_crypto(
         ram,
         vcpus_json,
         devices_json,
+        dirty,
     })
+}
+
+fn decode_ram(meta: &VmSnapshotMeta, stored: &[u8]) -> Result<Vec<u8>, SnapshotError> {
+    if stored.is_empty() {
+        return Ok(Vec::new());
+    }
+    if meta.version >= 2 && meta.compression.as_deref() == Some("zstd") {
+        let max = usize::try_from(meta.ram_size.saturating_add(64 * 1024)).unwrap_or(usize::MAX);
+        crate::ram::decompress(stored, max)
+    } else {
+        Ok(stored.to_vec())
+    }
+}
+
+fn read_dirty(
+    dir: &Path,
+    meta: &VmSnapshotMeta,
+    gcm: Option<&GcmKey>,
+) -> Result<Vec<(u64, Vec<u8>)>, SnapshotError> {
+    let path = dir.join(DIRTY_FILE);
+    if !path.is_file() {
+        return Ok(Vec::new());
+    }
+    let stored = read_protected(&path, gcm, AAD_SNAP_RAM)?;
+    let raw = if meta.compression.as_deref() == Some("zstd") {
+        crate::ram::decompress(&stored, 64 * 1024 * 1024)?
+    } else {
+        stored
+    };
+    crate::ram::unpack_dirty(&raw)
+}
+
+/// Write uncompressed RAM to `dir/guest.ram.lazy` for a private mmap restore.
+#[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display()))]
+pub fn materialize_ram(dir: &Path, ram: &[u8]) -> Result<PathBuf, SnapshotError> {
+    let path = dir.join(RAM_CACHE);
+    fs::write(&path, ram).map_err(|source| io_err(&path, source))?;
+    tracing::info!(
+        target: "ternvale::snapshot",
+        path = %path.display(),
+        bytes = ram.len(),
+        "materialized lazy RAM cache"
+    );
+    Ok(path)
+}
+
+/// Replay a snapshot chain into `guest.ram.lazy` (base + dirty pages).
+#[tracing::instrument(level = "debug", target = "ternvale::snapshot", skip_all, fields(dir = %dir.display()))]
+pub fn collapse_chain(
+    dir: &Path,
+    gcm: Option<&GcmKey>,
+    ram_base: u64,
+    ram_size: u64,
+) -> Result<PathBuf, SnapshotError> {
+    use std::os::unix::fs::FileExt;
+    let meta = read_bundle_crypto(dir, gcm)?.meta;
+    let root = dir.parent().ok_or_else(|| SnapshotError::InvalidRequest {
+        detail: format!("snapshot `{}` has no parent directory", meta.label),
+    })?;
+    let chain = crate::chain::SnapshotChain::load(root)?;
+    let lineage = chain.lineage(&meta.label)?;
+    let cache = dir.join(RAM_CACHE);
+    let mut wrote = false;
+    for node in lineage {
+        let payload = read_bundle_crypto(&root.join(&node.label), gcm).map_err(|error| {
+            SnapshotError::InvalidManifest {
+                path: root.join(&node.label),
+                detail: format!("corrupt snapshot chain link `{}`: {error}", node.label),
+            }
+        })?;
+        if payload.meta.ram_policy != "incremental" {
+            fs::write(&cache, &payload.ram).map_err(|source| io_err(&cache, source))?;
+            wrote = true;
+        } else {
+            if !wrote {
+                return Err(SnapshotError::InvalidManifest {
+                    path: root.join(&node.label),
+                    detail: format!(
+                        "corrupt snapshot chain link `{}`: incremental without a full base",
+                        node.label
+                    ),
+                });
+            }
+            let file = fs::OpenOptions::new()
+                .write(true)
+                .open(&cache)
+                .map_err(|source| io_err(&cache, source))?;
+            for (gpa, page) in payload.dirty {
+                let off = gpa.saturating_sub(ram_base);
+                if off.saturating_add(page.len() as u64) > ram_size {
+                    return Err(SnapshotError::InvalidManifest {
+                        path: root.join(&node.label),
+                        detail: format!("dirty page {gpa:#x} outside RAM in `{}`", node.label),
+                    });
+                }
+                file.write_all_at(&page, off)
+                    .map_err(|source| io_err(&cache, source))?;
+            }
+        }
+    }
+    if !wrote {
+        return Err(SnapshotError::InvalidManifest {
+            path: dir.to_path_buf(),
+            detail: format!("missing snapshot chain link `{}`", meta.label),
+        });
+    }
+    Ok(cache)
 }
 
 /// List snapshot labels under `vm_root/<vm_name>/`.
@@ -313,6 +479,7 @@ mod tests {
             ram: vec![0xAA; 1024],
             vcpus_json: r#"[]"#.to_string(),
             devices_json: r#"{}"#.to_string(),
+            dirty: Vec::new(),
         };
         write_bundle(&dir, &payload).expect("write");
         let back = read_bundle(&dir).expect("read");
@@ -334,6 +501,7 @@ mod tests {
             ram: b"TERNVALE-PLAINTEXT-MARKER".to_vec(),
             vcpus_json: "[]".into(),
             devices_json: "{}".into(),
+            dirty: Vec::new(),
         };
         write_bundle_crypto(&dir, &payload, Some(&gcm)).expect("write");
         let raw = fs::read(dir.join(RAM)).expect("ram");
@@ -404,5 +572,69 @@ mod tests {
             }
         ));
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn incremental_chain_and_corrupt_link() {
+        use crate::chain::{ChainNode, SnapshotChain};
+        let root = std::env::temp_dir().join(format!("tvsb-chain-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let page = 16 * 1024;
+        let mut ram = vec![0u8; page];
+        ram[0] = 1;
+        let mut meta = new_meta("vm", "a", 0, page as u64, 0, 1);
+        meta.ram_sha256 = Some(crate::ram::sha256_hex(&ram));
+        write_bundle(
+            &root.join("a"),
+            &VmSnapshotPayload {
+                meta,
+                gic: vec![],
+                ram: ram.clone(),
+                vcpus_json: "[]".into(),
+                devices_json: "{}".into(),
+                dirty: vec![],
+            },
+        )
+        .expect("base");
+        ram[0] = 9;
+        let dirty = vec![(0u64, ram.clone())];
+        let mut inc = new_meta("vm", "b", 0, page as u64, 0, 1);
+        inc.ram_policy = "incremental".into();
+        inc.parent = Some("a".into());
+        write_bundle(
+            &root.join("b"),
+            &VmSnapshotPayload {
+                meta: inc,
+                gic: vec![],
+                ram: vec![],
+                vcpus_json: "[]".into(),
+                devices_json: "{}".into(),
+                dirty,
+            },
+        )
+        .expect("inc");
+        let mut chain = SnapshotChain::empty();
+        chain.upsert(ChainNode {
+            label: "a".into(),
+            parent: None,
+            ram_sha256: "x".into(),
+            ram_policy: "full".into(),
+        });
+        chain.upsert(ChainNode {
+            label: "b".into(),
+            parent: Some("a".into()),
+            ram_sha256: "y".into(),
+            ram_policy: "incremental".into(),
+        });
+        chain.save(&root).expect("chain");
+        let lazy = collapse_chain(&root.join("b"), None, 0, page as u64).expect("collapse");
+        let out = fs::read(&lazy).expect("lazy");
+        assert_eq!(out[0], 9);
+        let err = SnapshotChain::load(&root)
+            .expect("load")
+            .lineage("missing")
+            .expect_err("link");
+        assert!(err.to_string().contains("`missing`"), "{err}");
+        fs::remove_dir_all(&root).ok();
     }
 }

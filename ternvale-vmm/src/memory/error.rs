@@ -98,6 +98,17 @@ pub enum MemoryError {
         source: ternvale_hv::HvError,
     },
 
+    /// `hv_vm_protect` failed.
+    #[error("hv_vm_protect gpa {gpa:#x} size {size:#x}: {source}")]
+    Protect {
+        /// Guest physical address.
+        gpa: u64,
+        /// Length passed to `hv_vm_protect`.
+        size: u64,
+        /// Framework error.
+        source: ternvale_hv::HvError,
+    },
+
     /// `hv_vm_unmap` failed.
     #[error("hv_vm_unmap gpa {gpa:#x} size {size:#x}: {source}")]
     Unmap {

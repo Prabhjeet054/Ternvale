@@ -42,7 +42,8 @@ pub use gic::{raise_ppi, Gic, IccReg, VTIMER_PPI};
 pub use host::{host_chip, hypervisor_supported, macos_version, HostChip, MacosVersion};
 pub use host_power::{watch_host_power, HostPowerEvent, HostPowerWatch};
 pub use map::{
-    map_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX, HV_MEMORY_WRITE,
+    map_memory, protect_memory, unmap_memory, HV_MEMORY_EXEC, HV_MEMORY_READ, HV_MEMORY_RWX,
+    HV_MEMORY_RX, HV_MEMORY_WRITE,
 };
 pub use osver::GIC_MIN_MACOS_MAJOR;
 pub use pressure::{watch_memory_pressure, MemoryPressure, PressureWatch};

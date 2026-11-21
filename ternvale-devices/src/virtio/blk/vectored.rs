@@ -27,9 +27,12 @@ pub(super) fn vectored(
             if buf.len == 0 {
                 continue;
             }
-            let ptr = mem
-                .host_ptr(buf.addr, buf.len as usize)
-                .map_err(|error| io::Error::new(ErrorKind::InvalidInput, error.to_string()))?;
+            let ptr = if read {
+                mem.host_ptr_mut(buf.addr, buf.len as usize)
+            } else {
+                mem.host_ptr(buf.addr, buf.len as usize)
+            }
+            .map_err(|error| io::Error::new(ErrorKind::InvalidInput, error.to_string()))?;
             iov.push(iovec {
                 iov_base: ptr.cast(),
                 iov_len: buf.len as usize,
@@ -103,7 +106,7 @@ fn zero_rest(mem: &GuestMemory, bufs: &[Buffer], mut skip: usize) -> io::Result<
             continue;
         }
         let ptr = mem
-            .host_ptr(buf.addr + skip as u64, len - skip)
+            .host_ptr_mut(buf.addr + skip as u64, len - skip)
             .map_err(|error| io::Error::new(ErrorKind::InvalidInput, error.to_string()))?;
         // SAFETY: `host_ptr` validated the GPA range.
         unsafe {
@@ -127,9 +130,9 @@ pub(super) fn copy_read_guest(
         let mut tmp = vec![0u8; buf.len as usize];
         stack.read_at(&mut tmp, offset)?;
         let ptr = mem
-            .host_ptr(buf.addr, buf.len as usize)
+            .host_ptr_mut(buf.addr, buf.len as usize)
             .map_err(|error| io::Error::new(ErrorKind::InvalidInput, error.to_string()))?;
-        // SAFETY: `host_ptr` validated the range; copy into guest RAM.
+        // SAFETY: `host_ptr_mut` validated the range; copy into guest RAM.
         unsafe {
             std::ptr::copy_nonoverlapping(tmp.as_ptr(), ptr, tmp.len());
         }

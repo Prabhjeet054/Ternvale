@@ -3,10 +3,14 @@
 //! See `docs/SNAPSHOT.md` for disk layers and `docs/VM_SNAPSHOT.md` for RAM bundles.
 
 mod base_ref;
+mod chain;
 mod clone;
 mod delta;
 mod format;
 mod manifest;
+#[cfg(test)]
+mod quality;
+mod ram;
 mod stack;
 mod vm_bundle;
 
@@ -14,6 +18,7 @@ pub use base_ref::{
     acquire as acquire_base_ref, count as base_ref_count, has_holder as base_ref_has_holder,
     is_write_protected, release as release_base_ref,
 };
+pub use chain::{ChainNode, SnapshotChain, CHAIN_MAGIC, CHAIN_VERSION};
 pub use clone::{create_linked_stack, release_disk_base, shared_base_path};
 pub use delta::{allocated_bytes, DeltaLayer};
 pub use format::{
@@ -21,11 +26,15 @@ pub use format::{
     DEFAULT_BLOCK_SIZE, DELTA_HEADER_LEN, DELTA_MAGIC, DELTA_VERSION, STACK_MAGIC, STACK_VERSION,
 };
 pub use manifest::StackManifest;
+pub use ram::{
+    compress as compress_ram, decompress as decompress_ram, pack_dirty, sha256_hex, unpack_dirty,
+    DIRTY_MAGIC, DIRTY_VERSION,
+};
 pub use stack::ImageStack;
 pub use vm_bundle::{
-    bundle_encrypted, delete_bundle, list_snapshots, new_meta, read_bundle, read_bundle_crypto,
-    write_bundle, write_bundle_crypto, VmSnapshotMeta, VmSnapshotPayload, BUNDLE_MAGIC,
-    BUNDLE_VERSION,
+    bundle_encrypted, collapse_chain, delete_bundle, list_snapshots, materialize_ram, new_meta,
+    read_bundle, read_bundle_crypto, write_bundle, write_bundle_crypto, VmSnapshotMeta,
+    VmSnapshotPayload, BUNDLE_MAGIC, BUNDLE_VERSION, BUNDLE_VERSION_MIN, DIRTY_FILE, RAM_CACHE,
 };
 
 /// Stack / delta errors.

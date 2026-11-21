@@ -1784,6 +1784,7 @@ dependencies = [
  "ternvale-crypto",
  "thiserror 2.0.21",
  "tracing",
+ "zstd",
 ]
 
 [[package]]

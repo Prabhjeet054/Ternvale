@@ -10,7 +10,7 @@
 use std::ptr::NonNull;
 
 use crate::error::{HvError, HV_SUCCESS};
-use crate::ffi::{hv_vm_map, hv_vm_unmap};
+use crate::ffi::{hv_vm_map, hv_vm_protect, hv_vm_unmap};
 
 /// `HV_MEMORY_READ`.
 pub const HV_MEMORY_READ: u64 = 1 << 0;
@@ -20,6 +20,8 @@ pub const HV_MEMORY_WRITE: u64 = 1 << 1;
 pub const HV_MEMORY_EXEC: u64 = 1 << 2;
 /// Read, write, and execute. Guest RAM uses this set.
 pub const HV_MEMORY_RWX: u64 = HV_MEMORY_READ | HV_MEMORY_WRITE | HV_MEMORY_EXEC;
+/// Read and execute (stage-2 write-protect for dirty-page tracking).
+pub const HV_MEMORY_RX: u64 = HV_MEMORY_READ | HV_MEMORY_EXEC;
 
 /// Map `size` host bytes at `host` into the current VM at guest IPA `ipa`.
 ///
@@ -78,6 +80,36 @@ pub fn unmap_memory(ipa: u64, size: usize) -> Result<(), HvError> {
             code = format!("{:#x}", code),
             error = %error,
             "hv_vm_unmap failed"
+        );
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Change stage-2 permissions on an existing `hv_vm_map` range.
+///
+/// Used to write-protect guest RAM so stores fault and can be recorded as
+/// dirty pages. TODO(verify): Apple does not document whether `hv_vm_protect`
+/// is cheap enough to run over all of RAM after every snapshot; measure
+/// `protect_ns` in `ternvale::mem` DEBUG logs on the target host.
+#[tracing::instrument(
+    level = "debug",
+    target = "ternvale::hv",
+    skip_all,
+    fields(ipa = format!("{:#x}", ipa), size = format!("{:#x}", size), flags = format!("{:#x}", flags))
+)]
+pub fn protect_memory(ipa: u64, size: usize, flags: u64) -> Result<(), HvError> {
+    let args = format!("ipa={ipa:#x} size={size:#x} flags={flags:#x}");
+    // SAFETY: `ipa`/`size` describe a live mapping for the current VM.
+    let raw = unsafe { hv_vm_protect(ipa, size, flags) };
+    let code = ternvale_log::log_hv_call!("hv_vm_protect", args, raw);
+    if code != HV_SUCCESS {
+        let error = HvError::from_code(code);
+        tracing::error!(
+            target: "ternvale::hv",
+            code = format!("{:#x}", code),
+            error = %error,
+            "hv_vm_protect failed"
         );
         return Err(error);
     }

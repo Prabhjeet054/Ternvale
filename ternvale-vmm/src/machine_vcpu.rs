@@ -388,6 +388,11 @@ fn dispatch_exit(
 ) -> Result<bool, MachineError> {
     let event = crate::esr::decode(syndrome, physical_address);
     match event {
+        crate::esr::ExitEvent::DirtyPage { gpa } => {
+            let mem = crate::lockwatch::lock(shared.memory, "guest-memory");
+            mem.note_stage2_write(gpa)?;
+            Ok(true)
+        }
         crate::esr::ExitEvent::Mmio {
             gpa, size, write, ..
         } => {

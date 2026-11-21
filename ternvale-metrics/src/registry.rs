@@ -40,6 +40,8 @@ pub struct Metrics {
     policy: [AtomicU64; POLICY_RULES.len()],
     x86: X86Counters,
     present: PresentCell,
+    snapshot_create_ms: AtomicU64,
+    snapshot_restore_ms: AtomicU64,
 }
 
 #[derive(Debug, Default)]
@@ -118,6 +120,19 @@ impl Metrics {
             policy: std::array::from_fn(|_| AtomicU64::new(0)),
             x86: X86Counters::default(),
             present: PresentCell::default(),
+            snapshot_create_ms: AtomicU64::new(0),
+            snapshot_restore_ms: AtomicU64::new(0),
+        }
+    }
+
+    /// Last snapshot create/restore wall time for `ternvale stats`.
+    #[inline]
+    pub fn record_snapshot_times(&self, create_ms: Option<u64>, restore_ms: Option<u64>) {
+        if let Some(ms) = create_ms {
+            self.snapshot_create_ms.store(ms, Ordering::Relaxed);
+        }
+        if let Some(ms) = restore_ms {
+            self.snapshot_restore_ms.store(ms, Ordering::Relaxed);
         }
     }
 
@@ -310,6 +325,8 @@ impl Metrics {
                 upload_bytes: self.present.upload_bytes.get(),
                 latency: self.present.latency.snapshot(),
             },
+            snapshot_create_ms: self.snapshot_create_ms.load(Ordering::Relaxed),
+            snapshot_restore_ms: self.snapshot_restore_ms.load(Ordering::Relaxed),
         }
     }
 

@@ -4,11 +4,14 @@
 //! lie entirely in one region. Drop unmaps guest mappings before releasing the
 //! host pages. Drop [`GuestMemory`] before the [`ternvale_hv::Vm`].
 
+mod dirty;
 mod error;
 mod host;
 mod pages;
+mod track;
 
 use std::ptr::NonNull;
+use std::sync::atomic::AtomicBool;
 
 pub use error::MemoryError;
 pub use host::HOST_PAGE_SIZE;
@@ -73,11 +76,13 @@ macro_rules! guest_int {
 }
 
 /// One contiguous guest physical range backed by an anonymous host mapping.
-struct Region {
-    gpa: u64,
-    size: usize,
-    host: NonNull<u8>,
-    guest_mapped: bool,
+pub(super) struct Region {
+    pub(super) gpa: u64,
+    pub(super) size: usize,
+    pub(super) host: NonNull<u8>,
+    pub(super) guest_mapped: bool,
+    pub(super) flags: u64,
+    pub(super) dirty: dirty::DirtyBits,
 }
 
 impl Region {
@@ -127,7 +132,8 @@ impl Drop for Region {
 /// [`GuestMemory::map`] does that and calls `hv_vm_map` with read, write, and
 /// execute permission. Regions must not overlap.
 pub struct GuestMemory {
-    regions: Vec<Region>,
+    pub(super) regions: Vec<Region>,
+    pub(super) tracking: AtomicBool,
 }
 
 // SAFETY: host mappings are exclusive to this VMM. Callers share `GuestMemory`
@@ -165,6 +171,7 @@ impl GuestMemory {
         }
         Ok(Self {
             regions: Vec::new(),
+            tracking: AtomicBool::new(false),
         })
     }
 
@@ -226,6 +233,7 @@ impl GuestMemory {
             return Err(error);
         }
         region.guest_mapped = true;
+        region.flags = flags;
         let host = region.host.as_ptr() as usize;
         self.insert(region);
         tracing::info!(
@@ -393,6 +401,7 @@ impl GuestMemory {
                 src.len(),
             );
         }
+        self.mark_dirty(gpa, src.len());
         Ok(())
     }
 
@@ -409,6 +418,8 @@ impl GuestMemory {
             size: bytes,
             host,
             guest_mapped: false,
+            flags: 0,
+            dirty: dirty::DirtyBits::new(bytes),
         })
     }
 
@@ -444,7 +455,12 @@ impl GuestMemory {
         self.regions.insert(index, region);
     }
 
-    fn access(&self, gpa: u64, size: usize, op: &'static str) -> Result<&Region, MemoryError> {
+    pub(super) fn access(
+        &self,
+        gpa: u64,
+        size: usize,
+        op: &'static str,
+    ) -> Result<&Region, MemoryError> {
         match self.find(gpa, size) {
             Ok(index) => Ok(&self.regions[index]),
             Err(error) => {
@@ -461,7 +477,7 @@ impl GuestMemory {
         }
     }
 
-    fn find(&self, gpa: u64, size: usize) -> Result<usize, MemoryError> {
+    pub(super) fn find(&self, gpa: u64, size: usize) -> Result<usize, MemoryError> {
         let len = u64::try_from(size).map_err(|_| MemoryError::OutOfRange { gpa, size })?;
         let Some(end) = gpa.checked_add(len) else {
             return Err(MemoryError::OutOfRange { gpa, size });
@@ -519,6 +535,13 @@ fn check_layout(gpa: u64, size: u64) -> Result<usize, MemoryError> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "audit.rs"]
+mod audit;
+
+#[cfg(test)]
+mod quality;
 
 #[cfg(test)]
 #[path = "balloon_hv_test.rs"]

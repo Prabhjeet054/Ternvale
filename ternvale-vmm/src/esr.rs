@@ -71,6 +71,11 @@ pub enum ExitEvent {
         /// Guest used `MSR` (a write of the system register). `MRS` is a read.
         write: bool,
     },
+    /// Stage-2 permission fault on a write (dirty-page tracking).
+    DirtyPage {
+        /// Guest physical address of the store.
+        gpa: u64,
+    },
     /// An EC this decoder does not turn into a specific event, or a data abort
     /// whose ISS is not valid.
     Unknown {
@@ -142,6 +147,17 @@ fn decode_data_abort(ec: u8, iss: u32, gpa: u64) -> ExitEvent {
     let sf = (iss >> 15) & 1 == 1;
     let reg = ((iss >> 16) & 0x1f) as u8;
     let write = (iss >> 6) & 1 == 1;
+    // ARM ARM DDI 0487: DFSC 0b0011xx = permission fault (WnR is valid).
+    let dfsc = iss & 0x3f;
+    if write && (0x0c..=0x0f).contains(&dfsc) {
+        tracing::debug!(
+            target: "ternvale::mem",
+            gpa = format!("{gpa:#x}"),
+            dfsc,
+            "stage-2 write permission fault"
+        );
+        return ExitEvent::DirtyPage { gpa };
+    }
     if !isv {
         tracing::warn!(
             target: "ternvale::vcpu",
@@ -209,6 +225,7 @@ impl fmt::Display for DisplayEvent<'_> {
                 formatter,
                 "mmio gpa={gpa:#x} size={size} write={write} reg={reg}"
             ),
+            ExitEvent::DirtyPage { gpa } => write!(formatter, "dirty-page gpa={gpa:#x}"),
             ExitEvent::Hvc { imm16 } => write!(formatter, "hvc imm16={imm16:#x}"),
             ExitEvent::Smc { imm16 } => write!(formatter, "smc imm16={imm16:#x}"),
             ExitEvent::Wfi { wfe } => write!(formatter, "wfi wfe={wfe}"),
@@ -292,6 +309,12 @@ mod tests {
                 esr(0x24, 0),
                 0x0900_0000,
                 ExitEvent::Unknown { ec: 0x24, iss: 0 },
+            ),
+            (
+                "s2-perm-write",
+                esr(0x24, (1 << 6) | 0x0f),
+                0x4000_0000,
+                ExitEvent::DirtyPage { gpa: 0x4000_0000 },
             ),
             (
                 "read64-x7",

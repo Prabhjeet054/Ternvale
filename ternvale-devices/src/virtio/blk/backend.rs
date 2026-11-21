@@ -384,7 +384,7 @@ impl FileBackend {
             let mut tmp = vec![0u8; buf.len as usize];
             self.read_at(&mut tmp, offset)?;
             let ptr = mem
-                .host_ptr(buf.addr, buf.len as usize)
+                .host_ptr_mut(buf.addr, buf.len as usize)
                 .map_err(|error| io::Error::new(ErrorKind::InvalidInput, error.to_string()))?;
             // SAFETY: `host_ptr` validated the GPA range.
             unsafe {

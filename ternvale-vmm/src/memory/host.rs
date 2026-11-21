@@ -41,6 +41,91 @@ pub(super) fn require_host_alignment(addr: u64) -> Result<(), MemoryError> {
     Ok(())
 }
 
+/// Private file-backed mapping (`MAP_PRIVATE`) so resume can demand-fault pages.
+///
+/// TODO(verify): Hypervisor.framework `hv_vm_map` of a `MAP_PRIVATE` file
+/// mapping on this macOS. Measure first-touch fault cost vs anonymous RAM.
+#[cfg_attr(miri, allow(dead_code))]
+pub(super) fn mmap_file_private(
+    path: &std::path::Path,
+    size: usize,
+) -> Result<NonNull<u8>, MemoryError> {
+    #[cfg(miri)]
+    {
+        let host = miri_alloc(size)?;
+        let bytes = std::fs::read(path).map_err(|source| MemoryError::Mmap {
+            size: size as u64,
+            source,
+        })?;
+        let n = bytes.len().min(size);
+        // SAFETY: `host` is a fresh allocation of `size` bytes.
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), host.as_ptr(), n);
+        }
+        Ok(host)
+    }
+    #[cfg(not(miri))]
+    {
+        mmap_file_private_host(path, size)
+    }
+}
+
+#[cfg(not(miri))]
+fn mmap_file_private_host(path: &std::path::Path, size: usize) -> Result<NonNull<u8>, MemoryError> {
+    use std::os::unix::io::AsRawFd;
+    let file = std::fs::File::open(path).map_err(|source| MemoryError::Mmap {
+        size: size as u64,
+        source,
+    })?;
+    let fd = file.as_raw_fd();
+    // SAFETY: `fd` is a live file; `MAP_PRIVATE` copies on write and does not
+    // mutate the snapshot file. `size` is a page-multiple covering the mapping.
+    let ptr = unsafe {
+        libc::mmap(
+            std::ptr::null_mut(),
+            size,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_PRIVATE,
+            fd,
+            0,
+        )
+    };
+    if ptr.is_null() || ptr == libc::MAP_FAILED {
+        let source = std::io::Error::last_os_error();
+        tracing::error!(
+            target: "ternvale::mem",
+            size,
+            path = %path.display(),
+            error = %source,
+            "mmap file-backed MAP_PRIVATE failed"
+        );
+        return Err(MemoryError::Mmap {
+            size: size as u64,
+            source,
+        });
+    }
+    let addr = ptr as u64;
+    if let Err(error) = require_host_alignment(addr) {
+        let rc = unsafe { libc::munmap(ptr, size) };
+        if rc != 0 {
+            tracing::error!(
+                target: "ternvale::mem",
+                error = %std::io::Error::last_os_error(),
+                "munmap after misaligned file mmap failed"
+            );
+        }
+        return Err(error);
+    }
+    tracing::info!(
+        target: "ternvale::mem",
+        path = %path.display(),
+        size,
+        host = format!("{addr:#x}"),
+        "mapped snapshot file MAP_PRIVATE for lazy restore"
+    );
+    Ok(unsafe { NonNull::new_unchecked(ptr.cast()) })
+}
+
 /// Anonymous, privately mapped, zero-filled pages.
 pub(super) fn mmap_anonymous(size: usize) -> Result<NonNull<u8>, MemoryError> {
     #[cfg(miri)]
