@@ -33,6 +33,8 @@ struct VMConfig: Identifiable, Equatable, Hashable {
     let serialLogPath: String?
     let configURL: URL
     let nics: [NicConfig]
+    /// `[reliability] on_vmm_crash` (`restart` default, or `stop`).
+    let onVmmCrash: String
 }
 
 enum VMConfigParser {
@@ -49,7 +51,8 @@ enum VMConfigParser {
             ramMiB: ram,
             serialLogPath: serial,
             configURL: url,
-            nics: parseNics(in: text)
+            nics: parseNics(in: text),
+            onVmmCrash: parseOnVmmCrash(in: text)
         )
     }
 
@@ -250,6 +253,14 @@ enum VMConfigParser {
     /// `[audio] input` (default false).
     static func parseAudioInput(in text: String) -> Bool {
         sectionBool(in: text, table: "audio", key: "input") ?? false
+    }
+
+    /// `[reliability] on_vmm_crash` (default `restart`).
+    static func parseOnVmmCrash(in text: String) -> String {
+        guard let body = sectionBody(in: text, table: "reliability") else {
+            return "restart"
+        }
+        return tableString(in: body, key: "on_vmm_crash") ?? "restart"
     }
 
     /// `[camera] enabled` (default false).

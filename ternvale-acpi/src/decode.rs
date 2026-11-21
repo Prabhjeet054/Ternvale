@@ -38,13 +38,28 @@ pub struct MadtInfo {
     pub gicrs: Vec<(u64, u32)>,
 }
 
-/// The four GTDT timers.
+/// SBSA watchdog from a GTDT Type 1 structure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GtdtWatchdog {
+    /// Refresh frame.
+    pub refresh_base: u64,
+    /// Control frame.
+    pub control_base: u64,
+    /// Timer GSIV.
+    pub gsiv: u32,
+    /// Watchdog flags.
+    pub flags: u32,
+}
+
+/// The four GTDT timers plus an optional Generic Watchdog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GtdtInfo {
     /// Secure EL1, non-secure EL1, virtual EL1, EL2 GSIVs.
     pub gsivs: [u32; 4],
     /// Their flags.
     pub flags: [u32; 4],
+    /// Type 1 Generic Watchdog, if present.
+    pub watchdog: Option<GtdtWatchdog>,
 }
 
 /// One MCFG allocation.
@@ -200,7 +215,24 @@ pub fn decode_gtdt(bytes: &[u8]) -> Result<GtdtInfo, AcpiError> {
         gsivs[slot] = u32_at(table, 48 + 8 * slot, "gtdt gsiv")?;
         flags[slot] = u32_at(table, 52 + 8 * slot, "gtdt flags")?;
     }
-    Ok(GtdtInfo { gsivs, flags })
+    let mut watchdog = None;
+    if table.len() >= 104 + 28 {
+        let count = u32_at(table, 88, "gtdt platform timer count")?;
+        let offset = u32_at(table, 92, "gtdt platform timer offset")? as usize;
+        if count >= 1 && offset + 28 <= table.len() && table[offset] == 1 {
+            watchdog = Some(GtdtWatchdog {
+                refresh_base: u64_at(table, offset + 4, "gtdt wd refresh")?,
+                control_base: u64_at(table, offset + 12, "gtdt wd control")?,
+                gsiv: u32_at(table, offset + 20, "gtdt wd gsiv")?,
+                flags: u32_at(table, offset + 24, "gtdt wd flags")?,
+            });
+        }
+    }
+    Ok(GtdtInfo {
+        gsivs,
+        flags,
+        watchdog,
+    })
 }
 
 /// Decode an `MCFG`.

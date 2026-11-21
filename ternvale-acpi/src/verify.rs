@@ -105,6 +105,17 @@ pub fn verify(tables: &[DumpedTable], expected: &AcpiConfig) -> Result<(), AcpiE
             [0; 4],
             gtdt.flags.map(|flags| flags & 0b11),
         );
+        match (expected.watchdog, gtdt.watchdog) {
+            (Some(want), Some(got)) => {
+                p.expect("GTDT watchdog refresh", want.refresh_base, got.refresh_base);
+                p.expect("GTDT watchdog control", want.control_base, got.control_base);
+                p.expect("GTDT watchdog GSIV", spi_gsiv(want.spi), got.gsiv);
+            }
+            (None, None) => {}
+            (want, got) => {
+                p.0.push(format!("GTDT watchdog: expected {want:?}, found {got:?}"))
+            }
+        }
     }
     if let Some(mcfg) = bytes("MCFG").and_then(|b| p.decoded("MCFG", decode_mcfg(b))) {
         let found: Vec<_> = mcfg

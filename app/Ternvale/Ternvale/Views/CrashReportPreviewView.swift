@@ -16,6 +16,11 @@ struct CrashReportPreviewView: View {
             Text("Nothing is sent until you click Send. Guest serial output and guest files are excluded.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if payload.items.contains(where: { $0.name.contains("memory.dump") }) {
+                Text("PRIVACY: memory.dump is guest RAM and can contain passwords and keys. Do not send it unless you accept that risk.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             List(payload.items) { item in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {

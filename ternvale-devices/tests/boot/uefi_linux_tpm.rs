@@ -225,6 +225,7 @@ fn boot_once(
         camera: None,
         shares: Vec::new(),
         power: Default::default(),
+        reliability: Default::default(),
         encryption: false,
         rosetta: false,
         nested_virt: false,

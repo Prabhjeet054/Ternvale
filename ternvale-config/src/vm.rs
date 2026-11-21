@@ -9,7 +9,8 @@ use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
 use crate::{
     AudioSection, CameraSection, ClipboardSection, GpuSection, InputSection, IsoSection, Nic,
-    PowerSection, PrintSection, Profile, Share, TpmSection, UsbSection, VsockSection,
+    PowerSection, PrintSection, Profile, ReliabilitySection, Share, TpmSection, UsbSection,
+    VsockSection,
 };
 
 const RAM_QUANTUM_MIB: u64 = 16;
@@ -97,6 +98,9 @@ pub struct VmConfig {
     /// Host sleep/wake, quit, and window-hidden policy.
     #[serde(default, skip_serializing_if = "PowerSection::is_default")]
     pub power: PowerSection,
+    /// Guest panic, watchdog, and VMM-process crash policy.
+    #[serde(default, skip_serializing_if = "ReliabilitySection::is_default")]
+    pub reliability: ReliabilitySection,
     /// AES-256-XTS disks/layers and AES-256-GCM NVRAM, TPM state, and memory
     /// snapshots. The data key is never on the command line or in the environment.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -292,6 +296,7 @@ impl VmConfig {
             });
         }
         self.power.validate()?;
+        self.reliability.validate()?;
         for (index, share) in self.shares.iter().enumerate() {
             if let Err(ConfigError::InvalidShare { field, reason }) = share.validate() {
                 return Err(ConfigError::InvalidShare {

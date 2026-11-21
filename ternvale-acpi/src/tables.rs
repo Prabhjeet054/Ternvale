@@ -97,7 +97,7 @@ impl AcpiTables {
         config.validate()?;
         let mut leaves: Vec<(&'static str, Vec<u8>)> = vec![
             ("APIC", madt(config)?),
-            ("GTDT", gtdt(&config.timer)?),
+            ("GTDT", gtdt(&config.timer, config.watchdog.as_ref())?),
             ("MCFG", mcfg(&config.ecam)?),
             ("SPCR", spcr(&config.uart)?),
             ("DBG2", dbg2(&config.uart)?),

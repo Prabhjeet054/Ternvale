@@ -35,6 +35,8 @@ pub struct DeviceAttach {
     pub metrics: Arc<Metrics>,
     /// Guest vCPU count, used to size virtio-blk multi-queue.
     pub vcpus: u32,
+    /// Guest panic / watchdog events (bound after vCPU power is ready).
+    pub crash: Arc<crate::crash::CrashHub>,
 }
 
 impl DeviceAttach {
@@ -46,6 +48,7 @@ impl DeviceAttach {
         spi_levels: SpiLevels,
         metrics: Arc<Metrics>,
         vcpus: u32,
+        crash: Arc<crate::crash::CrashHub>,
     ) -> Self {
         let hooks: [LineHook; PCI_INTX_LINES] = std::array::from_fn(|i| {
             spi_hook(
@@ -62,6 +65,7 @@ impl DeviceAttach {
             pci: PciRoot::new(hooks),
             metrics,
             vcpus,
+            crash,
         }
     }
 

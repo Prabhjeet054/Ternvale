@@ -245,6 +245,15 @@ pub enum ConfigError {
         reason: String,
     },
 
+    /// A `[reliability]` field is invalid.
+    #[error("{field}: {reason}")]
+    InvalidReliability {
+        /// Field, such as `reliability.dump_ram_max_mib`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
+
     /// A `[[disks]]` cache/queue field is out of range.
     #[error("{field}: {reason}")]
     InvalidDisk {

@@ -47,6 +47,8 @@ fn dsdt_disassembles_cleanly_and_recompiles_to_the_same_aml() {
         "Device (TPM2)",
         "Device (PWRB)",
         "Device (GED0)",
+        "Device (PANC)",
+        "Name (_HID, \"QEMU0001\"",
         "Name (_HID, \"ACPI0013\"",
         "Method (_EVT, 1, NotSerialized)",
         "Name (_HID, \"MSFT0101\" /* TPM 2.0 Security Device */)",
@@ -223,6 +225,15 @@ fn reference_asl() -> String {
             {{
                 Notify (PWRB, 0x80)
             }}
+        }}
+        Device (PANC)
+        {{
+            Name (_HID, "QEMU0001")
+            Name (_UID, Zero)
+            Name (_CRS, ResourceTemplate ()
+            {{
+                Memory32Fixed (ReadWrite, 0x09050000, 0x00000002)
+            }})
         }}
     }}
 }}

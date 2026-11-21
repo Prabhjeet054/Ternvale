@@ -78,6 +78,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         camera: None,
         shares: Vec::new(),
         power: Default::default(),
+        reliability: Default::default(),
         encryption: false,
         rosetta: false,
         nested_virt: false,

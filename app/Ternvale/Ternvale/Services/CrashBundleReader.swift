@@ -59,11 +59,18 @@ enum CrashBundleReader {
     static func previewFiles(vmName: String) -> [(name: String, bytes: Int, text: String?)] {
         var out: [(name: String, bytes: Int, text: String?)] = []
         guard let hostLog = TernvalePaths.newestHostLog(for: vmName) else { return out }
-        let candidates = [
+        var candidates = [
             hostLog,
             sidecarPath(hostLog: hostLog, suffix: ".summary.txt"),
             sidecarPath(hostLog: hostLog, suffix: ".run.json"),
         ]
+        let dump = TernvalePaths.applicationSupport
+            .appendingPathComponent(vmName, isDirectory: true)
+            .appendingPathComponent("memory.dump")
+        if FileManager.default.fileExists(atPath: dump.path) {
+            candidates.append(dump)
+            candidates.append(dump.deletingLastPathComponent().appendingPathComponent("memory.dump.WARNING.txt"))
+        }
         for url in candidates {
             let name = url.lastPathComponent
             if CrashRedactor.shouldExclude(filename: name) { continue }

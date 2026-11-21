@@ -49,6 +49,7 @@ fn boots_to_a_busybox_prompt_and_echoes_hello() {
         camera: None,
         shares: Vec::new(),
         power: Default::default(),
+        reliability: Default::default(),
         encryption: false,
         rosetta: false,
         nested_virt: false,

@@ -15,8 +15,9 @@ mod pci_node;
 
 use crate::memory::{GuestMemory, MemoryError};
 use crate::platform::{
-    GIC_DIST_BASE, GIC_DIST_SIZE, GIC_REDIST_BASE, GIC_REDIST_SIZE, PL061_BASE, UART_BASE,
-    VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS, VIRTIO_MMIO_SLOT_SIZE, XHCI_BASE,
+    GIC_DIST_BASE, GIC_DIST_SIZE, GIC_REDIST_BASE, GIC_REDIST_SIZE, PL061_BASE, PVPANIC_BASE,
+    SBSA_GWDT_CONTROL_BASE, SBSA_GWDT_REFRESH_BASE, UART_BASE, VIRTIO_MMIO_BASE, VIRTIO_MMIO_SLOTS,
+    VIRTIO_MMIO_SLOT_SIZE, XHCI_BASE,
 };
 
 /// PL011 register block. QEMU's `VIRT_UART` size, not the 16 KiB reservation.
@@ -33,6 +34,8 @@ pub const USB_SPI: u32 = 7;
 pub const GPIO_SPI: u32 = 8;
 /// GIC SPI for the ACPI GED event register.
 pub const GED_SPI: u32 = 9;
+/// GIC SPI for the SBSA generic watchdog WS0 (Linux `sbsa_gwdt`).
+pub const WATCHDOG_SPI: u32 = 10;
 /// PL061 register block (PrimeCell).
 pub const PL061_REG_SIZE: u64 = 0x1000;
 /// gpio-keys pin for KEY_POWER (QEMU virt).
@@ -147,6 +150,8 @@ pub fn build_fdt(fdt: &GuestFdt) -> Result<Vec<u8>, FdtError> {
     apb_clock(&mut w, clock)?;
     pl061(&mut w, clock, gpio)?;
     gpio_keys(&mut w, gpio)?;
+    pvpanic(&mut w)?;
+    sbsa_gwdt(&mut w)?;
     virtio(&mut w)?;
     if fdt.usb {
         xhci(&mut w, gic)?;
@@ -374,6 +379,23 @@ fn apb_clock(w: &mut FdtWriter, phandle: u32) -> FdtWriterResult<()> {
     w.property_u32("#clock-cells", 0)?;
     w.property_u32("clock-frequency", APB_HZ)?;
     w.property_string("clock-output-names", "clk24mhz")?;
+    w.end_node(node)
+}
+
+fn pvpanic(w: &mut FdtWriter) -> FdtWriterResult<()> {
+    let node = w.begin_node(&format!("pvpanic@{:x}", PVPANIC_BASE))?;
+    w.property_string("compatible", crate::crash::PVPANIC_DT_COMPAT)?;
+    w.property_array_u32("reg", &reg(PVPANIC_BASE, 2))?;
+    w.end_node(node)
+}
+
+fn sbsa_gwdt(w: &mut FdtWriter) -> FdtWriterResult<()> {
+    let node = w.begin_node(&format!("watchdog@{:x}", SBSA_GWDT_REFRESH_BASE))?;
+    w.property_string("compatible", "arm,sbsa-gwdt")?;
+    let mut cells = reg(SBSA_GWDT_REFRESH_BASE, crate::sbsa_gwdt::SBSA_FRAME).to_vec();
+    cells.extend_from_slice(&reg(SBSA_GWDT_CONTROL_BASE, crate::sbsa_gwdt::SBSA_FRAME));
+    w.property_array_u32("reg", &cells)?;
+    w.property_array_u32("interrupts", &[0, WATCHDOG_SPI, IRQ_LEVEL_HIGH])?;
     w.end_node(node)
 }
 

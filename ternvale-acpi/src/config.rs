@@ -49,6 +49,32 @@ pub struct AcpiConfig {
     pub usb: Option<UsbConfig>,
     /// Generic Event Device MMIO (`\_SB.GED0`) and power button (`\_SB.PWRB`).
     pub ged: GedConfig,
+    /// Platform pvpanic (`\_SB.PANC`, `_HID QEMU0001`).
+    pub pvpanic: Option<PvpanicConfig>,
+    /// SBSA generic watchdog in the GTDT (Type 1).
+    pub watchdog: Option<WatchdogConfig>,
+}
+
+/// QEMU pvpanic MMIO (`QEMU0001` / `qemu,pvpanic-mmio`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PvpanicConfig {
+    /// Event register base (`_CRS` `Memory32Fixed`).
+    pub mmio_base: u64,
+    /// Decoded length (2 bytes on QEMU virt).
+    pub mmio_len: u32,
+}
+
+/// ARM SBSA generic watchdog frames (ACPI 6.5 GTDT Type 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WatchdogConfig {
+    /// Refresh frame (WRR).
+    pub refresh_base: u64,
+    /// Control frame (WCS/WOR/WCV).
+    pub control_base: u64,
+    /// Frame length in `_CRS` / `reg` (4 KiB).
+    pub frame_len: u32,
+    /// DTB SPI index (GSIV = [`spi_gsiv`]).
+    pub spi: u32,
 }
 
 /// Hardware-reduced ACPI power-button GED (ACPI0013).
@@ -253,6 +279,22 @@ impl AcpiConfig {
         if spi_gsiv(ged.spi) > SPI_LAST {
             return fail(format!("ged SPI {} is past INTID {SPI_LAST}", ged.spi));
         }
+        if let Some(pv) = self.pvpanic {
+            if pv.mmio_len == 0 || pv.mmio_base.checked_add(u64::from(pv.mmio_len)).is_none() {
+                return fail(format!(
+                    "pvpanic window {:#x}+{:#x} is empty",
+                    pv.mmio_base, pv.mmio_len
+                ));
+            }
+        }
+        if let Some(wd) = self.watchdog {
+            if wd.frame_len == 0 || spi_gsiv(wd.spi) > SPI_LAST {
+                return fail(format!(
+                    "watchdog frames {:#x}/{:#x} spi {}",
+                    wd.refresh_base, wd.control_base, wd.spi
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -308,6 +350,16 @@ pub(crate) mod tests {
                 mmio_len: 0x1000,
                 spi: 9,
             },
+            pvpanic: Some(PvpanicConfig {
+                mmio_base: 0x0905_0000,
+                mmio_len: 2,
+            }),
+            watchdog: Some(WatchdogConfig {
+                refresh_base: 0x0906_0000,
+                control_base: 0x0907_0000,
+                frame_len: 0x1000,
+                spi: 10,
+            }),
         }
     }
 

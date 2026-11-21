@@ -145,6 +145,7 @@ fn one_vm(
         camera: None,
         shares: Vec::new(),
         power: Default::default(),
+        reliability: Default::default(),
         encryption: encrypted,
         rosetta: false,
         nested_virt: false,

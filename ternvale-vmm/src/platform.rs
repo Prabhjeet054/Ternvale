@@ -48,6 +48,18 @@ pub const PL061_SIZE: u64 = HOST_PAGE_SIZE;
 pub const GED_BASE: u64 = 0x0904_0000;
 /// GED reservation (one host page).
 pub const GED_SIZE: u64 = HOST_PAGE_SIZE;
+/// QEMU `pvpanic-mmio` analog (QEMU virt uses `0x09060000`; we sit after GED).
+pub const PVPANIC_BASE: u64 = 0x0905_0000;
+/// Host-page reservation; the device decodes 2 bytes.
+pub const PVPANIC_SIZE: u64 = HOST_PAGE_SIZE;
+/// SBSA generic watchdog refresh frame (WRR).
+pub const SBSA_GWDT_REFRESH_BASE: u64 = 0x0906_0000;
+/// Refresh reservation (one host page; DTB `reg` is 4 KiB).
+pub const SBSA_GWDT_REFRESH_SIZE: u64 = HOST_PAGE_SIZE;
+/// SBSA generic watchdog control frame (WCS/WOR/WCV).
+pub const SBSA_GWDT_CONTROL_BASE: u64 = 0x0907_0000;
+/// Control reservation.
+pub const SBSA_GWDT_CONTROL_SIZE: u64 = HOST_PAGE_SIZE;
 /// ACPI tables (RSDP first), mapped read-only. Not in QEMU, which hands its
 /// tables to firmware over fw_cfg; this sits past QEMU's last low device
 /// (`VIRT_SECURE_GPIO` at `0x090b0000`) and below the virtio-mmio window.
@@ -154,6 +166,17 @@ impl Layout {
             region("fw-cfg", FW_CFG_BASE, FW_CFG_SIZE),
             region("pl061", PL061_BASE, PL061_SIZE),
             region("ged", GED_BASE, GED_SIZE),
+            region("pvpanic", PVPANIC_BASE, PVPANIC_SIZE),
+            region(
+                "sbsa-gwdt-refresh",
+                SBSA_GWDT_REFRESH_BASE,
+                SBSA_GWDT_REFRESH_SIZE,
+            ),
+            region(
+                "sbsa-gwdt-control",
+                SBSA_GWDT_CONTROL_BASE,
+                SBSA_GWDT_CONTROL_SIZE,
+            ),
             region("acpi", ACPI_BASE, ACPI_SIZE),
             region("tpm-crb", TPM_CRB_BASE, TPM_CRB_SIZE),
             region("xhci", XHCI_BASE, XHCI_SIZE),

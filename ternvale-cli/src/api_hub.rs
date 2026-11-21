@@ -185,6 +185,9 @@ pub fn hub_call(method: Method, params: Option<&Value>) -> Result<Response, ApiE
         | Method::Status
         | Method::DriverLogs => {
             let n = name()?;
+            if method == Method::Stop {
+                crate::hub_supervisor::note_user_stop(&n);
+            }
             let req = vm_request(method, &map)?;
             crate::api_library::forward(&n, &req)
                 .map_err(|e| ApiError::Application(format!("{e:#}")))

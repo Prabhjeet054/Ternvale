@@ -3,6 +3,7 @@
 mod agent;
 mod expect;
 mod print;
+mod pvpanic;
 mod uart;
 mod virtio;
 
@@ -14,6 +15,7 @@ pub use print::{
     dispatch as dispatch_ipp, inspect as inspect_ipp, list_host_queues, noop_open, open_preview,
     parse_lpstat, PrintPolicy, PrintProxy, PrintProxyError,
 };
+pub use pvpanic::PvPanicPci;
 pub use uart::{ByteSink, Pl011, StdoutFile, UartError, PL011_BASE, PL011_SIZE};
 #[doc(hidden)]
 pub use virtio::try_open_disk_for_write;

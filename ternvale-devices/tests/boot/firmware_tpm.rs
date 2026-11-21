@@ -103,6 +103,7 @@ fn boot_once(log_dir: &Path, serial_log: &Path, nvram: &Path, host: &Path) -> Re
         camera: None,
         shares: Vec::new(),
         power: Default::default(),
+        reliability: Default::default(),
         encryption: false,
         rosetta: false,
         nested_virt: false,

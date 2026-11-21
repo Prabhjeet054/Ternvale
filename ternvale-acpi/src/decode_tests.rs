@@ -24,9 +24,14 @@ fn builders_decode_back_to_their_config() {
         .collect();
     assert_eq!(mpidrs, vec![(0, 0, 1), (1, 1, 1)]);
 
-    let gtdt = decode_gtdt(&gtdt(&config.timer).expect("gtdt")).expect("decode");
+    let gtdt =
+        decode_gtdt(&gtdt(&config.timer, config.watchdog.as_ref()).expect("gtdt")).expect("decode");
     assert_eq!(gtdt.gsivs, [29, 30, 27, 26]);
     assert_eq!(gtdt.flags, [4; 4]);
+    let wd = gtdt.watchdog.expect("watchdog");
+    assert_eq!(wd.refresh_base, 0x0906_0000);
+    assert_eq!(wd.control_base, 0x0907_0000);
+    assert_eq!(wd.gsiv, 42);
 
     let mcfg = decode_mcfg(&mcfg(&config.ecam).expect("mcfg")).expect("decode");
     assert_eq!(
@@ -58,7 +63,7 @@ fn builders_decode_back_to_their_config() {
 
 #[test]
 fn wrong_signature_and_bad_lengths_are_errors() {
-    let gtdt = gtdt(&sample(1).timer).expect("gtdt");
+    let gtdt = gtdt(&sample(1).timer, None).expect("gtdt");
     assert!(decode_madt(&gtdt)
         .unwrap_err()
         .to_string()

@@ -24,8 +24,8 @@ use ternvale_config::{
     BlockDevice, CmdMap, GpuSection, Nic, Profile, Share, VirtioTransport, VmConfig,
 };
 use ternvale_devices::{
-    attach_blocks_crypto, host_socket_path, open_nic, BalloonConfig, Pl011, VirtioBalloon,
-    VirtioConsole, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
+    attach_blocks_crypto, host_socket_path, open_nic, BalloonConfig, Pl011, PvPanicPci,
+    VirtioBalloon, VirtioConsole, VirtioNet, VirtioVsock, VsockConfig, DEFAULT_MAC,
 };
 use ternvale_log::LogConfig;
 use ternvale_vmm::{
@@ -588,6 +588,7 @@ fn attach_devices(
 ) -> Result<Attached, MachineError> {
     let (nics, vsock) = (wanted.nics, wanted.vsock);
     let mut stats = lockwatch::lock(stats, "device-stats");
+    PvPanicPci::attach(attach, Arc::clone(&attach.crash))?;
     let blocks = attach_blocks_crypto(attach, wanted.blocks, wanted.transport, wanted.xts.clone())?;
     for block in blocks.devices {
         stats.disks.push((block.path, block.stats, block.handle));

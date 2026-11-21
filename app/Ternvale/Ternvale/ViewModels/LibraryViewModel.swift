@@ -29,6 +29,8 @@ final class LibraryViewModel: ObservableObject {
     private let log = Logger(subsystem: "com.ternvale.app", category: "library")
     private var pollTask: Task<Void, Never>?
     private var lastHelperExit: Int32?
+    private var supervisors: [String: VmmSupervisor] = [:]
+    private let supervisorStart = Date()
     private var seamlessSink: AnyCancellable?
 
     var liveState: String { phase.label }
@@ -251,6 +253,7 @@ final class LibraryViewModel: ObservableObject {
                 statusMessage = "Starting \(vm.name)…"
                 log.info("started vm \(vm.name, privacy: .public)")
                 try await waitForRunning(vmName: vm.name, seconds: 30)
+                supervisors[vm.name]?.noteHealthy()
                 refreshStatus()
             } catch {
                 phase = .crashed
@@ -366,7 +369,50 @@ final class LibraryViewModel: ObservableObject {
             return
         }
         let bridged = VmnetHelperService.messageIfBridgedDenied(term.stderr)
-        markCrashed(vmName: term.vmName, reason: bridged)
+        let reason = bridged ?? "VMM process died (exit \(term.status))"
+        log.error(
+            "helper for \(term.vmName, privacy: .public) died unexpectedly: \(reason, privacy: .public)"
+        )
+        let supervisor = supervisors[term.vmName] ?? VmmSupervisor()
+        let now = Date().timeIntervalSince(supervisorStart)
+        let decision = supervisor.noteCrash(now: now)
+        supervisors[term.vmName] = supervisor
+        if let vm = selection, vm.name == term.vmName {
+            VmmSupervisor.markUncleanShutdown(
+                vmBundle: vm.configURL.deletingLastPathComponent(),
+                reason: reason
+            )
+        }
+        if selection?.onVmmCrash == "stop" {
+            markCrashed(vmName: term.vmName, reason: reason)
+            statusMessage = reason
+            VmmSupervisor.notifyUser(
+                title: "Ternvale: \(term.vmName) stopped",
+                body: "on_vmm_crash=stop. The disk is marked unclean-shutdown."
+            )
+            return
+        }
+        switch decision {
+        case let .restart(backoff, crashN):
+            statusMessage = "VMM crashed (\(reason)); restarting in \(Int(backoff))s (attempt \(crashN))"
+            VmmSupervisor.notifyUser(
+                title: "Ternvale: \(term.vmName) crashed",
+                body: "Restarting after unclean shutdown (\(crashN) in 5 minutes)."
+            )
+            let name = term.vmName
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                guard self.selection?.name == name else { return }
+                self.startSelected()
+            }
+        case let .stop(stopReason, crashes):
+            markCrashed(vmName: term.vmName, reason: stopReason)
+            statusMessage = stopReason
+            VmmSupervisor.notifyUser(
+                title: "Ternvale: \(term.vmName) stopped",
+                body: "\(stopReason) (\(crashes) crashes). The disk is marked unclean-shutdown."
+            )
+        }
     }
 
     private func markCrashed(vmName: String, reason: String?) {

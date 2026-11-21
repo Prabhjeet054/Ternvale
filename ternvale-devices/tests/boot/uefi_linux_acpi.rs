@@ -115,6 +115,7 @@ fn boot(esp: &Path, log_dir: &Path, serial_log: &Path, host_log: &Path) -> Resul
         camera: None,
         shares: Vec::new(),
         power: Default::default(),
+        reliability: Default::default(),
         encryption: false,
         rosetta: false,
         nested_virt: false,

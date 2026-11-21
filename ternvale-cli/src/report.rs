@@ -169,6 +169,24 @@ pub fn plan(dir: &Path, inputs: &PlanInputs<'_>, stamp: &str) -> Result<Plan> {
         Some(text) => Item::bytes("doctor.txt", text.clone() + "\n"),
         None => Item::missing("doctor.txt", "not run"),
     });
+    if let Some(dir) = config.as_ref().and_then(|p| p.parent()) {
+        let dump = dir.join(ternvale_vmm::crash::RAM_DUMP_FILE);
+        if dump.exists() {
+            items.push(Item::file(
+                "memory.dump",
+                &dump,
+                ternvale_config::DEFAULT_DUMP_RAM_MAX_MIB << 20,
+            ));
+            items.push(Item::bytes(
+                "memory.dump.WARNING.txt",
+                ternvale_vmm::crash::RAM_DUMP_PRIVACY_WARNING.to_string(),
+            ));
+            header.push(
+                "PRIVACY: memory.dump is guest RAM and can contain secrets; see memory.dump.WARNING.txt"
+                    .into(),
+            );
+        }
+    }
     Ok(Plan {
         top: format!("ternvale-report-{name}-{stamp}"),
         header,

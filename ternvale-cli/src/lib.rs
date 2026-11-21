@@ -48,6 +48,7 @@ pub mod exec_cmd;
 pub mod export_cmd;
 pub mod fex_cmd;
 pub mod guest_setup;
+pub mod hub_supervisor;
 pub mod import_cmd;
 pub mod json_out;
 pub mod keychain;
@@ -65,6 +66,8 @@ pub mod protocol;
 pub mod qemu_cmd;
 pub mod qemu_img;
 pub mod release_verify;
+#[cfg(test)]
+mod reliability_quality;
 pub mod report;
 pub mod rpc_vm;
 pub mod run;

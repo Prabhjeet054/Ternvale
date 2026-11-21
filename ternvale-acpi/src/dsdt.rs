@@ -35,6 +35,9 @@ pub fn dsdt(config: &AcpiConfig) -> Result<Vec<u8>, AcpiError> {
         devices.extend(tpm_device(tpm)?);
     }
     devices.extend(power_devices(&config.ged)?);
+    if let Some(pv) = &config.pvpanic {
+        devices.extend(crate::pvpanic::pvpanic_device(pv)?);
+    }
     let body = scope("\\_SB", &devices)?;
     table(SdtHeader::new(DSDT_SIGNATURE, DSDT_REVISION), &body)
 }
@@ -61,6 +64,9 @@ mod tests {
         }
         devices.extend(tpm_device(config.tpm.as_ref().expect("tpm")).expect("tpm2"));
         devices.extend(power_devices(&config.ged).expect("ged"));
+        if let Some(pv) = &config.pvpanic {
+            devices.extend(crate::pvpanic::pvpanic_device(pv).expect("panc"));
+        }
         assert_eq!(body, scope("\\_SB", &devices).expect("scope").as_slice());
         assert_eq!(body[0], crate::aml::SCOPE_OP);
         let name_end = body.len() - devices.len();
@@ -73,6 +79,9 @@ mod tests {
         let bytes = dsdt(&config).expect("dsdt");
         let mut devices = pci_root(&config).expect("pci0");
         devices.extend(power_devices(&config.ged).expect("ged"));
+        if let Some(pv) = &config.pvpanic {
+            devices.extend(crate::pvpanic::pvpanic_device(pv).expect("panc"));
+        }
         assert_eq!(
             &bytes[SDT_HEADER_LEN..],
             scope("\\_SB", &devices).expect("scope").as_slice()

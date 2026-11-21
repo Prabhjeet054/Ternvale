@@ -23,6 +23,7 @@ mod power;
 mod print;
 mod privacy;
 mod profile;
+mod reliability;
 mod share;
 mod tpm;
 mod usb;
@@ -55,6 +56,10 @@ pub use privacy::{PrivacySnapshot, SharePrivacy, UsbPrivacy};
 pub use profile::{
     is_iso9660, Profile, VirtioTransport, WINDOWS_MIN_CPUS, WINDOWS_MIN_DISK_BYTES,
     WINDOWS_MIN_RAM_MIB,
+};
+pub use reliability::{
+    OnPanic, OnVmmCrash, OnWatchdog, ReliabilitySection, DEFAULT_DUMP_RAM_MAX_MIB,
+    MAX_DUMP_RAM_MAX_MIB,
 };
 pub use share::{is_guest_mount_point, Share, MAX_MOUNT_PATH, MAX_TAG_LEN};
 pub use tpm::{TpmBackendKind, TpmSection, TPM_STATE_SUFFIX};
@@ -173,6 +178,26 @@ backend = "user"
         );
         let config = VmConfig::from_toml(&ok).expect("bridged en0");
         assert_eq!(config.nics[0].bridge_interface.as_deref(), Some("en0"));
+    }
+
+    #[test]
+    fn reliability_table_parses_in_a_vm_document() {
+        let fix = Fixture::new();
+        let text = format!(
+            "{}\n[reliability]\non_panic = \"dump-and-pause\"\non_watchdog = \"pause\"\n",
+            sample(&fix)
+        );
+        let config = VmConfig::from_toml(&text).expect("parse");
+        assert_eq!(config.reliability.on_panic, super::OnPanic::DumpAndPause);
+        assert_eq!(config.reliability.on_watchdog, super::OnWatchdog::Pause);
+        let dumped = config.to_toml().expect("toml");
+        assert!(dumped.contains("dump-and-pause"), "{dumped}");
+        let bad = format!("{}\n[reliability]\ndump_ram_max_mib = 0\n", sample(&fix));
+        let error = VmConfig::from_toml(&bad).expect_err("cap");
+        assert!(
+            matches!(error, ConfigError::InvalidReliability { .. }),
+            "{error}"
+        );
     }
 
     #[test]

@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use anyhow::{bail, Context, Result};
 use ternvale_backend::{resolve, BackendCapabilities};
@@ -130,11 +129,7 @@ pub fn start_vm(name: &str) -> Result<()> {
     let bin = std::env::var_os("TERNVALE_BIN")
         .map(std::path::PathBuf::from)
         .unwrap_or(std::env::current_exe().context("current_exe for ternvale run")?);
-    Command::new(&bin)
-        .arg("run")
-        .arg(&config)
-        .spawn()
-        .with_context(|| format!("spawn {} run {}", bin.display(), config.display()))?;
+    crate::hub_supervisor::start_supervised(name, &bin, &config)?;
     tracing::info!(target: "ternvale::api", vm = name, "started vm process");
     Ok(())
 }

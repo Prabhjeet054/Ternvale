@@ -12,19 +12,22 @@
 
 use ternvale_acpi::{
     AcpiConfig, AcpiError, DumpedTable, EcamConfig, GedConfig, GicConfig, PciConfig, PsciConduit,
-    TimerConfig, TpmConfig, UartConfig, UsbConfig,
+    PvpanicConfig, TimerConfig, TpmConfig, UartConfig, UsbConfig, WatchdogConfig,
 };
 use ternvale_config::VmConfig;
 use ternvale_tpm::{CONTROL_AREA_OFFSET, CRB_WINDOW_SIZE};
 use ternvale_usb::MMIO_SIZE as XHCI_MMIO_SIZE;
 
-use crate::fdt::{GED_SPI, PL011_REG_SIZE, PL061_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI};
+use crate::fdt::{
+    GED_SPI, PL011_REG_SIZE, PL061_REG_SIZE, TIMER_ALWAYS_ON, TIMER_PPIS, UART_SPI, WATCHDOG_SPI,
+};
 use crate::gic_redist::REDIST_STRIDE;
 use crate::machine::MachineError;
 use crate::pci::{ECAM_BUSES, PCI_INTX_SPI0};
 use crate::platform::{
     Layout, ACPI_BASE, ACPI_SIZE, GED_BASE, GIC_DIST_BASE, GIC_REDIST_BASE, GIC_REDIST_SIZE,
-    PCIE_ECAM_BASE, PCIE_MMIO_BASE, PCIE_MMIO_SIZE, TPM_CRB_BASE, UART_BASE, XHCI_BASE,
+    PCIE_ECAM_BASE, PCIE_MMIO_BASE, PCIE_MMIO_SIZE, PVPANIC_BASE, SBSA_GWDT_CONTROL_BASE,
+    SBSA_GWDT_REFRESH_BASE, TPM_CRB_BASE, UART_BASE, XHCI_BASE,
 };
 use crate::usb::USB_SPI;
 
@@ -91,6 +94,16 @@ pub fn acpi_config(cpus: u32) -> AcpiConfig {
             mmio_len: PL061_REG_SIZE as u32,
             spi: GED_SPI,
         },
+        pvpanic: Some(PvpanicConfig {
+            mmio_base: PVPANIC_BASE,
+            mmio_len: 2,
+        }),
+        watchdog: Some(WatchdogConfig {
+            refresh_base: SBSA_GWDT_REFRESH_BASE,
+            control_base: SBSA_GWDT_CONTROL_BASE,
+            frame_len: crate::sbsa_gwdt::SBSA_FRAME as u32,
+            spi: WATCHDOG_SPI,
+        }),
     }
 }
 
@@ -190,6 +203,33 @@ fn platform_problems(config: &AcpiConfig, layout: &Layout) -> Vec<String> {
             |base, size| base == config.ged.mmio_base && u64::from(config.ged.mmio_len) <= size,
             format!("{:#x}+{:#x}", config.ged.mmio_base, config.ged.mmio_len),
         ),
+        config.pvpanic.and_then(|pv| {
+            region_problem(
+                layout,
+                "DSDT PANC _CRS",
+                "pvpanic",
+                |base, size| base == pv.mmio_base && u64::from(pv.mmio_len) <= size,
+                format!("{:#x}+{:#x}", pv.mmio_base, pv.mmio_len),
+            )
+        }),
+        config.watchdog.and_then(|wd| {
+            region_problem(
+                layout,
+                "GTDT watchdog refresh",
+                "sbsa-gwdt-refresh",
+                |base, size| base == wd.refresh_base && u64::from(wd.frame_len) <= size,
+                format!("{:#x}+{:#x}", wd.refresh_base, wd.frame_len),
+            )
+        }),
+        config.watchdog.and_then(|wd| {
+            region_problem(
+                layout,
+                "GTDT watchdog control",
+                "sbsa-gwdt-control",
+                |base, size| base == wd.control_base && u64::from(wd.frame_len) <= size,
+                format!("{:#x}+{:#x}", wd.control_base, wd.frame_len),
+            )
+        }),
         config.tpm.and_then(|tpm| {
             region_problem(
                 layout,

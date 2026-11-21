@@ -33,6 +33,7 @@ mod loader_command;
 mod madt;
 mod mcfg;
 mod pci_root;
+mod pvpanic;
 mod rsdp;
 mod sdt;
 mod spcr;
@@ -44,13 +45,13 @@ mod xsdt;
 
 pub use compare::{compare, render_markdown, signature_diff, Row};
 pub use config::{
-    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GedConfig, GicConfig, PciConfig, TimerConfig,
-    TpmConfig, UartConfig, UsbConfig, MAX_CPUS,
+    ppi_gsiv, spi_gsiv, AcpiConfig, EcamConfig, GedConfig, GicConfig, PciConfig, PvpanicConfig,
+    TimerConfig, TpmConfig, UartConfig, UsbConfig, WatchdogConfig, MAX_CPUS,
 };
 pub use dbg2::{dbg2, DBG2_REVISION, DBG2_SIGNATURE, PORT_SERIAL, SUBTYPE_PL011};
 pub use decode::{
     decode_dbg2, decode_gtdt, decode_madt, decode_mcfg, decode_spcr, Dbg2Device, GiccInfo,
-    GtdtInfo, MadtInfo, McfgAllocation, SpcrInfo,
+    GtdtInfo, GtdtWatchdog, MadtInfo, McfgAllocation, SpcrInfo,
 };
 pub use dsdt::{dsdt, DSDT_REVISION, DSDT_SIGNATURE};
 pub use dump::{find_rsdp, walk, walk_image, DumpedTable, MAX_TABLE_LEN, MAX_XSDT_ENTRIES};
@@ -61,7 +62,10 @@ pub use fadt::{
     HYPERVISOR_VENDOR_OFFSET, MINOR_VERSION_OFFSET, X_DSDT_OFFSET,
 };
 pub use gas::{Gas, ACCESS_DWORD, GAS_LEN, SPACE_SYSTEM_MEMORY};
-pub use gtdt::{gtdt, GTDT_LEN, GTDT_REVISION, GTDT_SIGNATURE, TIMER_ALWAYS_ON};
+pub use gtdt::{
+    gtdt, GTDT_LEN, GTDT_REVISION, GTDT_SIGNATURE, GTDT_WATCHDOG_LEN, GTDT_WATCHDOG_TYPE,
+    TIMER_ALWAYS_ON,
+};
 pub use loader::{LoaderBlobs, TableRef, LOADER_FILE, RSDP_FILE, TABLES_FILE};
 pub use loader_command::{LoaderCommand, Zone, FNAME_LEN, LOADER_ENTRY_LEN};
 pub use madt::{
@@ -72,6 +76,7 @@ pub use pci_root::{
     pci_root, prt_routes, PrtRoute, INTX_PINS, MOTHERBOARD_HID, PCIE_ROOT_HID, PCI_ROOT_CID,
     ROOT_BUS_DEVICES,
 };
+pub use pvpanic::{pvpanic_device, PVPANIC_HID};
 pub use rsdp::{
     rsdp, rsdp_checksums_ok, RSDP_CHECKSUM_OFFSET, RSDP_LEN, RSDP_REVISION, RSDP_SIGNATURE,
     RSDP_XSDT_OFFSET,

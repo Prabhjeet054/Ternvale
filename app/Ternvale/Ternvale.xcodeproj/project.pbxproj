@@ -55,6 +55,7 @@
 		B1000000000000000000002F /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002F /* PreferencesView.swift */; };
 		B10000000000000000000030 /* CrashReportPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000030 /* CrashReportPreviewView.swift */; };
 		B10000000000000000000031 /* CrashHeartbeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000031 /* CrashHeartbeat.swift */; };
+		B10000000000000000000070 /* VmmSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000070 /* VmmSupervisor.swift */; };
 		B10000000000000000000032 /* AppcastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000032 /* AppcastTests.swift */; };
 		B10000000000000000000033 /* CrashRedactorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000033 /* CrashRedactorTests.swift */; };
 		B10000000000000000000034 /* CrashReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000034 /* CrashReporterTests.swift */; };
@@ -118,6 +119,7 @@
 		B2000000000000000000002F /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		B20000000000000000000030 /* CrashReportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReportPreviewView.swift; sourceTree = "<group>"; };
 		B20000000000000000000031 /* CrashHeartbeat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashHeartbeat.swift; sourceTree = "<group>"; };
+		B20000000000000000000070 /* VmmSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VmmSupervisor.swift; sourceTree = "<group>"; };
 		B20000000000000000000032 /* AppcastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppcastTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000033 /* CrashRedactorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashRedactorTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000034 /* CrashReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporterTests.swift; sourceTree = "<group>"; };
@@ -254,6 +256,7 @@
 				B2000000000000000000002D /* Appcast.swift */,
 				B2000000000000000000002E /* SparkleUpdater.swift */,
 				B20000000000000000000031 /* CrashHeartbeat.swift */,
+				B20000000000000000000070 /* VmmSupervisor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -490,6 +493,7 @@
 				B1000000000000000000002F /* PreferencesView.swift in Sources */,
 				B10000000000000000000030 /* CrashReportPreviewView.swift in Sources */,
 				B10000000000000000000031 /* CrashHeartbeat.swift in Sources */,
+				B10000000000000000000070 /* VmmSupervisor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

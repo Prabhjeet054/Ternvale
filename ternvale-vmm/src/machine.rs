@@ -258,12 +258,14 @@ impl Machine {
             crate::acpi::prepare(&mut mem, &vm, config)?
         };
         let spi_levels = Arc::new(Mutex::new(Vec::new()));
+        let crash = crate::crash::CrashHub::new();
         let attached = DeviceAttach::new(
             Arc::clone(&memory),
             Arc::clone(&gic),
             Arc::clone(&spi_levels),
             Arc::clone(control.metrics()),
             config.cpus,
+            Arc::clone(&crash),
         );
         let devices = attach(&attached)?;
         // The PCI count includes the host bridge.
@@ -316,6 +318,25 @@ impl Machine {
             crate::power::GED_REG_SIZE,
             Box::new(crate::power::GedRegs::new(power_button)),
         )?;
+        bus.register(
+            crate::platform::PVPANIC_BASE,
+            crate::pvpanic::PVPANIC_MMIO_LEN,
+            Box::new(crate::pvpanic::PvPanicMmio::new(Arc::clone(&crash))),
+        )?;
+        let (gwdt_refresh, gwdt_ctrl) = crate::sbsa_gwdt::SbsaWatchdog::pair(
+            Arc::clone(&crash),
+            attached.spi_hook(crate::fdt::WATCHDOG_SPI),
+        );
+        bus.register(
+            crate::platform::SBSA_GWDT_REFRESH_BASE,
+            crate::sbsa_gwdt::SBSA_FRAME,
+            Box::new(gwdt_refresh.clone()),
+        )?;
+        bus.register(
+            crate::platform::SBSA_GWDT_CONTROL_BASE,
+            crate::sbsa_gwdt::SBSA_FRAME,
+            Box::new(gwdt_ctrl),
+        )?;
         if let Some(path) = &nvram {
             bus.register(
                 FLASH_VARS_BASE,
@@ -335,6 +356,20 @@ impl Machine {
         // PCI functions (and their guest-memory handles) must die with the bus, before the VM.
         drop(attached);
         let power = Arc::new(CpuPower::new(config.cpus, RAM_BASE, ram_size));
+        let dump_dir = config
+            .serial_log
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        crash.bind(Arc::new(crate::crash::CrashRuntime::new(
+            config.reliability.clone(),
+            Arc::clone(control),
+            Arc::clone(&power),
+            Arc::clone(&memory),
+            dump_dir,
+            RAM_BASE,
+            ram_size,
+        )));
         control.bind(host::control_hooks(&power));
         control.bind_snapshot_host(Arc::new(crate::control::snapshot::SnapshotHost {
             memory: Arc::clone(&memory),
@@ -349,6 +384,14 @@ impl Machine {
             last_label: Mutex::new(None),
         }));
         let shutdown = Arc::new(AtomicBool::new(false));
+        let gwdt_stop = Arc::clone(&shutdown);
+        let gwdt_poll = gwdt_refresh;
+        let _gwdt = std::thread::spawn(move || {
+            while !gwdt_stop.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(50));
+                gwdt_poll.poll(std::time::Instant::now());
+            }
+        });
         let watchdog = Arc::new(Watchdog::new(HANG));
         let stop_watch = Arc::clone(&shutdown);
         let dog = Arc::clone(&watchdog);
