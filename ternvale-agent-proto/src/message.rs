@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     validate_app_launch, validate_apps, validate_clipboard_offer, validate_clipboard_payload,
     validate_clipboard_take, validate_drag_accept, validate_drag_cancel, validate_drag_offer,
-    validate_drag_progress, validate_host_open, validate_window_frame, validate_window_input,
-    validate_window_op, validate_windows, GuestApp, GuestWindow, HexBytes, MAX_BIN_CHUNK,
-    MAX_COPY_PATH, MAX_DIMENSION, MAX_EXEC_ARG, MAX_EXEC_ARGV, MAX_NAME,
+    validate_drag_progress, validate_host_open, validate_printers, validate_window_frame,
+    validate_window_input, validate_window_op, validate_windows, GuestApp, GuestPrinter,
+    GuestWindow, HexBytes, MAX_BIN_CHUNK, MAX_COPY_PATH, MAX_DIMENSION, MAX_EXEC_ARG,
+    MAX_EXEC_ARGV, MAX_NAME,
 };
 
 /// One protocol message. JSON form: `{"type":"<snake_case name>", ...fields}`.
@@ -423,6 +424,21 @@ pub enum Message {
         /// Transfer id.
         id: String,
     },
+    /// Host → agent: install or remove virtual printers (empty list uninstalls).
+    PrintersSet {
+        /// Printers the guest should expose.
+        printers: Vec<GuestPrinter>,
+    },
+    /// Agent → host: printers applied.
+    PrintersSetOk {
+        /// How many printers are installed.
+        count: u32,
+    },
+    /// Agent → host: install failed.
+    PrintersSetErr {
+        /// Why (not a secret).
+        reason: String,
+    },
     /// Agent → host: copy/exec request failed.
     CopyErr {
         /// The request id.
@@ -555,6 +571,9 @@ impl Message {
             Self::DragCancel { .. } => "drag_cancel",
             Self::DragProgress { .. } => "drag_progress",
             Self::DragDone { .. } => "drag_done",
+            Self::PrintersSet { .. } => "printers_set",
+            Self::PrintersSetOk { .. } => "printers_set_ok",
+            Self::PrintersSetErr { .. } => "printers_set_err",
         }
     }
 
@@ -707,6 +726,10 @@ impl Message {
             Self::DragCancel { id, reason } => validate_drag_cancel(id, reason),
             Self::DragProgress { id, done, total } => validate_drag_progress(id, *done, *total),
             Self::DragDone { id } => crate::validate_drag_id(id),
+            Self::PrintersSet { printers } => validate_printers(printers),
+            Self::PrintersSetErr { reason } if reason.len() > MAX_NAME => Err(format!(
+                "printers_set_err reason longer than {MAX_NAME} bytes"
+            )),
             _ => Ok(()),
         }
     }

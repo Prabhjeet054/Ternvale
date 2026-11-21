@@ -20,6 +20,10 @@ pub struct PrivacyJson {
     pub usb_passthrough: Vec<UsbJson>,
     pub shares: Vec<ShareJson>,
     pub clipboard: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub printing: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub printers: Vec<String>,
 }
 
 /// USB passthrough row.
@@ -141,6 +145,8 @@ impl PrivacyLive {
             } else {
                 "off".into()
             },
+            printing: self.snapshot.printing,
+            printers: self.snapshot.printers.clone(),
         }
     }
 }

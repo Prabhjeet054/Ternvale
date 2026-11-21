@@ -160,3 +160,10 @@ path = "fuzz_targets/gpu3d_decoder.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "ipp"
+path = "fuzz_targets/ipp.rs"
+test = false
+doc = false
+bench = false

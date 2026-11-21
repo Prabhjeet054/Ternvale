@@ -85,6 +85,7 @@ pub fn run() -> Result<(), String> {
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     };
     if vm.effective_firmware_tables() != FirmwareTables::Acpi {
         return Err("a firmware boot without firmware_tables should default to acpi".into());

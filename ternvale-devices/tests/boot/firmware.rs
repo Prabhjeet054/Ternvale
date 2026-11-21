@@ -100,6 +100,7 @@ fn boot_once(
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     };
     tracing::info!(target: "ternvale::boot", serial = %serial_log.display(), nvram = %nvram.display(), "firmware boot");
     let uart = Pl011::open(serial_log).map_err(|err| err.to_string())?;

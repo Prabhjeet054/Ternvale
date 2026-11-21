@@ -112,6 +112,24 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
                 .map_err(|error| error.to_string())?;
         }
     }
+    {
+        let printers = ternvale_vmm::lockwatch::lock(&shared.printers, "agent-printers").clone();
+        if let Some(printers) = printers {
+            tracing::info!(
+                target: "ternvale::print",
+                count = printers.len(),
+                "sending printers_set to agent"
+            );
+            let message = Message::PrintersSet { printers };
+            if let Err(error) = message.validate() {
+                tracing::warn!(target: "ternvale::print", error = %error, "printers_set skipped");
+            } else {
+                shared
+                    .write(id, &message)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+    }
     loop {
         match next(shared, &mut reader, stream, None)? {
             None => return Ok(()),
@@ -376,6 +394,12 @@ fn serve(shared: &Shared, id: u64, stream: &mut UnixStream) -> Result<(), String
             }
             Some(Message::DragDone { id }) => {
                 tracing::info!(target: "ternvale::agent", id = %id, "guest drag done");
+            }
+            Some(Message::PrintersSetOk { count }) => {
+                tracing::info!(target: "ternvale::print", count, "guest printers installed");
+            }
+            Some(Message::PrintersSetErr { reason }) => {
+                tracing::warn!(target: "ternvale::print", reason = %reason, "guest printers failed");
             }
             Some(other) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from agent ignored");

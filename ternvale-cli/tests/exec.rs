@@ -129,6 +129,7 @@ fn dummy_config(name: &str) -> VmConfig {
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     }
 }
 

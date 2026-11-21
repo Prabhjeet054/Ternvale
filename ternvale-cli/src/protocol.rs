@@ -210,6 +210,8 @@ pub enum Request {
         /// Transfer id.
         id: String,
     },
+    /// List printers shared with this VM (`[print]`).
+    PrintList,
     /// Add usermode x86 translation counters (`query-stats.metrics.x86`).
     X86Metrics {
         /// `rosetta` / `fex` / `qemu-user`.
@@ -257,6 +259,7 @@ impl Request {
             Self::DragIn { .. } => "drag-in",
             Self::DragOutPromise { .. } => "drag-out-promise",
             Self::DragCancel { .. } => "drag-cancel",
+            Self::PrintList => "print-list",
         }
     }
 
@@ -292,6 +295,7 @@ impl Request {
             Self::DragIn { .. } => "drag in for",
             Self::DragOutPromise { .. } => "drag out for",
             Self::DragCancel { .. } => "drag cancel for",
+            Self::PrintList => "list printers for",
         }
     }
 }
@@ -510,6 +514,17 @@ pub struct Response {
     /// Host stage paths (optional; older clients ignore).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staged: Option<Vec<String>>,
+    /// Shared printers (`print-list`). Optional for older clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printers: Option<Vec<PrinterJson>>,
+}
+
+/// One shared printer in `print-list` / `print.list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrinterJson {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
 }
 
 /// One guest app in `app-list` (optional; older clients ignore it).
@@ -571,6 +586,7 @@ impl Response {
             formats: None,
             drag_id: None,
             staged: None,
+            printers: None,
         }
     }
 
@@ -895,6 +911,7 @@ mod tests {
                     failures: 1,
                 },
             ),
+            (r#"{"cmd":"print-list"}"#, Request::PrintList),
             (r#"{"cmd":"app-list"}"#, Request::AppList),
             (
                 r#"{"cmd":"app-launch","id":"Notepad.lnk"}"#,

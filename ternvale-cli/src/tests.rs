@@ -9,7 +9,9 @@ use std::time::Duration;
 use clap::{CommandFactory, Parser};
 use ternvale_vmm::{VmControl, VmState};
 
-use crate::cli::{AppsCommand, Cli, Command, DiskCommand, SnapshotCommand, X86Command};
+use crate::cli::{
+    AppsCommand, Cli, Command, DiskCommand, PrintCommand, SnapshotCommand, X86Command,
+};
 use crate::client::{self, Reach};
 use crate::display::DisplayMode;
 use crate::protocol::{Request, Response, MAX_LINE};
@@ -427,6 +429,14 @@ fn parses_every_subcommand() {
             action: X86Command::Setup {
                 config: PathBuf::from("/tmp/c.toml"),
                 yes: true,
+            }
+        }
+    );
+    assert_eq!(
+        parse(&["ternvale", "print", "list", "win11"]),
+        Command::Print {
+            action: PrintCommand::List {
+                name: "win11".into()
             }
         }
     );

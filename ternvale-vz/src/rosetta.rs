@@ -297,6 +297,7 @@ mod tests {
             gpu: None,
             input: None,
             clipboard: None,
+            print: None,
         };
         let plan = VzPlan::from_config(&config).expect("linux rosetta");
         assert!(plan.rosetta);

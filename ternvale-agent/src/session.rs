@@ -296,6 +296,16 @@ fn serve_requests(
                 tracing::info!(target: "ternvale::agent", id = %id, "drag done");
                 Ok(())
             }
+            Message::PrintersSet { printers } => match crate::print::apply(&printers) {
+                Ok(count) => send_host(stream, writer.as_ref(), &Message::PrintersSetOk { count }),
+                Err(error) => send_host(
+                    stream,
+                    writer.as_ref(),
+                    &Message::PrintersSetErr {
+                        reason: error.to_string(),
+                    },
+                ),
+            },
             Message::ShareMount { tag, mount_point } => actions.mount_share(&tag, &mount_point),
             Message::WindowListGet => {
                 let windows = actions.list_windows()?;
@@ -422,7 +432,9 @@ fn serve_requests(
             | Message::AppListOk { .. }
             | Message::AppLaunchOk { .. }
             | Message::AppLaunchErr { .. }
-            | Message::HostOpen { .. }) => {
+            | Message::HostOpen { .. }
+            | Message::PrintersSetOk { .. }
+            | Message::PrintersSetErr { .. }) => {
                 tracing::warn!(target: "ternvale::agent", kind = other.kind(), "unexpected message from host ignored");
                 Ok(())
             }

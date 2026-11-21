@@ -285,6 +285,7 @@ fn linux(log_dir: &Path, host_log: &Path, installer: &Path, drivers: &Path) -> R
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     };
     vm.validate()
         .map_err(|err| format!("linux config: {err}"))?;

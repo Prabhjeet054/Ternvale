@@ -37,6 +37,7 @@ pub enum Method {
     DragIn,
     DragOut,
     DragCancel,
+    PrintList,
 }
 
 impl Method {
@@ -76,6 +77,7 @@ impl Method {
             Self::DragIn => "drag.in",
             Self::DragOut => "drag.out",
             Self::DragCancel => "drag.cancel",
+            Self::PrintList => "print.list",
         }
     }
 
@@ -120,4 +122,5 @@ pub const METHODS: &[Method] = &[
     Method::DragIn,
     Method::DragOut,
     Method::DragCancel,
+    Method::PrintList,
 ];

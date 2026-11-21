@@ -23,7 +23,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use ternvale_agent_proto::{write_message, FrameError, GuestApp, GuestWindow, Message};
+use ternvale_agent_proto::{
+    write_message, FrameError, GuestApp, GuestPrinter, GuestWindow, Message,
+};
 
 use status::Book;
 pub use status::{AgentState, AgentStatus};
@@ -161,6 +163,8 @@ pub(crate) struct Shared {
     relative_pointer: Arc<AtomicBool>,
     /// Next `Exec` / copy correlation id.
     next_id: AtomicU64,
+    /// `None`: do not send `printers_set`. `Some`: install (empty = uninstall).
+    printers: Mutex<Option<Vec<GuestPrinter>>>,
 }
 
 impl Shared {
@@ -227,6 +231,7 @@ impl AgentServer {
             host_open_sink: Mutex::new(None),
             relative_pointer: Arc::new(AtomicBool::new(false)),
             next_id: AtomicU64::new(0),
+            printers: Mutex::new(None),
         });
         let service = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
@@ -262,6 +267,14 @@ impl AgentServer {
     pub fn set_host_open_sink(&self, sink: HostOpenSink) {
         *ternvale_vmm::lockwatch::lock(&self.shared.host_open_sink, "agent-host-open-sink") =
             Some(sink);
+    }
+
+    /// Printers to install after handshake (`None` skips the message).
+    #[tracing::instrument(level = "debug", target = "ternvale::print", skip_all, fields(vm = %self.shared.vm))]
+    pub fn set_printers(&self, printers: Option<Vec<GuestPrinter>>) {
+        let count = printers.as_ref().map(Vec::len);
+        *ternvale_vmm::lockwatch::lock(&self.shared.printers, "agent-printers") = printers;
+        tracing::debug!(target: "ternvale::print", count, "agent printers configured");
     }
 
     /// Socket path.
@@ -331,6 +344,7 @@ impl AgentServer {
                 | Message::DragCancel { .. }
                 | Message::DragProgress { .. }
                 | Message::DragDone { .. }
+                | Message::PrintersSet { .. }
         ) {
             return Err(AgentServerError::NotARequest {
                 kind: message.kind(),

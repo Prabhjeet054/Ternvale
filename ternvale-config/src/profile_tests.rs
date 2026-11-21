@@ -122,6 +122,7 @@ fn windows_in_code(dir: &Dir, cpus: u32, ram_mib: u64) -> VmConfig {
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     }
 }
 
@@ -329,6 +330,7 @@ fn step18_harness(dir: &Dir, profile: Profile) -> VmConfig {
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     }
 }
 

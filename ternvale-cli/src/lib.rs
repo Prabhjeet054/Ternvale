@@ -57,6 +57,7 @@ pub mod macos_clone;
 pub mod paths;
 pub mod peer;
 pub mod power;
+pub mod print_cmd;
 pub mod privacy;
 pub mod probe_cpu;
 pub mod probe_el2;
@@ -257,6 +258,9 @@ fn non_run(command: Command, json: bool) -> Result<ExitCode> {
                 confirm,
             } => apps_cmd::open_in_guest(&name, &id, &file, confirm, json),
             cli::AppsCommand::Approve { name, key } => apps_cmd::approve(&name, &key, json),
+        },
+        Command::Print { action } => match action {
+            cli::PrintCommand::List { name } => print_cmd::list(&name, json),
         },
         Command::DriverLogs {
             name,

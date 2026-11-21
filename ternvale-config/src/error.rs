@@ -218,6 +218,15 @@ pub enum ConfigError {
         reason: String,
     },
 
+    /// A `[print]` field is invalid.
+    #[error("{field}: {reason}")]
+    InvalidPrint {
+        /// Field, such as `print.share`.
+        field: &'static str,
+        /// What is wrong.
+        reason: String,
+    },
+
     /// A `[clipboard]` field is invalid.
     #[error("{field}: {reason}")]
     InvalidClipboard {

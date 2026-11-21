@@ -653,6 +653,12 @@ pub fn handle_line_with(
         | Request::DragCancel { .. } => {
             return Response::error("internal: clipboard/dnd request not handled");
         }
+        Request::PrintList => {
+            return match crate::print_cmd::list_response(control.name()) {
+                Ok(response) => response,
+                Err(error) => Response::error(format!("{error:#}")),
+            };
+        }
         Request::X86Metrics {
             engine,
             processes,

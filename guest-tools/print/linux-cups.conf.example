@@ -1,0 +1,9 @@
+# Example CUPS printer pointing at the Ternvale IPP forwarder
+# (127.0.0.1:8631 → vsock CID 2 port 8631). The guest agent writes an equivalent
+# snippet when [print] is enabled.
+
+<Printer Print_to_PDF_on_Mac>
+  DeviceURI ipp://127.0.0.1:8631/printers/pdf
+  Accepting Yes
+  Shared No
+</Printer>

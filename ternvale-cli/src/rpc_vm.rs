@@ -295,6 +295,7 @@ fn jsonrpc_to_request(method: Method, params: Option<&Value>) -> Result<Request,
         Method::DragCancel => Ok(Request::DragCancel {
             id: get_str("id").ok_or_else(|| ApiError::InvalidParams("id".into()))?,
         }),
+        Method::PrintList => Ok(Request::PrintList),
         Method::Handshake | Method::Subscribe => Err(ApiError::InvalidRequest("internal".into())),
         other => Err(ApiError::MethodNotFound(format!(
             "{} is a hub method (connect to api.sock)",

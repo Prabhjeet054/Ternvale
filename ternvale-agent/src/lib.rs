@@ -17,7 +17,9 @@ mod dnd;
 mod drvlog;
 mod error;
 mod exec;
+mod ipp_fwd;
 mod os;
+mod print;
 mod rich;
 #[cfg(windows)]
 pub mod service;
@@ -29,6 +31,8 @@ mod win_clip;
 mod win_display;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod win_dnd;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod win_print;
 mod win_share;
 mod win_windows;
 mod windows;

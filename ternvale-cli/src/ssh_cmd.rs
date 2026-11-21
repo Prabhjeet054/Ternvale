@@ -187,6 +187,7 @@ mod tests {
             gpu: None,
             input: None,
             clipboard: None,
+            print: None,
         };
         assert_eq!(ssh_host_port(&config), Some(2222));
         config.nics.clear();

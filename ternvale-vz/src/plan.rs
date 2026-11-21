@@ -394,6 +394,7 @@ mod tests {
             gpu: None,
             input: None,
             clipboard: None,
+            print: None,
         }
     }
 

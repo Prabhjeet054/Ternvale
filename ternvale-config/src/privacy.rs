@@ -42,6 +42,10 @@ pub struct PrivacySnapshot {
     pub shares: Vec<SharePrivacy>,
     /// Guest agent clipboard (vsock agent).
     pub clipboard: bool,
+    /// `[print] enabled`.
+    pub printing: bool,
+    /// Shared host printer names (plus PDF when configured).
+    pub printers: Vec<String>,
 }
 
 impl VmConfig {
@@ -51,6 +55,17 @@ impl VmConfig {
         let usb = self.usb_section();
         let camera = self.camera_section();
         let clipboard = self.vsock.as_ref().is_some_and(|section| section.agent);
+        let print = self.print.as_ref();
+        let printing = print.is_some_and(|section| section.enabled);
+        let mut printers = Vec::new();
+        if printing {
+            if print.is_some_and(|section| section.pdf) {
+                printers.push("Print to PDF on Mac".into());
+            }
+            if let Some(section) = print {
+                printers.extend(section.share.iter().cloned());
+            }
+        }
         let snapshot = PrivacySnapshot {
             microphone: self.audio_input_enabled(),
             camera: camera.enabled,
@@ -75,6 +90,8 @@ impl VmConfig {
                 })
                 .collect(),
             clipboard,
+            printing,
+            printers,
         };
         tracing::debug!(
             target: "ternvale::config",
@@ -84,6 +101,8 @@ impl VmConfig {
             usb = snapshot.usb_passthrough.len(),
             shares = snapshot.shares.len(),
             clipboard = snapshot.clipboard,
+            printing = snapshot.printing,
+            printers = snapshot.printers.len(),
             "privacy snapshot"
         );
         snapshot
@@ -106,5 +125,7 @@ mod tests {
         assert!(snap.usb_passthrough.is_empty());
         assert!(snap.shares.is_empty());
         assert!(!snap.clipboard);
+        assert!(!snap.printing);
+        assert!(snap.printers.is_empty());
     }
 }

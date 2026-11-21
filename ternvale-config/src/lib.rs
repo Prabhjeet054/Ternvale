@@ -20,6 +20,7 @@ mod iso;
 mod nic;
 mod policy;
 mod power;
+mod print;
 mod privacy;
 mod profile;
 mod share;
@@ -49,6 +50,7 @@ pub use iso::{disc_format, BlockDevice, BlockRole, IsoSection, OPTICAL_SECTOR_BY
 pub use nic::{ForwardProto, Nic, NicMode, PortForward};
 pub use policy::{parse_cidr, CidrPort, NicPolicy};
 pub use power::{OnQuit, PowerSection, DEFAULT_GRACEFUL_TIMEOUT_SECS, MAX_GRACEFUL_TIMEOUT_SECS};
+pub use print::{PrintSection, MAX_PRINTER_NAME as MAX_PRINT_NAME, MAX_SHARED_PRINTERS};
 pub use privacy::{PrivacySnapshot, SharePrivacy, UsbPrivacy};
 pub use profile::{
     is_iso9660, Profile, VirtioTransport, WINDOWS_MIN_CPUS, WINDOWS_MIN_DISK_BYTES,
@@ -530,6 +532,25 @@ firmware = "{firmware}"
             ),
             "{error}"
         );
+    }
+
+    #[test]
+    fn print_section_is_opt_in() {
+        let fix = Fixture::new();
+        let config = VmConfig::from_toml(&sample(&fix)).expect("no print");
+        assert_eq!(config.print, None);
+        let text = format!(
+            "{}\n[print]\nenabled = true\nshare = [\"Office\"]\n",
+            sample(&fix)
+        );
+        let config = VmConfig::from_toml(&text).expect("print");
+        let print = config.print.clone().expect("section");
+        assert!(print.enabled);
+        assert_eq!(print.share, ["Office"]);
+        let snap = config.privacy_snapshot();
+        assert!(snap.printing);
+        assert!(snap.printers.iter().any(|n| n == "Print to PDF on Mac"));
+        assert!(snap.printers.iter().any(|n| n == "Office"));
     }
 
     #[test]

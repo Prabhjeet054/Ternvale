@@ -17,6 +17,7 @@ mod drag;
 mod frame;
 mod hex;
 mod message;
+mod print;
 mod reader;
 mod window;
 
@@ -36,6 +37,10 @@ pub use drag::{
 pub use frame::{encode, read_message, write_message, FrameError};
 pub use hex::{decode as decode_hex, encode as encode_hex, HexBytes};
 pub use message::{is_guest_file_path, ClipboardText, ExecStream, Message};
+pub use print::{
+    slug_printer_id, valid_printer_id, validate_printers, GuestPrinter, IPP_LOCAL_PORT, IPP_PORT,
+    MAX_PRINTERS, MAX_PRINTER_ID, MAX_PRINTER_NAME, PDF_PRINTER_ID, PDF_PRINTER_NAME,
+};
 pub use reader::FrameReader;
 pub use window::{
     validate_window_frame, validate_window_input, validate_window_op, validate_windows,

@@ -96,6 +96,11 @@ pub enum Command {
         #[command(subcommand)]
         action: AppsCommand,
     },
+    /// Host printers shared with a guest (`[print]`).
+    Print {
+        #[command(subcommand)]
+        action: PrintCommand,
+    },
     /// Wait until the guest agent is connected.
     WaitReady {
         /// VM name.
@@ -506,6 +511,16 @@ pub enum X86Command {
     /// Copy guest x86-metrics.json into `query-stats.metrics.x86`.
     ScrapeMetrics {
         /// Running VM.
+        name: String,
+    },
+}
+
+/// `ternvale print …` subcommands.
+#[derive(Debug, Subcommand, PartialEq, Eq)]
+pub enum PrintCommand {
+    /// List printers this VM may use (PDF + `[print].share`).
+    List {
+        /// VM name.
         name: String,
     },
 }

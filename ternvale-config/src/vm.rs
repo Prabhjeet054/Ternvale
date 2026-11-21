@@ -9,7 +9,7 @@ use crate::error::ConfigError;
 use crate::firmware_tables::{self, FirmwareTables};
 use crate::{
     AudioSection, CameraSection, ClipboardSection, GpuSection, InputSection, IsoSection, Nic,
-    PowerSection, Profile, Share, TpmSection, UsbSection, VsockSection,
+    PowerSection, PrintSection, Profile, Share, TpmSection, UsbSection, VsockSection,
 };
 
 const RAM_QUANTUM_MIB: u64 = 16;
@@ -128,6 +128,9 @@ pub struct VmConfig {
     /// Rich clipboard and drag-and-drop. Omitted: text-only, no Finder drops.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clipboard: Option<ClipboardSection>,
+    /// Host printer sharing. Omitted: off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub print: Option<PrintSection>,
 }
 
 /// `~/Library/Application Support/Ternvale/<name>/nvram.fd`.
@@ -278,6 +281,9 @@ impl VmConfig {
         self.gpu_section().validate()?;
         if let Some(clipboard) = &self.clipboard {
             clipboard.validate()?;
+        }
+        if let Some(print) = &self.print {
+            print.validate()?;
         }
         if self.shares.len() > 1 {
             return Err(ConfigError::InvalidShare {

@@ -6,9 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
-use ternvale_agent_proto::AGENT_PORT;
+use ternvale_agent_proto::{AGENT_PORT, IPP_PORT};
 use ternvale_config::{VmConfig, MAX_UDS_DIR};
-use ternvale_devices::{host_socket_path, AgentServer, AgentServerConfig, VsockConfig};
+use ternvale_devices::{
+    host_socket_path, list_host_queues, open_preview, AgentServer, AgentServerConfig, PrintPolicy,
+    PrintProxy, VsockConfig,
+};
 
 use crate::paths;
 
@@ -22,6 +25,8 @@ pub struct VsockSetup {
     pub attach_vsock: bool,
     /// Attach virtio-console named port `org.ternvale.agent`.
     pub attach_serial: bool,
+    /// IPP proxy on `host-8631.sock` (kept alive for the VM).
+    pub print: Option<Arc<PrintProxy>>,
 }
 
 /// `<dir of socket>/<name>.vsock`: the default socket directory, beside the
@@ -81,10 +86,58 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
         server.set_host_open_sink(Arc::new(move |kind, target| {
             crate::assoc::handle_guest_open(&vm_name, &policy, &share_list, &kind, &target)
         }));
+        if let Some(section) = &config.print {
+            let queues = list_host_queues();
+            let pdf_dir = print_pdf_dir(&config.name);
+            let policy = PrintPolicy::from_config(
+                &config.name,
+                section,
+                &queues,
+                pdf_dir,
+                Arc::new(open_preview),
+            );
+            if section.enabled {
+                server.set_printers(Some(policy.guest_printers()));
+            } else {
+                server.set_printers(Some(Vec::new()));
+            }
+        }
         Some(Arc::new(server))
     } else {
         tracing::info!(target: "ternvale::cli", "agent server disabled (vsock.agent = false)");
         None
+    };
+    let print = match (config.print.as_ref(), section.agent) {
+        (Some(print_section), _) if print_section.enabled => {
+            let queues = list_host_queues();
+            let policy = PrintPolicy::from_config(
+                &config.name,
+                print_section,
+                &queues,
+                print_pdf_dir(&config.name),
+                Arc::new(open_preview),
+            );
+            let path = host_socket_path(&dir, IPP_PORT);
+            match PrintProxy::start(&path, policy) {
+                Ok(proxy) => {
+                    tracing::info!(
+                        target: "ternvale::print",
+                        path = %path.display(),
+                        "print proxy started"
+                    );
+                    Some(Arc::new(proxy))
+                }
+                Err(error) => {
+                    tracing::error!(
+                        target: "ternvale::print",
+                        error = %error,
+                        "print proxy failed to start"
+                    );
+                    return Err(error).context("start IPP print proxy");
+                }
+            }
+        }
+        _ => None,
     };
     tracing::info!(
         target: "ternvale::cli",
@@ -93,6 +146,7 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
         agent = section.agent,
         serial = section.serial,
         vsock_device = section.device,
+        print = print.is_some(),
         "vsock prepared"
     );
     Ok(Some(VsockSetup {
@@ -104,5 +158,14 @@ pub fn prepare(config: &VmConfig, control_socket: &Path) -> Result<Option<VsockS
         agent,
         attach_vsock: section.device,
         attach_serial: section.serial && section.agent,
+        print,
     }))
+}
+
+fn print_pdf_dir(vm: &str) -> std::path::PathBuf {
+    let home = std::env::var_os("HOME").unwrap_or_else(|| "/tmp".into());
+    std::path::PathBuf::from(home)
+        .join("Library/Application Support/Ternvale")
+        .join(vm)
+        .join("print-pdf")
 }

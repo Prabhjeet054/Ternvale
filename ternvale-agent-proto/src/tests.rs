@@ -67,6 +67,14 @@ fn all_messages() -> Vec<Message> {
             outbound: false,
             echo: 0,
         },
+        Message::PrintersSet {
+            printers: vec![crate::GuestPrinter {
+                id: crate::PDF_PRINTER_ID.into(),
+                name: crate::PDF_PRINTER_NAME.into(),
+                kind: "pdf".into(),
+            }],
+        },
+        Message::PrintersSetOk { count: 1 },
     ]
 }
 

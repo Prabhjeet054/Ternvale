@@ -116,6 +116,16 @@ fn golden() -> Vec<(Message, &'static str)> {
             },
             r#"{"type":"host_open","kind":"url","target":"https://example.com"}"#,
         ),
+        (
+            Message::PrintersSet {
+                printers: vec![GuestPrinter {
+                    id: "pdf".into(),
+                    name: "Print to PDF on Mac".into(),
+                    kind: "pdf".into(),
+                }],
+            },
+            r#"{"type":"printers_set","printers":[{"id":"pdf","name":"Print to PDF on Mac","kind":"pdf"}]}"#,
+        ),
     ]
 }
 

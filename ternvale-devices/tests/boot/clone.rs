@@ -382,6 +382,7 @@ fn boot_once(
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     };
     tracing::info!(
         target: "ternvale::boot",

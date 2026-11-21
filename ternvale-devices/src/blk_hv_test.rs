@@ -88,6 +88,7 @@ fn linux_dd_writes_sixteen_mib_to_virtio_blk() {
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     };
     let uart = Pl011::open(&serial_log).expect("uart");
 

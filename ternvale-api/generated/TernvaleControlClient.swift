@@ -39,6 +39,7 @@ public enum TernvaleMethod: String, Codable, CaseIterable {
     case dragIn = "drag.in"
     case dragOut = "drag.out"
     case dragCancel = "drag.cancel"
+    case printList = "print.list"
 }
 
 /// Event kinds from `subscribe`.

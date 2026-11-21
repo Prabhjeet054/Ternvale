@@ -112,6 +112,8 @@ pub fn hub_call(method: Method, params: Option<&Value>) -> Result<Response, ApiE
                 Err(error) => Ok(Response::error(format!("{error:#}"))),
             }
         }
+        Method::PrintList => crate::print_cmd::list_response(&name()?)
+            .map_err(|e| ApiError::Application(format!("{e:#}"))),
         Method::ClipboardOffer | Method::DragIn | Method::DragOut | Method::DragCancel => {
             let n = name()?;
             let req = match method {

@@ -69,6 +69,7 @@ fn config(vsock: Option<VsockSection>) -> VmConfig {
         gpu: None,
         input: None,
         clipboard: None,
+        print: None,
     }
 }
 
